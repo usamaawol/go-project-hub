@@ -14,6 +14,13 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ContactRouteImport } from './routes/contact'
+import { Route as ConverterRouteImport } from './routes/converter'
+import { Route as DocumentStudioRouteImport } from './routes/document-studio'
+import { Route as HowItWorksRouteImport } from './routes/how-it-works'
+import { Route as PdfCompressorRouteImport } from './routes/pdf-compressor'
+import { Route as PresentationMakerRouteImport } from './routes/presentation-maker'
+import { Route as TemplatesRouteImport } from './routes/templates'
+import { Route as TextExtractorRouteImport } from './routes/text-extractor'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +47,41 @@ const ContactRoute = ContactRouteImport.update({
   path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConverterRoute = ConverterRouteImport.update({
+  id: '/converter',
+  path: '/converter',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocumentStudioRoute = DocumentStudioRouteImport.update({
+  id: '/document-studio',
+  path: '/document-studio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HowItWorksRoute = HowItWorksRouteImport.update({
+  id: '/how-it-works',
+  path: '/how-it-works',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PdfCompressorRoute = PdfCompressorRouteImport.update({
+  id: '/pdf-compressor',
+  path: '/pdf-compressor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PresentationMakerRoute = PresentationMakerRouteImport.update({
+  id: '/presentation-maker',
+  path: '/presentation-maker',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TemplatesRoute = TemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TextExtractorRoute = TextExtractorRouteImport.update({
+  id: '/text-extractor',
+  path: '/text-extractor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +89,13 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/contact': typeof ContactRoute
+  '/converter': typeof ConverterRoute
+  '/document-studio': typeof DocumentStudioRoute
+  '/how-it-works': typeof HowItWorksRoute
+  '/pdf-compressor': typeof PdfCompressorRoute
+  '/presentation-maker': typeof PresentationMakerRoute
+  '/templates': typeof TemplatesRoute
+  '/text-extractor': typeof TextExtractorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +103,13 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/contact': typeof ContactRoute
+  '/converter': typeof ConverterRoute
+  '/document-studio': typeof DocumentStudioRoute
+  '/how-it-works': typeof HowItWorksRoute
+  '/pdf-compressor': typeof PdfCompressorRoute
+  '/presentation-maker': typeof PresentationMakerRoute
+  '/templates': typeof TemplatesRoute
+  '/text-extractor': typeof TextExtractorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +118,57 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/contact': typeof ContactRoute
+  '/converter': typeof ConverterRoute
+  '/document-studio': typeof DocumentStudioRoute
+  '/how-it-works': typeof HowItWorksRoute
+  '/pdf-compressor': typeof PdfCompressorRoute
+  '/presentation-maker': typeof PresentationMakerRoute
+  '/templates': typeof TemplatesRoute
+  '/text-extractor': typeof TextExtractorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/account' | '/admin' | '/contact'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/account'
+    | '/admin'
+    | '/contact'
+    | '/converter'
+    | '/document-studio'
+    | '/how-it-works'
+    | '/pdf-compressor'
+    | '/presentation-maker'
+    | '/templates'
+    | '/text-extractor'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/account' | '/admin' | '/contact'
-  id: '__root__' | '/' | '/about' | '/account' | '/admin' | '/contact'
+  to:
+    | '/'
+    | '/about'
+    | '/account'
+    | '/admin'
+    | '/contact'
+    | '/converter'
+    | '/document-studio'
+    | '/how-it-works'
+    | '/pdf-compressor'
+    | '/presentation-maker'
+    | '/templates'
+    | '/text-extractor'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/account'
+    | '/admin'
+    | '/contact'
+    | '/converter'
+    | '/document-studio'
+    | '/how-it-works'
+    | '/pdf-compressor'
+    | '/presentation-maker'
+    | '/templates'
+    | '/text-extractor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +177,13 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   AdminRoute: typeof AdminRoute
   ContactRoute: typeof ContactRoute
+  ConverterRoute: typeof ConverterRoute
+  DocumentStudioRoute: typeof DocumentStudioRoute
+  HowItWorksRoute: typeof HowItWorksRoute
+  PdfCompressorRoute: typeof PdfCompressorRoute
+  PresentationMakerRoute: typeof PresentationMakerRoute
+  TemplatesRoute: typeof TemplatesRoute
+  TextExtractorRoute: typeof TextExtractorRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +223,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/converter': {
+      id: '/converter'
+      path: '/converter'
+      fullPath: '/converter'
+      preLoaderRoute: typeof ConverterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/document-studio': {
+      id: '/document-studio'
+      path: '/document-studio'
+      fullPath: '/document-studio'
+      preLoaderRoute: typeof DocumentStudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/how-it-works': {
+      id: '/how-it-works'
+      path: '/how-it-works'
+      fullPath: '/how-it-works'
+      preLoaderRoute: typeof HowItWorksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pdf-compressor': {
+      id: '/pdf-compressor'
+      path: '/pdf-compressor'
+      fullPath: '/pdf-compressor'
+      preLoaderRoute: typeof PdfCompressorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/presentation-maker': {
+      id: '/presentation-maker'
+      path: '/presentation-maker'
+      fullPath: '/presentation-maker'
+      preLoaderRoute: typeof PresentationMakerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/templates': {
+      id: '/templates'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof TemplatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/text-extractor': {
+      id: '/text-extractor'
+      path: '/text-extractor'
+      fullPath: '/text-extractor'
+      preLoaderRoute: typeof TextExtractorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +281,13 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   AdminRoute: AdminRoute,
   ContactRoute: ContactRoute,
+  ConverterRoute: ConverterRoute,
+  DocumentStudioRoute: DocumentStudioRoute,
+  HowItWorksRoute: HowItWorksRoute,
+  PdfCompressorRoute: PdfCompressorRoute,
+  PresentationMakerRoute: PresentationMakerRoute,
+  TemplatesRoute: TemplatesRoute,
+  TextExtractorRoute: TextExtractorRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

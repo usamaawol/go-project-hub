@@ -15,6 +15,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeProvider } from "../hooks/use-theme";
 import { AuthProvider } from "../hooks/use-auth";
+import { ProductTour } from "@/components/tour/ProductTour";
 
 function NotFoundComponent() {
   return (
@@ -129,6 +130,7 @@ function RootComponent() {
         <AuthProvider>
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <Outlet />
+          <ProductTour />
           <Toaster position="bottom-right" richColors />
         </AuthProvider>
       </ThemeProvider>

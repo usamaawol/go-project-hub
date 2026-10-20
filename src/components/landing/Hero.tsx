@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   ArrowRightLeft,
@@ -71,22 +72,39 @@ export function Hero({ onCreatePresentation, onImproveDocument }: HeroProps) {
 
             {/* Two Clear Primary Actions */}
             <div className="mt-8 flex flex-wrap items-center gap-3.5">
-              <Button
-                variant="hero"
-                size="lg"
-                onClick={handleCreatePresentation}
-                className="gap-2 px-6"
-              >
-                <Sparkles className="h-4 w-4" /> Create a Presentation
-              </Button>
-              <Button
-                variant="glass"
-                size="lg"
-                onClick={handleImproveDocument}
-                className="gap-2 px-6"
-              >
-                <BookOpen className="h-4 w-4 text-primary" /> Improve a Document
-              </Button>
+              {onCreatePresentation ? (
+                <Button
+                  variant="hero"
+                  size="lg"
+                  onClick={onCreatePresentation}
+                  className="gap-2 px-6"
+                >
+                  <Sparkles className="h-4 w-4" /> Create a Presentation
+                </Button>
+              ) : (
+                <Button variant="hero" size="lg" className="gap-2 px-6" asChild>
+                  <Link to="/presentation-maker">
+                    <Sparkles className="h-4 w-4" /> Create a Presentation
+                  </Link>
+                </Button>
+              )}
+
+              {onImproveDocument ? (
+                <Button
+                  variant="glass"
+                  size="lg"
+                  onClick={onImproveDocument}
+                  className="gap-2 px-6"
+                >
+                  <BookOpen className="h-4 w-4 text-primary" /> Improve a Document
+                </Button>
+              ) : (
+                <Button variant="glass" size="lg" className="gap-2 px-6" asChild>
+                  <Link to="/document-studio">
+                    <BookOpen className="h-4 w-4 text-primary" /> Improve a Document
+                  </Link>
+                </Button>
+              )}
             </div>
 
             {/* Simple 3-Step Workflow Explanation */}
@@ -128,24 +146,30 @@ export function Hero({ onCreatePresentation, onImproveDocument }: HeroProps) {
             {/* Quick Tool Shortcuts */}
             <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium">Quick Shortcuts:</span>
-              <button
-                onClick={scrollToTools}
+              <Link
+                to="/converter"
                 className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-[11px] text-foreground hover:border-primary/40 transition-colors"
               >
                 File Conversion (PDF ↔ DOCX)
-              </button>
-              <button
-                onClick={scrollToCompression}
+              </Link>
+              <Link
+                to="/pdf-compressor"
                 className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-[11px] text-foreground hover:border-primary/40 transition-colors"
               >
                 Lossless Compression
-              </button>
-              <a
-                href="#templates"
+              </Link>
+              <Link
+                to="/text-extractor"
+                className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-[11px] text-foreground hover:border-primary/40 transition-colors"
+              >
+                Text Extractor
+              </Link>
+              <Link
+                to="/templates"
                 className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-[11px] text-foreground hover:border-primary/40 transition-colors"
               >
                 50 Free Themes
-              </a>
+              </Link>
             </div>
           </div>
 

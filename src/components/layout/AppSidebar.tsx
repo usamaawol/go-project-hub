@@ -4,10 +4,11 @@ import {
   Home,
   Sparkles,
   FileEdit,
+  ArrowRightLeft,
+  Minimize2,
+  ScanText,
   LayoutTemplate,
   HelpCircle,
-  GraduationCap,
-  Building2,
   Info,
   Mail,
   ChevronLeft,
@@ -18,11 +19,13 @@ import {
   X,
   User as UserIcon,
   LogOut,
-  Shield,
-  Layers,
+  MessageSquare,
+  Compass,
 } from "lucide-react";
 import { LogoMark } from "@/components/landing/Logo";
 import { AuthModal } from "@/components/landing/AuthModal";
+import { FeedbackModal } from "@/components/feedback/FeedbackModal";
+import { restartProductTour } from "@/components/tour/ProductTour";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
@@ -31,17 +34,18 @@ import { toast } from "sonner";
 interface AppSidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
-  onSelectAction?: (action: "presentation" | "document") => void;
 }
 
-export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppSidebarProps) {
+export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
-  // Get current pathname
+  // Get current pathname for active route highlighting
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
@@ -65,79 +69,70 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
       to: "/",
       icon: Home,
       exact: true,
+      tourId: "nav-home",
     },
     {
       label: "Presentation Maker",
-      to: "/",
-      hash: "#presentation-maker",
+      to: "/presentation-maker",
       icon: Sparkles,
       highlight: true,
-      onClick: () => {
-        if (onSelectAction) onSelectAction("presentation");
-        document.getElementById("presentation-maker")?.scrollIntoView({ behavior: "smooth" });
-      },
+      tourId: "nav-presentation-maker",
     },
     {
-      label: "Document Tools",
-      to: "/",
-      hash: "#document-studio",
+      label: "Document Studio",
+      to: "/document-studio",
       icon: FileEdit,
-      onClick: () => {
-        if (onSelectAction) onSelectAction("document");
-        document.getElementById("document-studio")?.scrollIntoView({ behavior: "smooth" });
-      },
+      tourId: "nav-document-studio",
+    },
+    {
+      label: "File Converter",
+      to: "/converter",
+      icon: ArrowRightLeft,
+      tourId: "nav-converter",
+    },
+    {
+      label: "PDF Compressor",
+      to: "/pdf-compressor",
+      icon: Minimize2,
+      tourId: "nav-compressor",
+    },
+    {
+      label: "Text Extractor",
+      to: "/text-extractor",
+      icon: ScanText,
+      tourId: "nav-extractor",
     },
     {
       label: "Templates",
-      to: "/",
-      hash: "#templates",
+      to: "/templates",
       icon: LayoutTemplate,
-      onClick: () => {
-        document.getElementById("templates")?.scrollIntoView({ behavior: "smooth" });
-      },
+      tourId: "nav-templates",
     },
     {
       label: "How It Works",
-      to: "/",
-      hash: "#how",
+      to: "/how-it-works",
       icon: HelpCircle,
-      onClick: () => {
-        document.getElementById("how")?.scrollIntoView({ behavior: "smooth" });
-      },
-    },
-    {
-      label: "For Students",
-      to: "/",
-      hash: "#students",
-      icon: GraduationCap,
-      onClick: () => {
-        document.getElementById("students")?.scrollIntoView({ behavior: "smooth" });
-      },
-    },
-    {
-      label: "For Business",
-      to: "/",
-      hash: "#business",
-      icon: Building2,
-      onClick: () => {
-        document.getElementById("business")?.scrollIntoView({ behavior: "smooth" });
-      },
+      tourId: "nav-how-it-works",
     },
     {
       label: "About",
       to: "/about",
       icon: Info,
+      tourId: "nav-about",
     },
     {
       label: "Contact Us",
       to: "/contact",
       icon: Mail,
+      tourId: "nav-contact",
     },
   ];
 
   return (
     <>
+      {/* ============================================================== */}
       {/* Mobile Top App Bar (visible on sm/md screens) */}
+      {/* ============================================================== */}
       <div className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-md lg:hidden">
         <Link to="/" className="flex items-center gap-2">
           <LogoMark className="h-7 w-7" />
@@ -147,6 +142,14 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
         </Link>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setFeedbackOpen(true)}
+            aria-label="Send Feedback"
+            title="Send Feedback"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
           <button
             onClick={toggleTheme}
             aria-label="Toggle color theme"
@@ -164,7 +167,9 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
         </div>
       </div>
 
+      {/* ============================================================== */}
       {/* Mobile Drawer Backdrop */}
+      {/* ============================================================== */}
       {mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
@@ -172,9 +177,11 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
         />
       )}
 
+      {/* ============================================================== */}
       {/* Mobile Flyout Drawer */}
+      {/* ============================================================== */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col justify-between border-r border-border bg-card p-5 shadow-2xl transition-transform duration-300 lg:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col justify-between border-r border-border bg-card p-5 shadow-2xl transition-transform duration-300 lg:hidden overflow-y-auto ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -194,19 +201,18 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
             </button>
           </div>
 
-          <nav className="mt-6 space-y-1">
+          <nav className="mt-5 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = item.to === currentPath && !item.hash;
+              const isActive = item.exact
+                ? currentPath === item.to
+                : currentPath.startsWith(item.to);
               return (
                 <Link
                   key={item.label}
                   to={item.to}
-                  onClick={() => {
-                    if (item.onClick) item.onClick();
-                    setMobileOpen(false);
-                  }}
-                  className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors ${
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center gap-3 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors ${
                     isActive
                       ? "bg-primary text-primary-foreground font-semibold shadow-xs"
                       : item.highlight
@@ -215,7 +221,9 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
                   }`}
                 >
                   <Icon
-                    className={`h-4 w-4 shrink-0 ${isActive ? "" : item.highlight ? "text-primary" : "text-muted-foreground"}`}
+                    className={`h-4 w-4 shrink-0 ${
+                      isActive ? "" : item.highlight ? "text-primary" : "text-muted-foreground"
+                    }`}
                   />
                   <span>{item.label}</span>
                 </Link>
@@ -225,9 +233,31 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
         </div>
 
         {/* Mobile Sidebar Footer */}
-        <div className="border-t border-border pt-4 space-y-3">
+        <div className="border-t border-border pt-4 mt-6 space-y-2.5">
+          {/* Feedback & Tour buttons */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                setFeedbackOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-1.5 text-xs text-foreground bg-surface-2 hover:bg-muted"
+            >
+              <MessageSquare className="h-3.5 w-3.5 text-primary" /> Feedback
+            </button>
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                restartProductTour();
+              }}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-1.5 text-xs text-foreground bg-surface-2 hover:bg-muted"
+            >
+              <Compass className="h-3.5 w-3.5 text-amber-500" /> Take Tour
+            </button>
+          </div>
+
           {user ? (
-            <div className="space-y-2">
+            <div className="space-y-2 pt-1">
               <Link
                 to="/account"
                 onClick={() => setMobileOpen(false)}
@@ -253,7 +283,7 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
               </button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 pt-1">
               <Button
                 variant="hero"
                 size="sm"
@@ -298,16 +328,21 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
         </div>
       </aside>
 
+      {/* ============================================================== */}
       {/* Desktop Persistent Vertical Sidebar (lg+ screens) */}
+      {/* ============================================================== */}
       <aside
+        data-tour="sidebar-nav"
         className={`fixed inset-y-0 left-0 z-30 hidden lg:flex flex-col justify-between border-r border-border bg-card transition-all duration-300 ${
           collapsed ? "w-20 p-3" : "w-64 p-5"
         }`}
       >
-        <div>
+        <div className="flex flex-col flex-1 min-h-0">
           {/* Top Logo & Desktop Collapse Toggle */}
           <div
-            className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} border-b border-border pb-4`}
+            className={`flex items-center ${
+              collapsed ? "justify-center" : "justify-between"
+            } border-b border-border pb-4 shrink-0`}
           >
             <Link to="/" className="flex items-center gap-2.5 group">
               <LogoMark className="h-8 w-8" />
@@ -331,7 +366,7 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
           </div>
 
           {collapsed && (
-            <div className="mt-2 flex justify-center">
+            <div className="mt-2 flex justify-center shrink-0">
               <button
                 onClick={onToggleCollapse}
                 title="Expand sidebar"
@@ -343,20 +378,22 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
             </div>
           )}
 
-          {/* Navigation Items */}
-          <nav className="mt-6 space-y-1">
+          {/* Navigation Items (Scrollable if viewport is short) */}
+          <nav className="mt-4 space-y-1 overflow-y-auto flex-1 pr-0.5">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = item.to === currentPath && !item.hash;
+              const isActive = item.exact
+                ? currentPath === item.to
+                : currentPath.startsWith(item.to);
               return (
                 <Link
                   key={item.label}
                   to={item.to}
+                  data-tour={item.tourId}
                   title={collapsed ? item.label : undefined}
-                  onClick={item.onClick}
-                  className={`flex items-center gap-3 rounded-xl py-2.5 transition-all ${
-                    collapsed ? "justify-center px-2" : "px-3.5"
-                  } text-sm font-medium ${
+                  className={`flex items-center gap-3 rounded-xl py-2 transition-all ${
+                    collapsed ? "justify-center px-2" : "px-3"
+                  } text-xs font-medium ${
                     isActive
                       ? "bg-primary text-primary-foreground font-semibold shadow-xs"
                       : item.highlight
@@ -376,19 +413,60 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
           </nav>
         </div>
 
-        {/* Bottom Section: Account State, Theme Toggle, Collapse */}
-        <div className="border-t border-border pt-4 space-y-3">
+        {/* Bottom Section: Feedback Button, User Account, Theme, Collapse */}
+        <div className="border-t border-border pt-3 space-y-2 shrink-0">
+          {/* Quick Action: Feedback & Tour buttons */}
+          {!collapsed ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                data-tour="feedback-btn"
+                onClick={() => setFeedbackOpen(true)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-1.5 text-[11px] font-medium text-foreground bg-surface-2 hover:bg-muted transition-colors"
+              >
+                <MessageSquare className="h-3 w-3 text-primary" /> Feedback
+              </button>
+              <button
+                type="button"
+                onClick={restartProductTour}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-1.5 text-[11px] font-medium text-foreground bg-surface-2 hover:bg-muted transition-colors"
+              >
+                <Compass className="h-3 w-3 text-amber-500" /> Tour
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1 items-center">
+              <button
+                type="button"
+                data-tour="feedback-btn"
+                title="Send Feedback"
+                onClick={() => setFeedbackOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-foreground hover:bg-muted transition-colors"
+              >
+                <MessageSquare className="h-3.5 w-3.5 text-primary" />
+              </button>
+              <button
+                type="button"
+                title="Interactive Tour"
+                onClick={restartProductTour}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-foreground hover:bg-muted transition-colors"
+              >
+                <Compass className="h-3.5 w-3.5 text-amber-500" />
+              </button>
+            </div>
+          )}
+
           {/* User Account State */}
           {user ? (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Link
                 to="/account"
                 title={collapsed ? user.displayName || user.email || "Account" : undefined}
-                className={`flex items-center gap-2.5 rounded-xl border border-border bg-surface-2 p-2 transition-colors hover:bg-muted ${
+                className={`flex items-center gap-2.5 rounded-xl border border-border bg-surface-2 p-1.5 transition-colors hover:bg-muted ${
                   collapsed ? "justify-center" : ""
                 }`}
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 font-bold text-xs text-primary">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 font-bold text-xs text-primary">
                   {user.displayName?.slice(0, 2).toUpperCase() ||
                     user.email?.slice(0, 2).toUpperCase() ||
                     "DM"}
@@ -402,17 +480,9 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
                   </div>
                 )}
               </Link>
-              {!collapsed && (
-                <button
-                  onClick={handleLogout}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors"
-                >
-                  <LogOut className="h-3 w-3" /> Sign Out
-                </button>
-              )}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {collapsed ? (
                 <button
                   onClick={() => {
@@ -420,42 +490,32 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
                     setAuthOpen(true);
                   }}
                   title="Sign In"
-                  className="flex h-9 w-full items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="flex h-8 w-full items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                 >
-                  <UserIcon className="h-4 w-4" />
+                  <UserIcon className="h-3.5 w-3.5" />
                 </button>
               ) : (
-                <>
-                  <Button
-                    variant="hero"
-                    size="sm"
-                    className="w-full text-xs"
-                    onClick={() => {
-                      setAuthMode("signin");
-                      setAuthOpen(true);
-                    }}
-                  >
-                    Sign In
-                  </Button>
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    className="w-full text-xs"
-                    onClick={() => {
-                      setAuthMode("signup");
-                      setAuthOpen(true);
-                    }}
-                  >
-                    Register (Free)
-                  </Button>
-                </>
+                <Button
+                  variant="hero"
+                  size="sm"
+                  className="w-full text-xs h-8"
+                  onClick={() => {
+                    setAuthMode("signin");
+                    setAuthOpen(true);
+                  }}
+                >
+                  Sign In / Register
+                </Button>
               )}
             </div>
           )}
 
           {/* Theme Toggle Button */}
           <div
-            className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} pt-1`}
+            data-tour="theme-toggle"
+            className={`flex items-center ${
+              collapsed ? "justify-center" : "justify-between"
+            } pt-0.5`}
           >
             {!collapsed && <span className="text-xs text-muted-foreground">Mode</span>}
             <button
@@ -477,6 +537,7 @@ export function AppSidebar({ collapsed, onToggleCollapse, onSelectAction }: AppS
       </aside>
 
       <AuthModal open={authOpen} onOpenChange={setAuthOpen} defaultMode={authMode} />
+      <FeedbackModal open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </>
   );
 }

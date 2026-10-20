@@ -16,6 +16,7 @@ import {
   Sliders,
   HardDrive,
   Layers,
+  Play,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { AuthModal } from "@/components/landing/AuthModal";
 import { useAuth } from "@/hooks/use-auth";
 import { TEMPLATES } from "@/data/templates";
 import { downloadTemplatePptx } from "@/lib/pptx-export";
+import { restartProductTour } from "@/components/tour/ProductTour";
 
 export const Route = createFileRoute("/account")({
   head: () => ({
@@ -134,6 +136,9 @@ function AccountPage() {
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button variant="hero" size="lg" onClick={() => setAuthOpen(true)}>
                 Sign In to Your Account
+              </Button>
+              <Button variant="glass" size="lg" onClick={() => restartProductTour()}>
+                <Play className="h-4 w-4 mr-1.5 fill-current" /> Take Interactive Tour
               </Button>
               <Button variant="glass" size="lg" asChild>
                 <Link to="/">
@@ -476,6 +481,26 @@ function AccountPage() {
                   </Button>
                 </div>
               </form>
+
+              <div className="mt-8 border-t border-border pt-6">
+                <h3 className="font-serif text-lg font-bold text-foreground">
+                  Interactive Product Onboarding
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Need a refresher on DocuMind's tools, navigation shortcuts, and workflow
+                  capabilities?
+                </p>
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    variant="glass"
+                    size="sm"
+                    onClick={() => restartProductTour()}
+                  >
+                    <Play className="h-3.5 w-3.5 mr-1.5 fill-current" /> Retake 12-Step Product Tour
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </main>
