@@ -59,7 +59,7 @@ export function Upload() {
             <span className="ml-1 font-mono text-xs text-muted-foreground">· up to 50 MB</span>
           </div>
           <div className="mt-6">
-            <Button variant="glass" size="sm" onClick={() => add([samples[Math.floor(Math.random() * samples.length)]])}>
+            <Button variant="glass" size="sm" onClick={() => add([samples[Math.floor(Math.random() * samples.length)]!])}>
               Try with a sample file
             </Button>
           </div>
