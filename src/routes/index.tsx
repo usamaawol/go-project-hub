@@ -1,24 +1,42 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Nav } from "@/components/landing/Nav";
+import { Hero } from "@/components/landing/Hero";
+import { Upload } from "@/components/landing/Upload";
+import { Tools } from "@/components/landing/Tools";
+import { Templates } from "@/components/landing/Templates";
+import { HowItWorks, Compression, Assistant, Pricing, Faq } from "@/components/landing/Sections";
+import { Footer } from "@/components/landing/Footer";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "DocuMind — Your Documents. Smarter." },
+      { name: "description", content: "Convert, redesign, organize and compress PDF, DOCX, TXT and PPTX files in one intelligent workspace." },
+      { property: "og:title", content: "DocuMind — Your Documents. Smarter." },
+      { property: "og:description", content: "Convert files, create beautiful presentations, refine documents and reduce file sizes." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div id="top">
+      <Nav />
+      <main>
+        <Hero />
+        <Upload />
+        <Tools />
+        <Templates />
+        <HowItWorks />
+        <Compression />
+        <Assistant />
+        <Pricing />
+        <Faq />
+      </main>
+      <Footer />
     </div>
   );
 }
