@@ -1,26 +1,27 @@
-export function LogoMark({ className = "h-8 w-8" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="dm-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--primary)" />
-          <stop offset="1" stopColor="var(--cyan)" />
-        </linearGradient>
-      </defs>
-      <path d="M8 3h11l7 7v17a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="url(#dm-g)" opacity="0.18" stroke="url(#dm-g)" strokeWidth="1.5" />
-      <path d="M19 3v7h7" fill="none" stroke="url(#dm-g)" strokeWidth="1.5" />
-      <path d="M15 13l1.6 3.9L20.5 18.5l-3.9 1.6L15 24l-1.6-3.9-3.9-1.6 3.9-1.6Z" fill="url(#dm-g)" />
-    </svg>
-  );
+interface LogoMarkProps {
+  className?: string;
 }
 
-export function Logo() {
+export function LogoMark({ className = "h-8 w-8" }: LogoMarkProps) {
+  return <img src="/logo.png" alt="DocuMind Logo Mark" className={`object-contain ${className}`} />;
+}
+
+interface LogoProps {
+  className?: string;
+  showText?: boolean;
+}
+
+export function Logo({ className = "", showText = true }: LogoProps) {
   return (
-    <span className="flex items-center gap-2.5">
-      <LogoMark />
-      <span className="font-display text-lg font-semibold tracking-tight">
-        Docu<span className="text-cyan">Mind</span>
-      </span>
+    <span className={`inline-flex items-center gap-2.5 group select-none ${className}`}>
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-stone-200 bg-white p-1 shadow-xs group-hover:border-primary/40 group-hover:shadow-sm transition-all">
+        <img src="/logo.png" alt="DocuMind Logo" className="h-full w-full object-contain" />
+      </div>
+      {showText && (
+        <span className="font-sans text-xl font-bold tracking-tight text-foreground">
+          Docu<span className="text-primary font-serif font-normal italic">Mind</span>
+        </span>
+      )}
     </span>
   );
 }

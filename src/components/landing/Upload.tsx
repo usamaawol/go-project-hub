@@ -1,96 +1,354 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, FileText, Lock, UploadCloud, X } from "lucide-react";
+import {
+  FileText,
+  Lock,
+  UploadCloud,
+  X,
+  Presentation,
+  Minimize2,
+  ArrowRightLeft,
+  ScanText,
+  Sparkles,
+  RotateCcw,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
-type Item = { name: string; size: string; progress: number };
+type FileItem = {
+  id: string;
+  name: string;
+  size: string;
+  bytes: number;
+  progress: number;
+  type: "pdf" | "docx" | "txt" | "pptx";
+  error?: string | undefined;
+};
+
 const samples = [
-  { name: "Annual-Report-2026.pdf", size: "6.8 MB" },
-  { name: "Research-Proposal.docx", size: "1.2 MB" },
-  { name: "Lecture-Week-4.pptx", size: "14.3 MB" },
+  { name: "Academic_Lecture_Notes.docx", size: "1.8 MB", bytes: 1800000, type: "docx" as const },
+  { name: "Executive_Strategy_2026.pdf", size: "8.4 MB", bytes: 8400000, type: "pdf" as const },
+  { name: "Seed_Pitch_Deck.pptx", size: "14.2 MB", bytes: 14200000, type: "pptx" as const },
+  { name: "Clinical_Trial_Summary.txt", size: "280 KB", bytes: 280000, type: "txt" as const },
 ];
-const fmt = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+
+const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+const ALLOWED_EXTS = ["pdf", "docx", "doc", "txt", "pptx", "ppt"];
+
+const fmt = (b: number) =>
+  b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`;
+
+const detectType = (name: string): "pdf" | "docx" | "txt" | "pptx" => {
+  const ext = name.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return "pdf";
+  if (ext === "docx" || ext === "doc") return "docx";
+  if (ext === "pptx" || ext === "ppt") return "pptx";
+  return "txt";
+};
 
 export function Upload() {
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<FileItem[]>([]);
   const [drag, setDrag] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Simulated upload progress ticker
   useEffect(() => {
-    if (!items.some((i) => i.progress < 100)) return;
-    const t = setInterval(() => {
-      setItems((prev) => prev.map((i) => ({ ...i, progress: Math.min(100, i.progress + 4 + Math.random() * 10) })));
-    }, 140);
-    return () => clearInterval(t);
+    if (!items.some((i) => i.progress < 100 && !i.error)) return;
+    const interval = setInterval(() => {
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.progress >= 100 || i.error) return i;
+          return {
+            ...i,
+            progress: Math.min(100, i.progress + 8 + Math.random() * 10),
+          };
+        }),
+      );
+    }, 120);
+    return () => clearInterval(interval);
   }, [items]);
 
-  const add = (list: { name: string; size: string }[]) =>
-    setItems((p) => [...list.map((f) => ({ ...f, progress: 0 })), ...p].slice(0, 4));
+  const processFiles = (fileList: File[]) => {
+    const newItems: FileItem[] = [];
+
+    for (const f of fileList) {
+      const ext = f.name.split(".").pop()?.toLowerCase() || "";
+      let error: string | undefined;
+
+      if (!ALLOWED_EXTS.includes(ext)) {
+        error = "Unsupported format. Please select PDF, DOCX, TXT, or PPTX.";
+      } else if (f.size > MAX_BYTES) {
+        error = "File exceeds the 50 MB maximum size limit.";
+      }
+
+      newItems.push({
+        id: Math.random().toString(36).substring(2, 9),
+        name: f.name,
+        size: fmt(f.size),
+        bytes: f.size,
+        progress: error ? 100 : 0,
+        type: detectType(f.name),
+        error,
+      });
+
+      if (error) {
+        toast.error("File Validation Error", { description: error });
+      }
+    }
+
+    setItems((prev) => [...newItems, ...prev].slice(0, 4));
+  };
+
+  const handleAction = (toolTitle: string, fileName: string, targetId: string) => {
+    toast(`Workspace Ready: ${toolTitle}`, {
+      description: `Loaded "${fileName}" into studio memory for preview demonstration.`,
+    });
+    document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth" });
+  };
 
   return (
-    <section className="relative mx-auto max-w-5xl px-5 pb-24 lg:px-8">
+    <section id="workspace" className="relative mx-auto max-w-5xl px-5 pb-20 lg:px-8">
+      {/* Workspace Header Toolbar */}
+      <div className="flex items-center justify-between pb-3 px-1">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-mono font-semibold text-foreground/80">
+            Document Studio · 100% Free Access
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground mr-1">
+            Studio Theme:
+          </span>
+          <ThemeToggle />
+        </div>
+      </div>
+
       <div
-        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => {
-          e.preventDefault(); setDrag(false);
-          add(Array.from(e.dataTransfer.files).map((f) => ({ name: f.name, size: fmt(f.size) })));
+          e.preventDefault();
+          setDrag(false);
+          const dropped = Array.from(e.dataTransfer.files);
+          if (dropped.length) processFiles(dropped);
         }}
-        className={`panel rounded-2xl p-2 transition-all duration-300 ${drag ? "shadow-glow" : ""}`}
+        className={`rounded-2xl border bg-card p-3 sm:p-4 shadow-paper transition-all duration-300 ${
+          drag ? "border-primary ring-2 ring-primary/20 shadow-lift" : "border-border"
+        }`}
       >
-        <div className={`rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${drag ? "border-cyan bg-cyan/5" : "border-border"}`}>
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-cyan">
-            <UploadCloud className="h-7 w-7" />
+        <div
+          className={`rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
+            drag ? "border-primary bg-blue-50/50" : "border-stone-200 bg-stone-50/50"
+          }`}
+        >
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-primary border border-stone-200 shadow-xs">
+            <UploadCloud className="h-7 w-7 text-primary" />
           </div>
-          <h2 className="mt-5 text-2xl font-semibold">Drop your document here</h2>
-          <p className="mt-2 text-muted-foreground">
+
+          <h3 className="mt-5 text-xl sm:text-2xl font-serif font-bold text-foreground">
+            Drop your document here
+          </h3>
+          <p className="mt-1.5 text-sm text-foreground/70">
             or{" "}
-            <button className="font-semibold text-cyan underline-offset-4 hover:underline" onClick={() => input.current?.click()}>
-              browse files
+            <button
+              type="button"
+              className="font-semibold text-primary underline underline-offset-4 hover:text-blue-800"
+              onClick={() => inputRef.current?.click()}
+            >
+              browse from your computer
             </button>
           </p>
+
           <input
-            ref={input} type="file" hidden multiple accept=".pdf,.docx,.txt,.pptx"
-            onChange={(e) => { add(Array.from(e.target.files ?? []).map((f) => ({ name: f.name, size: fmt(f.size) }))); e.target.value = ""; }}
+            ref={inputRef}
+            type="file"
+            hidden
+            multiple
+            accept=".pdf,.docx,.doc,.txt,.pptx,.ppt"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length) processFiles(files);
+              e.target.value = "";
+            }}
           />
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             {["PDF", "DOCX", "TXT", "PPTX"].map((t) => (
-              <span key={t} className="rounded-md border border-border bg-background/60 px-2.5 py-1 font-mono text-xs text-muted-foreground">{t}</span>
+              <span
+                key={t}
+                className="rounded-md border border-stone-200 bg-white px-2.5 py-1 font-mono text-xs font-medium text-stone-600 shadow-xs"
+              >
+                {t}
+              </span>
             ))}
-            <span className="ml-1 font-mono text-xs text-muted-foreground">· up to 50 MB</span>
+            <span className="font-mono text-xs text-muted-foreground ml-1">· up to 50 MB</span>
           </div>
-          <div className="mt-6">
-            <Button variant="glass" size="sm" onClick={() => add([samples[Math.floor(Math.random() * samples.length)]!])}>
-              Try with a sample file
-            </Button>
+
+          {/* Quick Sample File Chips */}
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <span className="text-xs text-muted-foreground">Try with sample data:</span>
+            {samples.map((s) => (
+              <button
+                key={s.name}
+                type="button"
+                onClick={() =>
+                  setItems((p) =>
+                    [
+                      {
+                        id: Math.random().toString(36).substring(2, 9),
+                        name: s.name,
+                        size: s.size,
+                        bytes: s.bytes,
+                        progress: 0,
+                        type: s.type,
+                      },
+                      ...p,
+                    ].slice(0, 4),
+                  )
+                }
+                className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs text-foreground/80 hover:border-primary/40 hover:text-primary transition-colors shadow-xs"
+              >
+                + {s.name.split("_")[0]} ({s.size})
+              </button>
+            ))}
           </div>
+
           <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-            <Lock className="h-3.5 w-3.5" /> Your files stay private. In this preview, nothing leaves your browser.
+            <Lock className="h-3.5 w-3.5 text-stone-400" />
+            Your files stay private. In this frontend studio, documents remain strictly on your
+            device.
           </p>
         </div>
+
+        {/* Uploaded Documents List & Workflow Dispatcher */}
         {items.length > 0 && (
-          <ul className="space-y-2 p-3">
-            {items.map((i, idx) => (
-              <li key={idx} className="flex items-center gap-3 rounded-lg border border-border bg-background/60 px-4 py-3 animate-in fade-in slide-in-from-top-1">
-                <FileText className="h-5 w-5 shrink-0 text-primary" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex justify-between gap-2 text-sm">
-                    <span className="truncate font-medium">{i.name}</span>
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{i.size}</span>
-                  </div>
-                  <div className="mt-2 h-1 overflow-hidden rounded bg-muted">
-                    <div className="h-full bg-brand transition-all duration-150" style={{ width: `${i.progress}%` }} />
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    {i.progress < 100 ? `Simulated upload… ${Math.round(i.progress)}%` : "Demo upload complete — processing isn't available in this preview."}
-                  </p>
-                </div>
-                {i.progress >= 100 ? <CheckCircle2 className="h-5 w-5 text-success" /> : null}
-                <button aria-label={`Remove ${i.name}`} onClick={() => setItems((p) => p.filter((_, j) => j !== idx))} className="text-muted-foreground hover:text-foreground">
-                  <X className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="p-3 sm:p-4 space-y-3">
+            <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+              <span className="font-mono">
+                {items.length} file{items.length > 1 ? "s" : ""} staged in studio
+              </span>
+              <button
+                onClick={() => setItems([])}
+                className="flex items-center gap-1 text-stone-500 hover:text-foreground text-xs"
+              >
+                <RotateCcw className="h-3 w-3" /> Clear workspace
+              </button>
+            </div>
+
+            <ul className="space-y-3">
+              {items.map((i) => {
+                const isComplete = i.progress >= 100 && !i.error;
+                return (
+                  <li
+                    key={i.id}
+                    className="rounded-xl border border-stone-200 bg-stone-50/70 p-4 transition-all shadow-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-primary">
+                        {i.error ? (
+                          <AlertCircle className="h-5 w-5 text-destructive" />
+                        ) : (
+                          <FileText className="h-5 w-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex justify-between gap-2 text-sm">
+                          <span className="truncate font-semibold text-foreground">{i.name}</span>
+                          <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                            {i.size}
+                          </span>
+                        </div>
+
+                        {!i.error ? (
+                          <>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-200">
+                              <div
+                                className="h-full bg-primary transition-all duration-150"
+                                style={{ width: `${i.progress}%` }}
+                              />
+                            </div>
+                            <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                              <span>
+                                {!isComplete
+                                  ? `Simulating upload… ${Math.round(i.progress)}%`
+                                  : "Document staged in client memory"}
+                              </span>
+                              {isComplete && (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 font-medium font-mono text-[10px]">
+                                  <CheckCircle2 className="h-3 w-3" /> Staged
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="mt-1 text-xs text-destructive">{i.error}</p>
+                        )}
+                      </div>
+                      <button
+                        aria-label={`Remove ${i.name}`}
+                        onClick={() => setItems((p) => p.filter((item) => item.id !== i.id))}
+                        className="text-stone-400 hover:text-foreground p-1"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    {/* Quick Transformation Actions for Staged Files */}
+                    {isComplete && (
+                      <div className="mt-3.5 border-t border-stone-200 pt-3">
+                        <p className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <Sparkles className="h-3 w-3 text-primary" /> Choose goal for this
+                          document:
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="glass"
+                            className="text-xs h-8"
+                            onClick={() => handleAction("Convert Documents", i.name, "tools")}
+                          >
+                            <ArrowRightLeft className="h-3.5 w-3.5 text-primary" /> Convert Format
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="glass"
+                            className="text-xs h-8"
+                            onClick={() =>
+                              handleAction("Create Presentations", i.name, "templates")
+                            }
+                          >
+                            <Presentation className="h-3.5 w-3.5 text-purple-600" /> Create Slides
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="glass"
+                            className="text-xs h-8"
+                            onClick={() => handleAction("Compress Files", i.name, "compression")}
+                          >
+                            <Minimize2 className="h-3.5 w-3.5 text-emerald-600" /> Compress File
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="glass"
+                            className="text-xs h-8"
+                            onClick={() => handleAction("Extract Text", i.name, "tools")}
+                          >
+                            <ScanText className="h-3.5 w-3.5 text-amber-600" /> Extract Text
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
       </div>
     </section>
