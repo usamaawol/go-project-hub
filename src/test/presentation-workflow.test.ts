@@ -227,4 +227,46 @@ describe("DocuMind 15-Point Workflow & Presentation Verification", () => {
     expect(stepIds).toContain("step-6-preview-nav");
     expect(stepIds).toContain("step-7-download-privacy");
   });
+
+  // Client-side fallback test (reproduces Vercel deployment returning HTML)
+  it("Scenario 15: Handles HTML/offline server responses gracefully with client ephemeral generator", async () => {
+    const { createPresentationSessionApi, fetchPresentationPreviewApi } =
+      await import("../lib/api-client");
+
+    // Mock fetch to simulate Vercel returning HTML <!DOCTYPE html> for /api requests
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response("<!DOCTYPE html><html><body>Vercel SPA Fallback</body></html>", {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+
+    try {
+      const result = await createPresentationSessionApi({
+        title: "Vercel Resilient Deck",
+        content: "Testing client fallback when Vercel returns HTML instead of JSON.",
+        theme: {
+          id: "corporate-clean",
+          name: "Corporate Clean",
+          category: "Business",
+          kind: "business",
+          colors: { primary: "#0F172A", accent: "#2563EB", bg: "#FFFFFF" },
+          fonts: "Inter",
+          tier: "free",
+        },
+        slideCount: 5,
+      });
+
+      expect(result.sessionId).toBeDefined();
+      expect(result.slideCount).toBe(5);
+
+      // Verify preview fetches from client session without JSON.parse crash
+      const preview = await fetchPresentationPreviewApi(result.sessionId);
+      expect(preview.id).toBe(result.sessionId);
+      expect(preview.slides.length).toBe(5);
+      expect(preview.slides[0]?.layout).toBe("title");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { Logo } from "./Logo";
 import { LegalModal } from "./LegalModal";
 
@@ -13,13 +14,13 @@ export function Footer() {
 
   return (
     <>
-      <footer className="border-t border-stone-200/80 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-16 lg:px-8">
+      <footer className="border-t border-border bg-card/50 dark:bg-card/40 backdrop-blur-xs text-foreground">
+        <div className="mx-auto max-w-7xl px-5 py-14 lg:px-8">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
             {/* Brand identity column */}
             <div className="lg:col-span-2 space-y-3">
               <Logo />
-              <p className="font-serif italic text-base text-foreground/80 mt-2">
+              <p className="font-serif italic text-base text-foreground/90 mt-2">
                 Your Documents. Smarter.
               </p>
               <p className="max-w-sm text-xs text-muted-foreground leading-relaxed">
@@ -32,31 +33,31 @@ export function Footer() {
             {/* Tools */}
             <div>
               <h4 className="font-serif font-bold text-sm text-foreground">Tools</h4>
-              <ul className="mt-4 space-y-2.5 text-xs text-foreground/70">
+              <ul className="mt-4 space-y-2.5 text-xs text-muted-foreground">
                 <li>
-                  <a href="#tools" className="hover:text-primary transition-colors">
+                  <Link to="/converter" className="hover:text-primary transition-colors">
                     Convert Documents
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#templates" className="hover:text-primary transition-colors">
+                  <Link to="/presentation-maker" className="hover:text-primary transition-colors">
                     Create Presentations
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#compression" className="hover:text-primary transition-colors">
+                  <Link to="/pdf-compressor" className="hover:text-primary transition-colors">
                     Compress Files
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#tools" className="hover:text-primary transition-colors">
+                  <Link to="/text-extractor" className="hover:text-primary transition-colors">
                     Extract Text & OCR
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#tools" className="hover:text-primary transition-colors">
+                  <Link to="/document-studio" className="hover:text-primary transition-colors">
                     Improve Formatting
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -64,31 +65,31 @@ export function Footer() {
             {/* Templates & Workflows */}
             <div>
               <h4 className="font-serif font-bold text-sm text-foreground">Templates</h4>
-              <ul className="mt-4 space-y-2.5 text-xs text-foreground/70">
+              <ul className="mt-4 space-y-2.5 text-xs text-muted-foreground">
                 <li>
-                  <a href="#templates" className="hover:text-primary transition-colors">
+                  <Link to="/templates" className="hover:text-primary transition-colors">
                     Business Presentations
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#templates" className="hover:text-primary transition-colors">
+                  <Link to="/templates" className="hover:text-primary transition-colors">
                     Education & Lecture Themes
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#templates" className="hover:text-primary transition-colors">
+                  <Link to="/templates" className="hover:text-primary transition-colors">
                     Research & Scientific Papers
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#templates" className="hover:text-primary transition-colors">
+                  <Link to="/templates" className="hover:text-primary transition-colors">
                     Pitch Decks & Portfolios
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#pricing" className="hover:text-primary transition-colors">
-                    Pricing & Plans
-                  </a>
+                  <Link to="/templates" className="hover:text-primary transition-colors">
+                    Pricing & Free Access
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -96,17 +97,17 @@ export function Footer() {
             {/* About, Legal, Contact */}
             <div>
               <h4 className="font-serif font-bold text-sm text-foreground">About & Legal</h4>
-              <ul className="mt-4 space-y-2.5 text-xs text-foreground/70">
+              <ul className="mt-4 space-y-2.5 text-xs text-muted-foreground">
                 <li>
-                  <a href="#how" className="hover:text-primary transition-colors">
+                  <Link to="/about" className="hover:text-primary transition-colors">
                     About DocuMind
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   <button
                     type="button"
                     onClick={() => openLegal("privacy")}
-                    className="hover:text-primary transition-colors text-left"
+                    className="hover:text-primary transition-colors text-left cursor-pointer"
                   >
                     Privacy Architecture
                   </button>
@@ -115,29 +116,26 @@ export function Footer() {
                   <button
                     type="button"
                     onClick={() => openLegal("terms")}
-                    className="hover:text-primary transition-colors text-left"
+                    className="hover:text-primary transition-colors text-left cursor-pointer"
                   >
                     Terms of Service
                   </button>
                 </li>
                 <li>
-                  <a
-                    href="mailto:hello@documind.example"
-                    className="hover:text-primary transition-colors"
-                  >
+                  <Link to="/contact" className="hover:text-primary transition-colors">
                     Contact Engineering
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#faq" className="hover:text-primary transition-colors">
+                  <Link to="/how-it-works" className="hover:text-primary transition-colors">
                     Frequently Asked Questions
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
           </div>
 
-          <div className="mt-12 border-t border-stone-100 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-muted-foreground gap-2">
+          <div className="mt-12 border-t border-border/60 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-muted-foreground gap-2">
             <span>© 2026 DocuMind. All rights reserved.</span>
             <span className="font-mono text-[11px]">
               The Intelligent Paper Studio · Frontend Preview

@@ -30,6 +30,7 @@ import {
   type PresentationSessionData,
   type SlidePreviewItem,
 } from "@/lib/api-client";
+import { generateAndDownloadClientPptx } from "@/lib/presentation-session-client";
 
 export const Route = createFileRoute("/presentation-preview/$id")({
   head: () => ({
@@ -176,7 +177,8 @@ export function PresentationPreviewPage() {
   const handleDownloadPptx = async () => {
     if (isExpired) {
       toast.error("Session Expired", {
-        description: "This temporary file was already deleted from the server.",
+        description:
+          "This temporary file was already deleted in accordance with our privacy policy.",
       });
       return;
     }
@@ -184,31 +186,46 @@ export function PresentationPreviewPage() {
     try {
       setDownloading(true);
       toast.info("Preparing PowerPoint File...", {
-        description: "Streaming vector .pptx package from secure temporary storage.",
+        description: "Compiling vector .pptx package from secure temporary storage.",
       });
 
-      const res = await fetch(`/api/presentations/${sessionId}/download`);
-      if (res.status === 410) {
-        setIsExpired(true);
-        throw new Error("This temporary download link has expired.");
-      }
-      if (!res.ok) {
-        throw new Error("Download request failed.");
+      let downloaded = false;
+
+      // 1. Try server download endpoint first if backend is reachable
+      try {
+        const res = await fetch(`/api/presentations/${sessionId}/download`);
+        if (res.status === 410) {
+          setIsExpired(true);
+          throw new Error("This temporary download link has expired.");
+        }
+        const contentType = res.headers.get("content-type") || "";
+        if (res.ok && !contentType.includes("text/html")) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${session?.title.replace(/[^a-zA-Z0-9_-]/g, "_") || "presentation"}.pptx`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          downloaded = true;
+        }
+      } catch (err: unknown) {
+        if ((err as Error)?.message?.includes("expired")) throw err;
       }
 
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${session?.title.replace(/[^a-zA-Z0-9_-]/g, "_") || "presentation"}.pptx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // 2. Resilient client-side fallback (e.g. on Vercel deployment where Express is not running)
+      if (!downloaded && session) {
+        await generateAndDownloadClientPptx(session);
+        downloaded = true;
+      }
 
-      toast.success("Download Complete!", {
-        description: `Saved "${a.download}" to your device.`,
-      });
+      if (downloaded) {
+        toast.success("Download Complete!", {
+          description: `Saved "${session?.title || "presentation"}.pptx" to your device.`,
+        });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Download failed.";
       toast.error("Download Error", { description: msg });

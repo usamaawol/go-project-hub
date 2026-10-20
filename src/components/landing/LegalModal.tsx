@@ -17,7 +17,7 @@ interface LegalModalProps {
 export function LegalModal({ open, onOpenChange, type }: LegalModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl border-stone-200 bg-white p-6 sm:p-8 max-h-[85vh] overflow-y-auto shadow-lift">
+      <DialogContent className="max-w-2xl border-border bg-card text-card-foreground p-6 sm:p-8 max-h-[85vh] overflow-y-auto shadow-lift">
         <DialogHeader>
           <div className="flex items-center gap-2">
             {type === "privacy" ? (
@@ -37,8 +37,8 @@ export function LegalModal({ open, onOpenChange, type }: LegalModalProps) {
         </DialogHeader>
 
         {type === "privacy" ? (
-          <div className="space-y-4 text-xs text-foreground/80 leading-relaxed pt-2 font-sans">
-            <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 flex items-start gap-3">
+          <div className="space-y-4 text-xs text-foreground/85 leading-relaxed pt-2 font-sans">
+            <div className="rounded-xl border border-primary/20 bg-primary/10 p-4 flex items-start gap-3">
               <EyeOff className="h-5 w-5 text-primary shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold text-foreground text-sm">Zero Model Training Guarantee</p>
@@ -51,42 +51,42 @@ export function LegalModal({ open, onOpenChange, type }: LegalModalProps) {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3.5 space-y-1.5">
+              <div className="rounded-xl border border-border bg-muted/40 p-3.5 space-y-1.5">
                 <span className="flex items-center gap-1.5 font-semibold text-foreground">
-                  <Trash2 className="h-4 w-4 text-red-600" /> Automatic Zero Retention
+                  <Trash2 className="h-4 w-4 text-red-500" /> Automatic Zero Retention
                 </span>
-                <p className="text-stone-600">
+                <p className="text-muted-foreground">
                   Documents processed through our pipeline reside strictly in volatile RAM during
                   execution and are automatically purged after transformation.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3.5 space-y-1.5">
+              <div className="rounded-xl border border-border bg-muted/40 p-3.5 space-y-1.5">
                 <span className="flex items-center gap-1.5 font-semibold text-foreground">
                   <Cpu className="h-4 w-4 text-primary" /> Client-Side Processing Priority
                 </span>
-                <p className="text-stone-600">
+                <p className="text-muted-foreground">
                   Where feasible, parsing and lightweight operations are executed directly inside
                   your browser via WebAssembly, eliminating network transit altogether.
                 </p>
               </div>
             </div>
 
-            <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3.5 space-y-1.5">
+            <div className="rounded-xl border border-border bg-muted/40 p-3.5 space-y-1.5">
               <span className="flex items-center gap-1.5 font-semibold text-foreground">
-                <Lock className="h-4 w-4 text-emerald-700" /> End-to-End Transport Encryption
+                <Lock className="h-4 w-4 text-emerald-500" /> End-to-End Transport Encryption
               </span>
-              <p className="text-stone-600">
+              <p className="text-muted-foreground">
                 All file transfers use TLS 1.3 encryption with ephemeral keys. Only the requesting
                 client session holds access tokens to download the transformed output.
               </p>
             </div>
           </div>
         ) : (
-          <div className="space-y-4 text-xs text-foreground/80 leading-relaxed pt-2 font-sans">
+          <div className="space-y-4 text-xs text-foreground/85 leading-relaxed pt-2 font-sans">
             <div>
               <p className="font-bold text-foreground text-sm">1. Document Ownership</p>
-              <p className="mt-1 text-stone-600">
+              <p className="mt-1 text-muted-foreground">
                 You retain complete, exclusive ownership and intellectual property rights over all
                 documents, templates, and media files you upload to DocuMind. We claim no licenses
                 beyond the technical permission required to render and transform your files.
@@ -95,7 +95,7 @@ export function LegalModal({ open, onOpenChange, type }: LegalModalProps) {
 
             <div>
               <p className="font-bold text-foreground text-sm">2. Free Tier Usage Fair Limits</p>
-              <p className="mt-1 text-stone-600">
+              <p className="mt-1 text-muted-foreground">
                 Free accounts may process documents up to 50 MB per file. Automated scraping,
                 abusive bulk requests, or malicious payload injection will result in session
                 termination.
@@ -104,7 +104,7 @@ export function LegalModal({ open, onOpenChange, type }: LegalModalProps) {
 
             <div>
               <p className="font-bold text-foreground text-sm">3. Template License</p>
-              <p className="mt-1 text-stone-600">
+              <p className="mt-1 text-muted-foreground">
                 Exported presentation decks generated using DocuMind themes may be used freely for
                 both commercial and academic presentations without attribution required.
               </p>
@@ -112,7 +112,7 @@ export function LegalModal({ open, onOpenChange, type }: LegalModalProps) {
           </div>
         )}
 
-        <div className="flex justify-end pt-3 border-t border-stone-200">
+        <div className="flex justify-end pt-3 border-t border-border">
           <Button variant="hero" size="sm" onClick={() => onOpenChange(false)}>
             Understood
           </Button>

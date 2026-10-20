@@ -78,8 +78,8 @@ export function DocumentShowcase() {
                   }}
                   className={`rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
                     isSelected
-                      ? "border-primary bg-primary text-white shadow-xs"
-                      : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
+                      ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                      : "border-border bg-card text-foreground/80 hover:border-primary/40 hover:bg-muted/40"
                   }`}
                 >
                   {s.title}
@@ -89,23 +89,23 @@ export function DocumentShowcase() {
           </div>
 
           {/* Before/After Toggle */}
-          <div className="flex items-center gap-1 rounded-lg border border-stone-200 bg-white p-1 shadow-xs">
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1 shadow-xs">
             <button
               onClick={() => setViewMode("before")}
-              className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+              className={`px-3 py-1 text-xs rounded-md font-medium transition-all cursor-pointer ${
                 viewMode === "before"
-                  ? "bg-stone-100 text-stone-900 font-bold"
-                  : "text-stone-500 hover:text-stone-800"
+                  ? "bg-muted text-foreground font-bold"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Rough Draft (Before)
             </button>
             <button
               onClick={() => setViewMode("after")}
-              className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+              className={`px-3 py-1 text-xs rounded-md font-medium transition-all cursor-pointer ${
                 viewMode === "after"
-                  ? "bg-primary text-white font-bold shadow-xs"
-                  : "text-stone-500 hover:text-stone-800"
+                  ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               DocuMind Polished (After)
@@ -116,7 +116,7 @@ export function DocumentShowcase() {
         {/* Interactive Comparison Preview Stage */}
         <div className="mt-8 grid gap-8 lg:grid-cols-[1.3fr_0.9fr] items-start">
           {/* Main Document Paper Sheet */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-6 sm:p-10 shadow-paper relative min-h-[460px]">
+          <div className="rounded-2xl border border-border bg-card p-6 sm:p-10 shadow-paper relative min-h-[460px]">
             {viewMode === "before" ? (
               /* Before: messy unformatted document */
               <div className="font-serif text-stone-700 space-y-4 opacity-80">
@@ -301,17 +301,19 @@ export function DocumentShowcase() {
 
           {/* Right Column: Style Blueprint & Details */}
           <div className="space-y-6">
-            <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-paper">
-              <span className="rounded-full bg-stone-100 px-3 py-1 font-mono text-[10px] font-semibold uppercase text-stone-700 border border-stone-200">
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
+              <span className="rounded-full bg-muted px-3 py-1 font-mono text-[10px] font-semibold uppercase text-muted-foreground border border-border">
                 {currentTheme.badge}
               </span>
 
               <h4 className="font-serif text-xl font-bold text-foreground mt-4">
                 {currentTheme.title}
               </h4>
-              <p className="text-xs text-foreground/70 leading-relaxed mt-2">{currentTheme.desc}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed mt-2">
+                {currentTheme.desc}
+              </p>
 
-              <div className="mt-5 space-y-2.5 text-xs text-stone-700 border-t border-stone-100 pt-4">
+              <div className="mt-5 space-y-2.5 text-xs text-muted-foreground border-t border-border/60 pt-4">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground font-mono">Typography</span>
                   <span className="font-semibold text-foreground">{currentTheme.font}</span>

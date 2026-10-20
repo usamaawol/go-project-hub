@@ -127,8 +127,8 @@ export function Compression() {
           </div>
 
           {/* Interactive Compression Comparison Card */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-7 shadow-paper">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-4">
+          <div className="rounded-2xl border border-border bg-card p-7 shadow-paper">
+            <div className="flex items-center justify-between border-b border-border/60 pb-4">
               <div className="flex items-center gap-2.5">
                 <FileText className="h-5 w-5 text-primary" />
                 <div>
@@ -140,7 +140,7 @@ export function Compression() {
                   </span>
                 </div>
               </div>
-              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+              <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                 Illustrative Demo
               </span>
             </div>
@@ -150,15 +150,15 @@ export function Compression() {
               <label className="text-xs font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1">
                 <Sliders className="h-3.5 w-3.5 text-primary" /> Select Compression Level:
               </label>
-              <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-stone-200 bg-stone-50 p-1">
+              <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-border bg-muted p-1">
                 {(Object.keys(compressionProfiles) as ProfileKey[]).map((k) => (
                   <button
                     key={k}
                     onClick={() => setProfile(k)}
-                    className={`py-2 text-xs font-semibold rounded-lg transition-all ${
+                    className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                       profile === k
-                        ? "bg-white text-primary shadow-xs border border-stone-200"
-                        : "text-stone-600 hover:text-foreground"
+                        ? "bg-card text-primary shadow-xs border border-border"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {k}
@@ -298,30 +298,34 @@ export function IntelligentGuidance() {
                 <button
                   key={s.id}
                   onClick={() => setActiveIdx(idx)}
-                  className={`w-full text-left p-3 rounded-xl border text-xs transition-all ${
+                  className={`w-full text-left p-3 rounded-xl border text-xs transition-all cursor-pointer ${
                     activeIdx === idx
-                      ? "border-primary bg-blue-50/70 text-primary font-semibold shadow-xs"
-                      : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
+                      ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs"
+                      : "border-border bg-card text-foreground/80 hover:border-primary/40 hover:bg-muted/40"
                   }`}
                 >
-                  <span className="font-serif italic font-normal mr-1.5 text-stone-400">“</span>
+                  <span className="font-serif italic font-normal mr-1.5 text-muted-foreground">
+                    “
+                  </span>
                   {s.query}
-                  <span className="font-serif italic font-normal ml-1 text-stone-400">”</span>
+                  <span className="font-serif italic font-normal ml-1 text-muted-foreground">
+                    ”
+                  </span>
                 </button>
               ))}
             </div>
           </div>
 
           <p className="mt-6 text-xs text-muted-foreground flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+            <Sparkles className="h-3.5 w-3.5 text-purple-500" />
             Optional AI feature · Demonstration responses shown
           </p>
         </div>
 
         {/* Chat-Style Assistant Cockpit */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 sm:p-7 shadow-paper">
-          <div className="flex items-center gap-2.5 border-b border-stone-100 pb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary border border-blue-200">
+        <div className="rounded-2xl border border-border bg-card p-6 sm:p-7 shadow-paper">
+          <div className="flex items-center gap-2.5 border-b border-border/60 pb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
               <MessageSquare className="h-4 w-4" />
             </div>
             <div>
@@ -334,25 +338,25 @@ export function IntelligentGuidance() {
 
           <div className="mt-5 space-y-4">
             {/* User Bubble */}
-            <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-xs bg-stone-100 p-3.5 text-xs text-foreground font-medium shadow-xs">
+            <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-xs bg-muted p-3.5 text-xs text-foreground font-medium shadow-xs">
               “{scenario.query}”
             </div>
 
             {/* Assistant Response Card */}
-            <div className="max-w-[95%] rounded-2xl rounded-bl-xs border border-stone-200 bg-stone-50/70 p-5 space-y-3 shadow-inner">
-              <p className="text-xs text-foreground/80 leading-relaxed font-sans">
+            <div className="max-w-[95%] rounded-2xl rounded-bl-xs border border-border bg-muted/30 p-5 space-y-3 shadow-inner">
+              <p className="text-xs text-foreground/85 leading-relaxed font-sans">
                 {scenario.summary}
               </p>
 
-              <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-2">
+              <div className="rounded-xl border border-border bg-card p-4 space-y-2">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-primary font-bold block">
                   Recommended Workflow:
                 </span>
-                <ul className="space-y-1.5 text-xs text-stone-700">
+                <ul className="space-y-1.5 text-xs text-muted-foreground">
                   {scenario.suggestedSteps.map((step) => (
                     <li key={step} className="flex items-start gap-2">
                       <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
-                      <span>{step}</span>
+                      <span className="text-foreground/90">{step}</span>
                     </li>
                   ))}
                 </ul>
@@ -417,13 +421,13 @@ export function HowItWorks() {
           {steps.map((s) => (
             <div
               key={s.num}
-              className="relative rounded-2xl border border-stone-200 bg-white p-7 text-center shadow-paper transition-all hover:border-primary/40 hover:shadow-lift"
+              className="relative rounded-2xl border border-border bg-card p-7 text-center shadow-paper transition-all hover:border-primary/40 hover:shadow-lift"
             >
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-stone-200 bg-stone-50 font-serif text-xl font-bold text-primary shadow-xs">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-muted/40 font-serif text-xl font-bold text-primary shadow-xs">
                 {s.num}
               </div>
               <h3 className="mt-6 text-xl font-serif font-bold text-foreground">{s.title}</h3>
-              <p className="mt-2 text-sm text-foreground/70 leading-relaxed max-w-xs mx-auto">
+              <p className="mt-2 text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">
                 {s.desc}
               </p>
             </div>
@@ -491,21 +495,21 @@ export function DesignedForPeople() {
           <div
             key={p.label}
             id={p.id}
-            className="flex flex-col rounded-2xl border border-stone-200 bg-white p-7 shadow-paper transition-all hover:border-primary/40 hover:shadow-lift"
+            className="flex flex-col rounded-2xl border border-border bg-card p-7 shadow-paper transition-all hover:border-primary/40 hover:shadow-lift"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-primary">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-muted/40 text-primary">
               <p.icon className="h-6 w-6 stroke-[1.75]" />
             </div>
 
             <h3 className="mt-6 text-xl font-serif font-bold text-foreground">{p.label}</h3>
             <p className="mt-1 text-xs font-mono text-primary font-semibold">{p.tagline}</p>
-            <p className="mt-3 text-sm text-foreground/70 leading-relaxed">{p.desc}</p>
+            <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{p.desc}</p>
 
-            <ul className="mt-6 space-y-2 border-t border-stone-100 pt-4 text-xs text-stone-700 flex-1">
+            <ul className="mt-6 space-y-2 border-t border-border/60 pt-4 text-xs text-muted-foreground flex-1">
               {p.highlights.map((h) => (
                 <li key={h} className="flex items-center gap-2">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  <span>{h}</span>
+                  <span className="text-foreground/90">{h}</span>
                 </li>
               ))}
             </ul>

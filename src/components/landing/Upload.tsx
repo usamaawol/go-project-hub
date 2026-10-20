@@ -144,21 +144,21 @@ export function Upload() {
       >
         <div
           className={`rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
-            drag ? "border-primary bg-blue-50/50" : "border-stone-200 bg-stone-50/50"
+            drag ? "border-primary bg-primary/10" : "border-border bg-muted/20"
           }`}
         >
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-primary border border-stone-200 shadow-xs">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-card text-primary border border-border shadow-xs">
             <UploadCloud className="h-7 w-7 text-primary" />
           </div>
 
           <h3 className="mt-5 text-xl sm:text-2xl font-serif font-bold text-foreground">
             Drop your document here
           </h3>
-          <p className="mt-1.5 text-sm text-foreground/70">
+          <p className="mt-1.5 text-sm text-muted-foreground">
             or{" "}
             <button
               type="button"
-              className="font-semibold text-primary underline underline-offset-4 hover:text-blue-800"
+              className="font-semibold text-primary underline underline-offset-4 hover:underline cursor-pointer"
               onClick={() => inputRef.current?.click()}
             >
               browse from your computer
@@ -182,7 +182,7 @@ export function Upload() {
             {["PDF", "DOCX", "TXT", "PPTX"].map((t) => (
               <span
                 key={t}
-                className="rounded-md border border-stone-200 bg-white px-2.5 py-1 font-mono text-xs font-medium text-stone-600 shadow-xs"
+                className="rounded-md border border-border bg-card px-2.5 py-1 font-mono text-xs font-medium text-foreground shadow-xs"
               >
                 {t}
               </span>
@@ -212,7 +212,7 @@ export function Upload() {
                     ].slice(0, 4),
                   )
                 }
-                className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs text-foreground/80 hover:border-primary/40 hover:text-primary transition-colors shadow-xs"
+                className="rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground/80 hover:border-primary/40 hover:text-primary transition-colors shadow-xs cursor-pointer"
               >
                 + {s.name.split("_")[0]} ({s.size})
               </button>
@@ -220,7 +220,7 @@ export function Upload() {
           </div>
 
           <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-            <Lock className="h-3.5 w-3.5 text-stone-400" />
+            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
             Your files stay private. In this frontend studio, documents remain strictly on your
             device.
           </p>
@@ -235,7 +235,7 @@ export function Upload() {
               </span>
               <button
                 onClick={() => setItems([])}
-                className="flex items-center gap-1 text-stone-500 hover:text-foreground text-xs"
+                className="flex items-center gap-1 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
               >
                 <RotateCcw className="h-3 w-3" /> Clear workspace
               </button>
@@ -247,10 +247,10 @@ export function Upload() {
                 return (
                   <li
                     key={i.id}
-                    className="rounded-xl border border-stone-200 bg-stone-50/70 p-4 transition-all shadow-xs"
+                    className="rounded-xl border border-border bg-card p-4 transition-all shadow-xs"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-primary">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 text-primary">
                         {i.error ? (
                           <AlertCircle className="h-5 w-5 text-destructive" />
                         ) : (

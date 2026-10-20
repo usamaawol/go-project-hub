@@ -217,6 +217,13 @@ export interface PresentationSessionData {
   secondsRemaining: number;
 }
 
+import {
+  buildSlideDeckContent,
+  saveClientSession,
+  getClientSession,
+  removeClientSession,
+} from "./presentation-session-client";
+
 export async function createPresentationSessionApi(input: {
   title: string;
   content: string;
@@ -243,48 +250,125 @@ export async function createPresentationSessionApi(input: {
   expiresAt: number;
   secondsRemaining: number;
 }> {
-  const res = await fetch(`${API_BASE}/presentations/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  // 1. Attempt backend API first (used when Express server is running)
+  try {
+    const res = await fetch(`${API_BASE}/presentations/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
 
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error?.message || "Failed to create presentation session.");
+    const contentType = res.headers.get("content-type") || "";
+    if (res.ok && contentType.includes("application/json")) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "Backend presentation API unreachable, activating client ephemeral generator:",
+      err,
+    );
   }
 
-  return json.data;
+  // 2. Resilient browser-side ephemeral generator (for Vercel / serverless / offline)
+  const sessionId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `pres_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  const slideCount = Math.min(20, Math.max(3, input.slideCount || 8));
+  const density = input.density || "balanced";
+  const purpose = input.purpose || "Business & Strategy";
+  const fontFamily = input.typography?.fontFamily || "Inter";
+  const fontSizePreset = input.typography?.fontSizePreset || "standard";
+
+  const slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+
+  const clientSession: PresentationSessionData = {
+    id: sessionId,
+    title: input.title.trim() || "Untitled Presentation",
+    purpose,
+    density,
+    theme: input.theme,
+    typography: {
+      fontFamily,
+      fontSizePreset,
+    },
+    slideCount: slides.length,
+    slides,
+    fileSize: 45000,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 10 * 60 * 1000,
+    secondsRemaining: 600,
+  };
+
+  saveClientSession(clientSession);
+
+  return {
+    sessionId,
+    title: clientSession.title,
+    slideCount: clientSession.slideCount,
+    expiresAt: clientSession.expiresAt,
+    secondsRemaining: 600,
+  };
 }
 
 export async function fetchPresentationPreviewApi(
   sessionId: string,
 ): Promise<PresentationSessionData> {
-  const res = await fetch(`${API_BASE}/presentations/${sessionId}/preview`, {
-    headers: { "Cache-Control": "no-cache" },
-  });
-
-  const json = await res.json();
-  if (res.status === 410 || json.error?.code === "SESSION_EXPIRED") {
-    const error = new Error(
-      json.error?.message || "This temporary presentation has expired and was deleted.",
-    );
-    (error as unknown as { code: string }).code = "SESSION_EXPIRED";
-    throw error;
+  // 1. Check local client session storage first (immediate, works on Vercel without server)
+  const localSession = getClientSession(sessionId);
+  if (localSession) {
+    const now = Date.now();
+    if (now >= localSession.expiresAt) {
+      removeClientSession(sessionId);
+      const error = new Error("This temporary presentation has expired and was deleted.");
+      (error as unknown as { code: string }).code = "SESSION_EXPIRED";
+      throw error;
+    }
+    return {
+      ...localSession,
+      secondsRemaining: Math.max(0, Math.floor((localSession.expiresAt - now) / 1000)),
+    };
   }
 
-  if (!res.ok || !json.success) {
-    throw new Error(json.error?.message || "Failed to load presentation preview.");
+  // 2. Query backend API if available
+  try {
+    const res = await fetch(`${API_BASE}/presentations/${sessionId}/preview`, {
+      headers: { "Cache-Control": "no-cache" },
+    });
+
+    if (res.status === 410) {
+      const error = new Error("This temporary presentation has expired and was deleted.");
+      (error as unknown as { code: string }).code = "SESSION_EXPIRED";
+      throw error;
+    }
+
+    const contentType = res.headers.get("content-type") || "";
+    if (res.ok && contentType.includes("application/json")) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return json.data;
+      }
+    }
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === "SESSION_EXPIRED") throw err;
+    console.warn("Backend presentation preview unavailable:", err);
   }
 
-  return json.data;
+  const error = new Error("This temporary presentation has expired or is no longer available.");
+  (error as unknown as { code: string }).code = "SESSION_EXPIRED";
+  throw error;
 }
 
 export async function deletePresentationSessionApi(sessionId: string): Promise<boolean> {
+  removeClientSession(sessionId);
   try {
     const res = await fetch(`${API_BASE}/presentations/${sessionId}`, { method: "DELETE" });
     return res.ok;
   } catch {
-    return false;
+    return true;
   }
 }

@@ -154,21 +154,21 @@ export function Tools() {
           <div
             key={t.id}
             onClick={() => handleCardClick(t.id)}
-            className="group relative flex flex-col rounded-2xl border border-stone-200 bg-white p-7 text-left shadow-paper cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-lift hover:-translate-y-1"
+            className="group relative flex flex-col rounded-2xl border border-border bg-card p-7 text-left shadow-paper cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-lift hover:-translate-y-1"
           >
             {t.badge && (
-              <span className="absolute right-5 top-5 rounded-full bg-stone-100 px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-stone-600 border border-stone-200">
+              <span className="absolute right-5 top-5 rounded-full bg-muted px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border border-border">
                 {t.badge}
               </span>
             )}
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-foreground group-hover:border-primary/30 group-hover:bg-blue-50/60 group-hover:text-primary transition-colors">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-muted/40 text-foreground group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
               <t.icon className="h-6 w-6 stroke-[1.75]" />
             </div>
 
             <h3 className="mt-6 text-xl font-serif font-bold text-foreground group-hover:text-primary transition-colors">
               {t.title}
             </h3>
-            <p className="mt-2 text-sm text-foreground/70 leading-relaxed">{t.desc}</p>
+            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t.desc}</p>
 
             <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-primary pt-2">
               {t.cta}
@@ -180,7 +180,7 @@ export function Tools() {
 
       {/* Interactive Tool Experience Dialogs */}
       <Dialog open={!!activeModal} onOpenChange={(o) => !o && setActiveModal(null)}>
-        <DialogContent className="max-w-xl border-stone-200 bg-white p-6 sm:p-8 shadow-lift">
+        <DialogContent className="max-w-xl border-border bg-card text-card-foreground p-6 sm:p-8 shadow-lift">
           {activeModal === "convert" && (
             <div className="space-y-5">
               <DialogHeader>
@@ -190,7 +190,7 @@ export function Tools() {
                     Convert Documents
                   </DialogTitle>
                 </div>
-                <DialogDescription className="text-sm text-stone-600">
+                <DialogDescription className="text-sm text-muted-foreground">
                   Select your source document and choose the desired target format.
                 </DialogDescription>
               </DialogHeader>
@@ -310,36 +310,36 @@ export function Tools() {
                   <span className="text-[11px] font-mono text-muted-foreground uppercase font-semibold">
                     Scanned Document Preview
                   </span>
-                  <div className="relative rounded-lg border border-stone-200 bg-white p-3 h-40 flex flex-col justify-between overflow-hidden shadow-xs">
+                  <div className="relative rounded-lg border border-border bg-card p-3 h-40 flex flex-col justify-between overflow-hidden shadow-xs">
                     <div className="space-y-1.5">
-                      <div className="h-2.5 w-1/2 bg-stone-300 rounded" />
-                      <div className="h-2 w-3/4 bg-stone-200 rounded" />
-                      <div className="h-2 w-full bg-stone-200 rounded" />
+                      <div className="h-2.5 w-1/2 bg-muted rounded" />
+                      <div className="h-2 w-3/4 bg-muted/80 rounded" />
+                      <div className="h-2 w-full bg-muted/80 rounded" />
                     </div>
-                    <div className="rounded border border-primary/40 bg-blue-50/80 p-2 text-[9px] font-mono text-primary font-bold">
+                    <div className="rounded border border-primary/40 bg-primary/10 p-2 text-[9px] font-mono text-primary font-bold">
                       [Detected Paragraph: 99.2% confidence]
                     </div>
-                    <div className="h-2 w-2/3 bg-stone-200 rounded" />
+                    <div className="h-2 w-2/3 bg-muted rounded" />
                     <div className="absolute inset-x-0 top-0 h-0.5 bg-primary shadow-xs animate-scan" />
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-2">
+                <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-mono text-muted-foreground uppercase font-semibold">
                       Extracted Text
                     </span>
                     <button
                       onClick={handleCopyText}
-                      className="text-xs font-mono text-primary hover:underline flex items-center gap-1 font-semibold"
+                      className="text-xs font-mono text-primary hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                     >
                       {copiedText ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                       {copiedText ? "Copied" : "Copy"}
                     </button>
                   </div>
-                  <div className="rounded-lg border border-stone-200 bg-white p-3 h-40 font-mono text-xs text-foreground/80 overflow-y-auto leading-relaxed shadow-xs">
+                  <div className="rounded-lg border border-border bg-card p-3 h-40 font-mono text-xs text-foreground/80 overflow-y-auto leading-relaxed shadow-xs">
                     <p className="font-bold text-foreground">EXECUTIVE SUMMARY // Q3 2026</p>
-                    <p className="mt-2 text-stone-600 text-[11px]">
+                    <p className="mt-2 text-muted-foreground text-[11px]">
                       Industrial electrification increased by 34% over baseline, driven by thermal
                       storage and unified policy frameworks.
                     </p>
@@ -347,7 +347,7 @@ export function Tools() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-stone-200">
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-border">
                 <Button variant="ghost" onClick={() => setActiveModal(null)}>
                   Close
                 </Button>
@@ -362,37 +362,37 @@ export function Tools() {
             <div className="space-y-5">
               <DialogHeader>
                 <div className="flex items-center gap-2">
-                  <Wand2 className="h-5 w-5 text-purple-600" />
-                  <DialogTitle className="font-serif text-2xl font-bold">
+                  <Wand2 className="h-5 w-5 text-purple-500" />
+                  <DialogTitle className="font-serif text-2xl font-bold text-foreground">
                     Improve Formatting
                   </DialogTitle>
                 </div>
-                <DialogDescription className="text-sm text-stone-600">
+                <DialogDescription className="text-sm text-muted-foreground">
                   Preview how DocuMind standardizes fonts, paragraph rhythm, and margin geometry.
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <div className="flex items-center justify-between border-b border-border pb-3">
                 <span className="text-xs font-mono text-muted-foreground uppercase font-semibold">
                   Compare Document Layout
                 </span>
-                <div className="flex gap-1 rounded-lg border border-stone-200 bg-stone-100 p-0.5">
+                <div className="flex gap-1 rounded-lg border border-border bg-muted p-0.5">
                   <button
                     onClick={() => setFormatStyle("before")}
-                    className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+                    className={`px-3 py-1 text-xs rounded-md font-medium transition-all cursor-pointer ${
                       formatStyle === "before"
-                        ? "bg-white text-foreground shadow-xs font-semibold"
-                        : "text-stone-600 hover:text-foreground"
+                        ? "bg-card text-foreground shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     Raw Draft
                   </button>
                   <button
                     onClick={() => setFormatStyle("after")}
-                    className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+                    className={`px-3 py-1 text-xs rounded-md font-medium transition-all cursor-pointer ${
                       formatStyle === "after"
-                        ? "bg-primary text-white shadow-xs font-semibold"
-                        : "text-stone-600 hover:text-foreground"
+                        ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     Polished Work
@@ -400,27 +400,27 @@ export function Tools() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-stone-200 bg-stone-50 p-6 min-h-[160px] shadow-inner">
+              <div className="rounded-xl border border-border bg-muted/40 p-6 min-h-[160px] shadow-inner">
                 {formatStyle === "before" ? (
-                  <div className="space-y-2.5 font-serif text-stone-600 opacity-70">
-                    <p className="text-sm font-bold text-stone-900 tracking-tight">
+                  <div className="space-y-2.5 font-serif text-muted-foreground opacity-70">
+                    <p className="text-sm font-bold text-foreground tracking-tight">
                       quarterly_strategy_notes(1).docx
                     </p>
                     <p className="text-xs leading-normal">
                       inconsistent margin indentations... random font switches between Times and
                       Calibri... misaligned line spacing without typographic hierarchy.
                     </p>
-                    <div className="h-2 w-1/3 bg-stone-300 rounded" />
+                    <div className="h-2 w-1/3 bg-muted rounded" />
                   </div>
                 ) : (
-                  <div className="space-y-2.5 bg-white p-4 rounded-lg border border-stone-200 shadow-xs">
+                  <div className="space-y-2.5 bg-card p-4 rounded-lg border border-border shadow-xs">
                     <span className="text-[9px] font-mono uppercase tracking-wider text-primary font-bold">
                       Section 01 // Executive Report
                     </span>
                     <h4 className="font-serif text-base font-bold text-foreground">
                       Strategic Priorities & Roadmap
                     </h4>
-                    <p className="text-xs text-foreground/80 leading-relaxed font-sans">
+                    <p className="text-xs text-muted-foreground leading-relaxed font-sans">
                       Balanced 1.5 line height, 1-inch optical margins, and harmonious typographic
                       pairing set in Newsreader and Manrope.
                     </p>

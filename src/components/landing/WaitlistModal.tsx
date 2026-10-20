@@ -53,17 +53,17 @@ export function WaitlistModal({ open, onOpenChange }: WaitlistModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md border-stone-200 bg-white p-6 sm:p-8 shadow-lift">
+      <DialogContent className="max-w-md border-border bg-card text-card-foreground p-6 sm:p-8 shadow-lift">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-primary border border-blue-200">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
               <Sparkles className="h-4 w-4" />
             </span>
             <DialogTitle className="font-serif text-2xl font-bold text-foreground">
               Join the DocuMind Pro Waitlist
             </DialogTitle>
           </div>
-          <DialogDescription className="text-xs text-stone-600">
+          <DialogDescription className="text-xs text-muted-foreground">
             Be the first to access our complete 100+ presentation theme library and enterprise
             limits.
           </DialogDescription>
@@ -83,17 +83,17 @@ export function WaitlistModal({ open, onOpenChange }: WaitlistModalProps) {
                       type="button"
                       key={f}
                       onClick={() => toggleFeature(f)}
-                      className={`w-full flex items-center gap-2.5 rounded-xl border p-2.5 text-left text-xs transition-all ${
+                      className={`w-full flex items-center gap-2.5 rounded-xl border p-2.5 text-left text-xs transition-all cursor-pointer ${
                         isChecked
-                          ? "border-primary bg-blue-50/60 text-primary font-medium shadow-xs"
-                          : "border-stone-200 bg-stone-50/50 text-stone-700 hover:border-stone-300"
+                          ? "border-primary bg-primary/10 text-primary font-medium shadow-xs"
+                          : "border-border bg-muted/40 text-foreground/80 hover:border-primary/40"
                       }`}
                     >
                       <span
                         className={`flex h-4 w-4 items-center justify-center rounded border ${
                           isChecked
-                            ? "border-primary bg-primary text-white"
-                            : "border-stone-300 bg-white"
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-card"
                         }`}
                       >
                         {isChecked && <Check className="h-3 w-3" />}
@@ -119,7 +119,7 @@ export function WaitlistModal({ open, onOpenChange }: WaitlistModalProps) {
                 placeholder="name@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-stone-200 bg-stone-50/50 px-3.5 py-2.5 text-sm text-foreground placeholder:text-stone-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 

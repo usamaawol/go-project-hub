@@ -11,7 +11,7 @@ const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-blue-800 shadow-xs",
         hero: "bg-primary text-primary-foreground shadow-sm hover:bg-blue-800 hover:-translate-y-0.5 active:translate-y-0 transition-transform",
         glass:
-          "border border-border bg-white text-foreground shadow-xs hover:bg-surface-2 hover:border-border/80 transition-colors",
+          "border border-border bg-card/80 text-foreground shadow-xs hover:bg-surface-2 hover:border-border/80 transition-colors",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-xs",
         outline: "border border-border bg-transparent hover:bg-surface-2 hover:text-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-surface-2 shadow-xs",
