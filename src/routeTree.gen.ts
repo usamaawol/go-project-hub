@@ -21,6 +21,7 @@ import { Route as PdfCompressorRouteImport } from './routes/pdf-compressor'
 import { Route as PresentationMakerRouteImport } from './routes/presentation-maker'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as TextExtractorRouteImport } from './routes/text-extractor'
+import { Route as PresentationPreviewIdRouteImport } from './routes/presentation-preview.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -82,6 +83,11 @@ const TextExtractorRoute = TextExtractorRouteImport.update({
   path: '/text-extractor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PresentationPreviewIdRoute = PresentationPreviewIdRouteImport.update({
+  id: '/presentation-preview/$id',
+  path: '/presentation-preview/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/presentation-maker': typeof PresentationMakerRoute
   '/templates': typeof TemplatesRoute
   '/text-extractor': typeof TextExtractorRoute
+  '/presentation-preview/$id': typeof PresentationPreviewIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/presentation-maker': typeof PresentationMakerRoute
   '/templates': typeof TemplatesRoute
   '/text-extractor': typeof TextExtractorRoute
+  '/presentation-preview/$id': typeof PresentationPreviewIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/presentation-maker': typeof PresentationMakerRoute
   '/templates': typeof TemplatesRoute
   '/text-extractor': typeof TextExtractorRoute
+  '/presentation-preview/$id': typeof PresentationPreviewIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/presentation-maker'
     | '/templates'
     | '/text-extractor'
+    | '/presentation-preview/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/presentation-maker'
     | '/templates'
     | '/text-extractor'
+    | '/presentation-preview/$id'
   id:
     | '__root__'
     | '/'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/presentation-maker'
     | '/templates'
     | '/text-extractor'
+    | '/presentation-preview/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -184,6 +196,7 @@ export interface RootRouteChildren {
   PresentationMakerRoute: typeof PresentationMakerRoute
   TemplatesRoute: typeof TemplatesRoute
   TextExtractorRoute: typeof TextExtractorRoute
+  PresentationPreviewIdRoute: typeof PresentationPreviewIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -272,6 +285,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TextExtractorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/presentation-preview/$id': {
+      id: '/presentation-preview/$id'
+      path: '/presentation-preview/$id'
+      fullPath: '/presentation-preview/$id'
+      preLoaderRoute: typeof PresentationPreviewIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -288,6 +308,7 @@ const rootRouteChildren: RootRouteChildren = {
   PresentationMakerRoute: PresentationMakerRoute,
   TemplatesRoute: TemplatesRoute,
   TextExtractorRoute: TextExtractorRoute,
+  PresentationPreviewIdRoute: PresentationPreviewIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

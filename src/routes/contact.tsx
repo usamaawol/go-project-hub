@@ -113,7 +113,9 @@ function ContactPage() {
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
 
-      <div className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
+      <div
+        className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"} pb-24 lg:pb-0`}
+      >
         <main className="mx-auto max-w-5xl px-5 py-12 lg:px-8 lg:py-20">
           {/* Header */}
           <div className="max-w-2xl">

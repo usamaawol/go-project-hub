@@ -119,7 +119,7 @@ function AccountPage() {
       <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
         <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
         <div
-          className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"} flex flex-col justify-between`}
+          className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"} flex flex-col justify-between pb-24 lg:pb-0`}
         >
           <main className="mx-auto max-w-xl px-5 py-24 text-center my-auto">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 mb-6 shadow-xs">
@@ -159,7 +159,7 @@ function AccountPage() {
       <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
 
       <div
-        className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"} flex flex-col justify-between`}
+        className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"} flex flex-col justify-between pb-24 lg:pb-0`}
       >
         <main className="mx-auto max-w-6xl px-5 py-12 lg:px-8 w-full flex-1">
           {/* Navigation Breadcrumb */}

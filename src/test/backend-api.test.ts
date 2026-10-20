@@ -78,4 +78,48 @@ describe("DocuMind Backend Services & 100% Free Access Policy", () => {
     expect(pptxBuffer[0]).toBe(0x50);
     expect(pptxBuffer[1]).toBe(0x4b);
   });
+
+  it("manages 10-minute temporary presentation sessions with isolated file cleanup", async () => {
+    const { createPresentationSession, getPresentationSession, deletePresentationSession } =
+      await import("../../server/services/presentationSession.service");
+    const fs = await import("fs");
+
+    const session = await createPresentationSession({
+      title: "Quarterly Review & Ephemeral Privacy",
+      content: "Strategic roadmap for document tools.\nFocus on privacy and vector exports.",
+      purpose: "Executive Brief",
+      density: "balanced",
+      theme: {
+        id: "executive-brief",
+        name: "Executive Brief",
+        category: "Business",
+        kind: "business",
+        colors: { primary: "#0F172A", accent: "#2563EB", bg: "#FFFFFF" },
+        fonts: "Inter / Roboto",
+        tier: "free",
+      },
+      typography: {
+        fontFamily: "Inter",
+        fontSizePreset: "standard",
+      },
+      slideCount: 5,
+    });
+
+    expect(session.id).toBeDefined();
+    expect(session.slides.length).toBe(5);
+    expect(session.expiresAt).toBeGreaterThan(Date.now() + 9 * 60 * 1000); // ~10 minutes
+    expect(fs.existsSync(session.filePath)).toBe(true);
+
+    // Verify session retrieval
+    const retrieved = getPresentationSession(session.id);
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.id).toBe(session.id);
+    expect(retrieved?.slides[0]?.layout).toBe("title");
+
+    // Clean up
+    const deleted = deletePresentationSession(session.id);
+    expect(deleted).toBe(true);
+    expect(fs.existsSync(session.filePath)).toBe(false);
+    expect(getPresentationSession(session.id)).toBeNull();
+  });
 });

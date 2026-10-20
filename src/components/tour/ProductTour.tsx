@@ -14,94 +14,67 @@ export interface TourStep {
 
 export const TOUR_STEPS: TourStep[] = [
   {
-    id: "welcome",
-    targetSelector: '[data-tour="hero-badge"]',
-    route: "/",
-    title: "Welcome to DocuMind",
+    id: "step-1-content",
+    targetSelector: '[data-tour="tour-topic"]',
+    route: "/presentation-maker",
+    title: "1. Topic & Content Input",
     content:
-      "DocuMind is an intelligent paper studio that helps you generate presentations, format academic documents, convert formats, and compress files effortlessly.",
+      "Enter a presentation title or topic, choose your intended purpose (Business, Education, Research), and paste notes or upload a source PDF, Word, or TXT document.",
     placement: "bottom",
   },
   {
-    id: "sidebar",
-    targetSelector: '[data-tour="sidebar-nav"]',
-    title: "Tool Navigation",
+    id: "step-2-theme",
+    targetSelector: '[data-tour="tour-theme"]',
+    route: "/presentation-maker",
+    title: "2. Choose Presentation Theme",
     content:
-      "Use this sidebar to navigate between dedicated workspaces: Presentation Maker, Document Studio, Converter, Compressor, Extractor, and Templates.",
-    placement: "right",
-  },
-  {
-    id: "presentation-maker",
-    targetSelector: '[data-tour="nav-presentation-maker"]',
-    title: "Presentation Maker",
-    content:
-      "Supply text or upload a document to automatically analyze structure, receive theme recommendations, and generate genuine PowerPoint (.pptx) decks.",
-    placement: "right",
-  },
-  {
-    id: "document-studio",
-    targetSelector: '[data-tour="nav-document-studio"]',
-    title: "Document Studio",
-    content:
-      "A dedicated workspace for styling reports, essays, and manuscripts with academic cover pages, heading hierarchies, margins, running headers, and tables of contents.",
-    placement: "right",
-  },
-  {
-    id: "converter",
-    targetSelector: '[data-tour="nav-converter"]',
-    title: "File Converter",
-    content:
-      "Convert documents between PDF, DOCX, and TXT with deterministic layout reconstruction and real downloadable outputs.",
-    placement: "right",
-  },
-  {
-    id: "compressor",
-    targetSelector: '[data-tour="nav-compressor"]',
-    title: "PDF Compressor",
-    content:
-      "Reduce PDF file sizes with Light, Balanced, and Strong modes while preserving vector fonts and text sharpness. Real byte comparison with zero fake numbers.",
-    placement: "right",
-  },
-  {
-    id: "extractor",
-    targetSelector: '[data-tour="nav-extractor"]',
-    title: "Text Extractor",
-    content:
-      "Extract clean, readable text from documents and manuscripts with instant one-click copying and TXT export.",
-    placement: "right",
-  },
-  {
-    id: "templates",
-    targetSelector: '[data-tour="nav-templates"]',
-    title: "Presentation Themes",
-    content:
-      "Explore 110 professionally designed presentation themes. 50 themes are 100% free with no watermarks, and 60 Pro themes are available for 100 ETB / month.",
-    placement: "right",
-  },
-  {
-    id: "feedback",
-    targetSelector: '[data-tour="feedback-btn"]',
-    title: "Feedback & Bug Reports",
-    content:
-      "Have a suggestion or found an issue? Click here anytime to send feedback directly to our engineering team.",
-    placement: "right",
-  },
-  {
-    id: "theme-toggle",
-    targetSelector: '[data-tour="theme-toggle"]',
-    title: "Light & Dark Theme",
-    content:
-      "DocuMind defaults to warm paper ivory, but you can switch to midnight navy mode at any time with this toggle.",
-    placement: "right",
-  },
-  {
-    id: "finish",
-    targetSelector: '[data-tour="quick-actions"]',
-    route: "/",
-    title: "You're All Set!",
-    content:
-      "Start creating presentations, improving document layouts, or compressing files. You can restart this tour anytime from the sidebar or your Account settings.",
+      "Choose from 50 free and 60 pro presentation themes. Each theme comes with curated palettes and distinct layout styling.",
     placement: "top",
+  },
+  {
+    id: "step-3-typography",
+    targetSelector: '[data-tour="tour-typography"]',
+    route: "/presentation-maker",
+    title: "3. Choose Fonts & Size Hierarchy",
+    content:
+      "Select presentation-grade font families (Inter, Roboto, Playfair, Montserrat) and scale presets (Compact, Standard, Large, Extra Large) that maintain clear visual hierarchy.",
+    placement: "top",
+  },
+  {
+    id: "step-4-slides",
+    targetSelector: '[data-tour="tour-slides"]',
+    route: "/presentation-maker",
+    title: "4. Select Slide Count",
+    content:
+      "Select your target deck size (5 to 20 slides on the Free tier). The synthesis engine will structure sections and key takeaways to fit.",
+    placement: "top",
+  },
+  {
+    id: "step-5-generate",
+    targetSelector: '[data-tour="tour-generate"]',
+    route: "/presentation-maker",
+    title: "5. Generate Presentation",
+    content:
+      "Click Generate to synthesize your deck into vector slides and immediately launch the in-browser preview without downloading.",
+    placement: "top",
+  },
+  {
+    id: "step-6-preview-nav",
+    targetSelector: '[data-tour="nav-presentation-maker"]',
+    route: "/presentation-maker",
+    title: "6. In-Browser Slide Review",
+    content:
+      "Generated presentations open in an interactive 16:9 widescreen viewer. Navigate with Previous/Next controls, click thumbnails, zoom, or present in fullscreen.",
+    placement: "right",
+  },
+  {
+    id: "step-7-download-privacy",
+    targetSelector: '[data-tour="nav-home"]',
+    route: "/",
+    title: "7. Download PPTX & Ephemeral Lifespan",
+    content:
+      "Download your editable vector .pptx whenever you are ready. For maximum privacy, your temporary files automatically delete after 10 minutes with zero retention.",
+    placement: "bottom",
   },
 ];
 

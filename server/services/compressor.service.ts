@@ -16,7 +16,8 @@ export async function compressPdfBuffer(
   const originalSize = inputBuffer.length;
 
   try {
-    const pdfDoc = await PDFDocument.load(inputBuffer, { ignoreEncryption: true });
+    const uint8Array = new Uint8Array(inputBuffer);
+    const pdfDoc = await PDFDocument.load(uint8Array, { ignoreEncryption: true });
     const pagesCount = pdfDoc.getPageCount();
 
     // Optimize document metadata and structure based on selected profile

@@ -84,7 +84,9 @@ function Index() {
       <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
 
       {/* Main Content Area Padded for Sidebar */}
-      <div className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
+      <div
+        className={`flex-1 transition-all duration-300 ${collapsed ? "lg:pl-20" : "lg:pl-64"} pb-24 lg:pb-0`}
+      >
         <main>
           {/* Hero Section — Clean Introduction with 2 Primary CTAs & Shortcuts */}
           <Hero />

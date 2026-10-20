@@ -8,6 +8,7 @@ import documentRoutes from "./routes/document.routes";
 import templateRoutes from "./routes/template.routes";
 import feedbackRoutes from "./routes/feedback.routes";
 import adminRoutes from "./routes/admin.routes";
+import presentationRoutes from "./routes/presentation.routes";
 
 export function createApp(): Express {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp(): Express {
   app.use("/api", templateRoutes);
   app.use("/api", feedbackRoutes);
   app.use("/api", adminRoutes);
+  app.use("/api", presentationRoutes);
 
   // 404 handler for unmatched API routes
   app.use("/api", (req, res) => {

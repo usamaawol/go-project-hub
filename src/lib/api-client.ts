@@ -173,3 +173,118 @@ export async function fetchAdminJobs(adminKey = "documind-admin-secret") {
   const res = await fetch(`${API_BASE}/admin/jobs?adminKey=${adminKey}`);
   return await res.json();
 }
+
+export interface SlidePreviewItem {
+  id: string;
+  slideNumber: number;
+  layout: "title" | "agenda" | "content" | "two-column" | "metrics" | "conclusion";
+  title: string;
+  subtitle?: string;
+  bullets?: string[];
+  leftColumn?: { title: string; bullets: string[] };
+  rightColumn?: { title: string; bullets: string[] };
+  metrics?: Array<{ label: string; value: string; description?: string }>;
+  notes?: string;
+}
+
+export interface PresentationSessionData {
+  id: string;
+  title: string;
+  purpose: string;
+  density: "concise" | "balanced" | "detailed";
+  theme: {
+    id: string;
+    name: string;
+    category: string;
+    kind: string;
+    colors: {
+      primary: string;
+      accent: string;
+      bg: string;
+    };
+    fonts: string;
+    tier: "free" | "pro";
+  };
+  typography: {
+    fontFamily: string;
+    fontSizePreset: "compact" | "standard" | "large" | "extra-large";
+  };
+  slideCount: number;
+  slides: SlidePreviewItem[];
+  fileSize: number;
+  createdAt: number;
+  expiresAt: number;
+  secondsRemaining: number;
+}
+
+export async function createPresentationSessionApi(input: {
+  title: string;
+  content: string;
+  purpose?: string;
+  density?: "concise" | "balanced" | "detailed";
+  theme: {
+    id: string;
+    name: string;
+    category: string;
+    kind: string;
+    colors: { primary: string; accent: string; bg: string };
+    fonts: string;
+    tier: "free" | "pro";
+  };
+  typography?: {
+    fontFamily?: string;
+    fontSizePreset?: "compact" | "standard" | "large" | "extra-large";
+  };
+  slideCount?: number;
+}): Promise<{
+  sessionId: string;
+  title: string;
+  slideCount: number;
+  expiresAt: number;
+  secondsRemaining: number;
+}> {
+  const res = await fetch(`${API_BASE}/presentations/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.error?.message || "Failed to create presentation session.");
+  }
+
+  return json.data;
+}
+
+export async function fetchPresentationPreviewApi(
+  sessionId: string,
+): Promise<PresentationSessionData> {
+  const res = await fetch(`${API_BASE}/presentations/${sessionId}/preview`, {
+    headers: { "Cache-Control": "no-cache" },
+  });
+
+  const json = await res.json();
+  if (res.status === 410 || json.error?.code === "SESSION_EXPIRED") {
+    const error = new Error(
+      json.error?.message || "This temporary presentation has expired and was deleted.",
+    );
+    (error as unknown as { code: string }).code = "SESSION_EXPIRED";
+    throw error;
+  }
+
+  if (!res.ok || !json.success) {
+    throw new Error(json.error?.message || "Failed to load presentation preview.");
+  }
+
+  return json.data;
+}
+
+export async function deletePresentationSessionApi(sessionId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/presentations/${sessionId}`, { method: "DELETE" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

@@ -148,7 +148,7 @@ function TextExtractorPage() {
       <div
         className={`flex-1 transition-all duration-300 ${
           collapsed ? "lg:pl-20" : "lg:pl-64"
-        } flex flex-col justify-between`}
+        } flex flex-col justify-between pb-24 lg:pb-0`}
       >
         <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 w-full flex-1">
           {/* Header */}
