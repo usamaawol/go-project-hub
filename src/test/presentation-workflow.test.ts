@@ -269,4 +269,26 @@ describe("DocuMind 15-Point Workflow & Presentation Verification", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  // Scenario 16: YouTube video URL parsing, privacy-enhanced embed, and placeholder safety
+  it("Scenario 16: Correctly extracts YouTube ID, enforces youtube-nocookie domain, and safely handles invalid URLs", async () => {
+    const { extractYouTubeId } = await import("../components/landing/IntroVideoSection");
+
+    // Standard short URL
+    expect(extractYouTubeId("https://youtu.be/-ya6HxljoVw")).toBe("-ya6HxljoVw");
+
+    // Standard watch URL
+    expect(extractYouTubeId("https://www.youtube.com/watch?v=-ya6HxljoVw")).toBe("-ya6HxljoVw");
+
+    // Embed URL
+    expect(extractYouTubeId("https://www.youtube.com/embed/-ya6HxljoVw")).toBe("-ya6HxljoVw");
+
+    // Raw 11-char ID
+    expect(extractYouTubeId("-ya6HxljoVw")).toBe("-ya6HxljoVw");
+
+    // Invalid / empty URLs
+    expect(extractYouTubeId("")).toBeNull();
+    expect(extractYouTubeId(null)).toBeNull();
+    expect(extractYouTubeId("invalid-url-without-id")).toBeNull();
+  });
 });

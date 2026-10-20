@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Hero } from "@/components/landing/Hero";
+import { IntroVideoSection } from "@/components/landing/IntroVideoSection";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { ThemeThumb } from "@/components/landing/ThemeThumb";
@@ -90,6 +91,9 @@ function Index() {
         <main>
           {/* Hero Section — Clean Introduction with 2 Primary CTAs & Shortcuts */}
           <Hero />
+
+          {/* Meet DocuMind — Professional Introduction Video */}
+          <IntroVideoSection videoUrl="https://youtu.be/-ya6HxljoVw" />
 
           {/* Interactive Guided Tour Banner */}
           <section className="mx-auto max-w-7xl px-5 lg:px-8 py-2">
