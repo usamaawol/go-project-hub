@@ -178,7 +178,7 @@ export function Pricing() {
   );
 }
 
-const faqs = [
+const faqs: [string, string][] = [
   ["Which file formats are supported?", "DocuMind is built for PDF, DOCX, TXT and PPTX, including conversions between them."],
   ["Is there a file-size limit?", "Free accounts will support files up to 50 MB each. Higher limits are planned for Pro."],
   ["What happens to my files?", "Files are processed only to produce your result and are deleted automatically afterwards. We never use your documents to train models."],
