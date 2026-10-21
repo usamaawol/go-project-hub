@@ -382,8 +382,9 @@ Submersibles must withstand ambient pressures exceeding 1,000 atmospheres.`;
     await logoutUser();
 
     // 1. Register with real custom user data
-    const user = await registerWithEmail("usama_real@example.com", "securePass123", "Usama Awol");
-    expect(user.email).toBe("usama_real@example.com");
+    const testEmail = `usama_real_${Date.now()}@example.com`;
+    const user = await registerWithEmail(testEmail, "securePass123", "Usama Awol");
+    expect(user.email).toBe(testEmail);
     expect(user.displayName).toBe("Usama Awol");
     expect(user.displayName).not.toBe("Google Demo User");
     expect(user.email).not.toBe("creator@google.com");
@@ -395,8 +396,8 @@ Submersibles must withstand ambient pressures exceeding 1,000 atmospheres.`;
 
     // 3. Logout and sign back in
     await logoutUser();
-    const loggedIn = await loginWithEmail("usama_real@example.com", "securePass123");
-    expect(loggedIn.email).toBe("usama_real@example.com");
+    const loggedIn = await loginWithEmail(testEmail, "securePass123");
+    expect(loggedIn.email).toBe(testEmail);
     expect(loggedIn.displayName).toBe("Usama Awol (Lead)");
 
     // 4. Clean up

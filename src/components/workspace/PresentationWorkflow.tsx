@@ -347,14 +347,22 @@ export function PresentationWorkflow({
       });
 
       // Record authentic job in workspace history
+      const totalSlides =
+        session.slideCount ||
+        (session as { slides?: unknown[] }).slides?.length ||
+        slideCount ||
+        8;
+
       addWorkspaceJob({
         id: session.sessionId,
-        name: `${session.title}.pptx`,
+        name: `${session.title || "Presentation"}.pptx`,
         tool: "Presentation Maker",
         format: "PPTX",
-        originalSize: `${session.slides.length} Slides`,
+        originalSize: `${totalSlides} Slides`,
         resultSize: "2.1 MB",
-        downloadUrl: session.downloadUrl,
+        downloadUrl:
+          (session as { downloadUrl?: string }).downloadUrl ||
+          `/api/presentations/${session.sessionId}/download`,
       });
 
       toast.success("Presentation Generated!", {

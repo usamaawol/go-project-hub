@@ -293,6 +293,8 @@ export async function createPresentationSessionApi(input: {
   slideCount: number;
   expiresAt: number;
   secondsRemaining: number;
+  slides?: SlidePreviewItem[];
+  downloadUrl?: string;
 }> {
   // 1. Attempt backend API first (used when Express server is running)
   try {
@@ -306,7 +308,32 @@ export async function createPresentationSessionApi(input: {
     if (res.ok && contentType.includes("application/json")) {
       const json = await res.json();
       if (json.success && json.data) {
-        return json.data;
+        if (json.data.slides) {
+          const clientSession: PresentationSessionData = {
+            id: json.data.sessionId,
+            title: json.data.title,
+            purpose: input.purpose || "Business & Strategy",
+            density: input.density || "balanced",
+            theme: input.theme,
+            typography: {
+              fontFamily: input.typography?.fontFamily || "Inter",
+              fontSizePreset: input.typography?.fontSizePreset || "standard",
+            },
+            slideCount: json.data.slideCount || json.data.slides.length,
+            slides: json.data.slides,
+            fileSize: 45000,
+            createdAt: Date.now(),
+            expiresAt: json.data.expiresAt,
+            secondsRemaining: json.data.secondsRemaining || 600,
+          };
+          saveClientSession(clientSession);
+        }
+        return {
+          ...json.data,
+          slideCount: json.data.slideCount || json.data.slides?.length || input.slideCount || 8,
+          downloadUrl:
+            json.data.downloadUrl || `/api/presentations/${json.data.sessionId}/download`,
+        };
       }
     }
   } catch (err) {
@@ -356,6 +383,8 @@ export async function createPresentationSessionApi(input: {
     slideCount: clientSession.slideCount,
     expiresAt: clientSession.expiresAt,
     secondsRemaining: 600,
+    slides: clientSession.slides,
+    downloadUrl: `/api/presentations/${sessionId}/download`,
   };
 }
 

@@ -475,6 +475,7 @@ STRICT REQUIREMENTS:
 3. Slide 2 Agenda bullets MUST list the actual topics covered in the subsequent slides.
 4. Return exactly ${slideCount} slides.`;
 
+    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : 8000;
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.GEMINI_API_KEY}`,
       {
@@ -484,7 +485,7 @@ STRICT REQUIREMENTS:
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { responseMimeType: "application/json" },
         }),
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
 

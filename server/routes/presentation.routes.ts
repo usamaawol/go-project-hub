@@ -51,6 +51,8 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
           name: session.theme.name,
           category: session.theme.category,
         },
+        slides: session.slides,
+        downloadUrl: `/api/presentations/${session.id}/download`,
       },
     });
   } catch (error) {
