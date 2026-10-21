@@ -174,6 +174,50 @@ export async function fetchAdminJobs(adminKey = "documind-admin-secret") {
   return await res.json();
 }
 
+export async function fetchAdminFeedback(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/feedback?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function updateAdminFeedbackStatus(
+  feedbackId: string,
+  status: "pending" | "reviewed" | "resolved" | "in_progress",
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/feedback/${feedbackId}/status?adminKey=${adminKey}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  return await res.json();
+}
+
+export async function fetchAdminUsers(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/users?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function toggleAdminUserPlan(
+  userId: string,
+  plan: "free" | "pro",
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/plan?adminKey=${adminKey}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan }),
+  });
+  return await res.json();
+}
+
+export async function purgeAdminTempFiles(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/purge-temp?adminKey=${adminKey}`, {
+    method: "POST",
+  });
+  return await res.json();
+}
+
+
 export interface SlidePreviewItem {
   id: string;
   slideNumber: number;
