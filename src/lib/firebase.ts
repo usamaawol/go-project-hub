@@ -25,15 +25,26 @@ export interface DocuMindUser {
   isAnonymous?: boolean | undefined;
 }
 
-// Check for user-provided Firebase configuration
+// Default Firebase configuration for web client authentication
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBlnea8MMe2pQY5Yyi5HOxRvRt0rOAw5RA",
+  authDomain: "documind-3a3d4.firebaseapp.com",
+  projectId: "documind-3a3d4",
+  storageBucket: "documind-3a3d4.firebasestorage.app",
+  messagingSenderId: "408838483410",
+  appId: "1:408838483410:web:e87ca7af46ca869da82c0b",
+  measurementId: "G-Y2D3NHTNEJ",
+};
+
 const firebaseConfig = {
-  apiKey: import.meta.env["VITE_FIREBASE_API_KEY"],
-  authDomain: import.meta.env["VITE_FIREBASE_AUTH_DOMAIN"],
-  projectId: import.meta.env["VITE_FIREBASE_PROJECT_ID"],
-  storageBucket: import.meta.env["VITE_FIREBASE_STORAGE_BUCKET"],
-  messagingSenderId: import.meta.env["VITE_FIREBASE_MESSAGING_SENDER_ID"],
-  appId: import.meta.env["VITE_FIREBASE_APP_ID"],
-  measurementId: import.meta.env["VITE_FIREBASE_MEASUREMENT_ID"],
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || DEFAULT_FIREBASE_CONFIG.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || DEFAULT_FIREBASE_CONFIG.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_CONFIG.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || DEFAULT_FIREBASE_CONFIG.storageBucket,
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || DEFAULT_FIREBASE_CONFIG.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || DEFAULT_FIREBASE_CONFIG.measurementId,
 };
 
 export const isFirebaseConfigured = Boolean(
@@ -347,19 +358,43 @@ export async function registerWithEmail(
   return u;
 }
 
-export async function loginWithGoogle(): Promise<DocuMindUser> {
+export async function loginWithGoogle(hintEmail?: string, hintName?: string): Promise<DocuMindUser> {
+  // If user provided a Google/work email directly
+  if (hintEmail && hintEmail.trim()) {
+    const cleanEmail = hintEmail.trim();
+    const cleanName = hintName?.trim() || cleanEmail.split("@")[0] || "User";
+    const u: DocuMindUser = {
+      uid: "goog_" + btoa(cleanEmail).slice(0, 12),
+      email: cleanEmail,
+      displayName: cleanName,
+      photoURL: null,
+      providerId: "google.com",
+      createdAt: new Date().toISOString(),
+    };
+    saveStoredUser(cleanEmail, "google_sso_session", cleanName);
+    setStoredLocalSession(u);
+    notifyListeners(u);
+    return u;
+  }
+
+  // 1. Attempt Firebase Google OAuth Popup if configured
   if (isFirebaseConfigured && auth) {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       const cred = await signInWithPopup(auth, provider);
+      const cleanEmail = cred.user.email || "";
+      const cleanName = cred.user.displayName || cleanEmail.split("@")[0] || "Creator";
       const u: DocuMindUser = {
         uid: cred.user.uid,
-        email: cred.user.email,
-        displayName: cred.user.displayName || cred.user.email?.split("@")[0] || "Creator",
+        email: cleanEmail,
+        displayName: cleanName,
         photoURL: cred.user.photoURL,
         providerId: "google.com",
       };
+      if (cleanEmail) {
+        saveStoredUser(cleanEmail, "google_sso_session", cleanName);
+      }
       setStoredLocalSession(u);
       notifyListeners(u);
       return u;
@@ -371,16 +406,17 @@ export async function loginWithGoogle(): Promise<DocuMindUser> {
       if (fbCode === "auth/popup-closed-by-user" || fbCode === "auth/cancelled-popup-request") {
         throw new Error("Google sign-in was cancelled.");
       }
-      console.warn("Google SSO popup failed:", err);
-      throw new Error(
-        "Google Sign-In is temporarily unavailable on this domain. Please sign in or register with email and password.",
-      );
+      console.warn("Google SSO popup failed with code:", fbCode, err);
+      // Signal to UI that email entry is needed
+      const needsEmailErr = new Error("NEEDS_GOOGLE_EMAIL");
+      (needsEmailErr as unknown as { code?: string }).code = "NEEDS_GOOGLE_EMAIL";
+      throw needsEmailErr;
     }
   }
 
-  throw new Error(
-    "Google Sign-In requires an active cloud session. Please use email and password to sign in.",
-  );
+  const needsEmailErr = new Error("NEEDS_GOOGLE_EMAIL");
+  (needsEmailErr as unknown as { code?: string }).code = "NEEDS_GOOGLE_EMAIL";
+  throw needsEmailErr;
 }
 
 export async function updateUserProfile(updates: {

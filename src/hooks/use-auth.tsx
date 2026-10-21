@@ -17,7 +17,7 @@ interface AuthContextType {
   isFirebaseConfigured: boolean;
   signInWithEmail: (email: string, pass: string) => Promise<DocuMindUser>;
   signUpWithEmail: (email: string, pass: string, name?: string) => Promise<DocuMindUser>;
-  signInWithGoogle: () => Promise<DocuMindUser>;
+  signInWithGoogle: (hintEmail?: string, hintName?: string) => Promise<DocuMindUser>;
   resetPassword: (email: string) => Promise<void>;
   updateProfile: (updates: { displayName?: string; photoURL?: string }) => Promise<DocuMindUser>;
   logout: () => Promise<void>;
@@ -49,8 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return registered;
   };
 
-  const handleSignInWithGoogle = async () => {
-    const loggedIn = await loginWithGoogle();
+  const handleSignInWithGoogle = async (hintEmail?: string, hintName?: string) => {
+    const loggedIn = await loginWithGoogle(hintEmail, hintName);
     setUser(loggedIn);
     return loggedIn;
   };
