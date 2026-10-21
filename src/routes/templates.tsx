@@ -15,11 +15,13 @@ import {
   Palette,
   FileDown,
   Loader2,
+  Bookmark,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
+import { getBookmarkedTemplateIds, toggleBookmarkTemplate } from "@/lib/workspace-history";
 import {
   Dialog,
   DialogContent,
@@ -70,6 +72,19 @@ function TemplatesCatalogPage() {
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [proThemeTarget, setProThemeTarget] = useState<TemplateItem | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => getBookmarkedTemplateIds());
+
+  const handleToggleBookmark = (template: TemplateItem) => {
+    const isNowBookmarked = toggleBookmarkTemplate(template.id);
+    setBookmarkedIds(getBookmarkedTemplateIds());
+    if (isNowBookmarked) {
+      toast.success(`Bookmarked "${template.name}"`, {
+        description: "Saved to your Account & Workspace bookmarks.",
+      });
+    } else {
+      toast.info(`Removed "${template.name}" from bookmarks.`);
+    }
+  };
 
   // Category counts
   const categoryCounts = useMemo(() => {
@@ -442,7 +457,28 @@ function TemplatesCatalogPage() {
                     </div>
 
                     {/* Card Action Buttons */}
-                    <div className="mt-4 pt-3 border-t border-border flex items-center gap-2">
+                    <div className="mt-4 pt-3 border-t border-border flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleBookmark(template)}
+                        title={
+                          bookmarkedIds.includes(template.id)
+                            ? "Remove bookmark"
+                            : "Bookmark template"
+                        }
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                          bookmarkedIds.includes(template.id)
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                        }`}
+                      >
+                        <Bookmark
+                          className={`h-3.5 w-3.5 ${
+                            bookmarkedIds.includes(template.id) ? "fill-current" : ""
+                          }`}
+                        />
+                      </button>
+
                       <Button
                         size="sm"
                         variant="glass"

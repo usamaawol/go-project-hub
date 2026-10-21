@@ -18,6 +18,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
+import { addWorkspaceJob } from "@/lib/workspace-history";
 
 export const Route = createFileRoute("/converter")({
   head: () => ({
@@ -127,6 +128,15 @@ function ConverterPage() {
         blobUrl,
         sizeBytes: outputBlob.size,
         wordCount: extracted.wordCount,
+      });
+
+      addWorkspaceJob({
+        name: outputFilename,
+        tool: "File Converter",
+        format: targetFormat,
+        originalSize: `${(selectedFile.size / 1024).toFixed(1)} KB`,
+        resultSize: `${(outputBlob.size / 1024).toFixed(1)} KB`,
+        downloadUrl: blobUrl,
       });
 
       toast.success("Conversion Complete!", {

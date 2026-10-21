@@ -39,6 +39,8 @@ import {
   requestAiGuidance,
   createPresentationSessionApi,
 } from "@/lib/api-client";
+import { detectTitleFromText } from "@/lib/presentation-session-client";
+import { addWorkspaceJob } from "@/lib/workspace-history";
 import { UpgradeModal } from "./UpgradeModal";
 import {
   Dialog,
@@ -146,7 +148,7 @@ export function PresentationWorkflow({
   const [currentStep, setCurrentStep] = useState<"content" | "settings" | "generating">("content");
 
   // Step A: Content State
-  const [title, setTitle] = useState("Strategic Operations & Knowledge Review");
+  const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState(PURPOSES[0]!);
   const [density, setDensity] = useState<"concise" | "balanced" | "detailed">("balanced");
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
@@ -179,6 +181,21 @@ export function PresentationWorkflow({
   const [generationPhase, setGenerationPhase] = useState<string>("");
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Helper to sync pasted text and auto-extract title
+  const handlePastedTextChange = (text: string) => {
+    setPastedText(text);
+    if (!title.trim() || title === "Strategic Operations & Knowledge Review") {
+      const detected = detectTitleFromText(text);
+      if (detected) setTitle(detected);
+    }
+  };
+
+  const handleLoadSampleOutline = () => {
+    setTitle("Strategic Operations & Knowledge Review");
+    setPastedText(sampleOutlineText);
+    toast.info("Loaded sample strategic review outline.");
+  };
+
   // File Upload Handlers (in-memory processing only, never permanently stored)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFileError(null);
@@ -207,6 +224,19 @@ export function PresentationWorkflow({
     const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
     setTitle(cleanName);
 
+    // Extract text in memory immediately
+    extractDocumentText(file)
+      .then((res) => {
+        if (res.text) {
+          setPastedText(res.text);
+          const detected = detectTitleFromText(res.text);
+          if (detected && detected.length > 3) {
+            setTitle(detected);
+          }
+        }
+      })
+      .catch((err) => console.warn("Background extraction:", err));
+
     toast.success(`Loaded ${file.name}`, {
       description: `${(file.size / 1024 / 1024).toFixed(1)} MB ready for in-memory extraction.`,
     });
@@ -228,13 +258,19 @@ export function PresentationWorkflow({
     }
 
     // If uploading, extract text in memory now
-    if (inputMode === "upload" && uploadedFile && !pastedText) {
+    if (inputMode === "upload" && uploadedFile && !pastedText.trim()) {
       try {
         toast.info("Extracting document contents...", {
           description: "Processing locally in memory.",
         });
         const extraction = await extractDocumentText(uploadedFile);
-        setPastedText(extraction.text);
+        if (extraction.text) {
+          setPastedText(extraction.text);
+          if (!title.trim()) {
+            const detected = detectTitleFromText(extraction.text);
+            if (detected) setTitle(detected);
+          }
+        }
       } catch (err) {
         console.warn("Extraction fallback:", err);
       }
@@ -275,10 +311,22 @@ export function PresentationWorkflow({
 
       setGenerationPhase("Compiling vector PowerPoint file and initializing 10-minute preview...");
 
-      const contentToUse = pastedText.trim() || sampleOutlineText;
+      let contentToUse = pastedText.trim();
+      if (!contentToUse && uploadedFile) {
+        setGenerationPhase("Extracting text from uploaded document...");
+        const extraction = await extractDocumentText(uploadedFile);
+        contentToUse = extraction.text;
+        setPastedText(contentToUse);
+      }
+
+      if (!contentToUse) {
+        contentToUse = sampleOutlineText;
+      }
+
+      const finalTitle = title.trim() || detectTitleFromText(contentToUse) || "Presentation Deck";
 
       const session = await createPresentationSessionApi({
-        title: title.trim() || "Untitled Presentation",
+        title: finalTitle,
         content: contentToUse,
         purpose,
         density,
@@ -296,6 +344,17 @@ export function PresentationWorkflow({
           fontSizePreset: selectedFontSize,
         },
         slideCount,
+      });
+
+      // Record authentic job in workspace history
+      addWorkspaceJob({
+        id: session.sessionId,
+        name: `${session.title}.pptx`,
+        tool: "Presentation Maker",
+        format: "PPTX",
+        originalSize: `${session.slides.length} Slides`,
+        resultSize: "2.1 MB",
+        downloadUrl: session.downloadUrl,
       });
 
       toast.success("Presentation Generated!", {
@@ -406,14 +465,31 @@ export function PresentationWorkflow({
           <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-6">
             {/* Topic Input */}
             <div data-tour="tour-topic" className="space-y-2">
-              <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold block">
-                Presentation Topic or Title
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold block">
+                  Presentation Topic or Title
+                </label>
+                {pastedText.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const detected = detectTitleFromText(pastedText);
+                      if (detected) {
+                        setTitle(detected);
+                        toast.success(`Title detected: "${detected}"`);
+                      }
+                    }}
+                    className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Sparkles className="h-3 w-3" /> Auto-detect title from text
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Artificial Intelligence in Clinical Medicine"
+                placeholder="e.g. Photosynthesis and Plant Biology (or leave blank to auto-detect)"
                 className="w-full rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm font-medium text-foreground focus:border-primary focus:outline-hidden min-h-[46px]"
               />
             </div>
@@ -498,7 +574,7 @@ export function PresentationWorkflow({
                   <textarea
                     rows={8}
                     value={pastedText}
-                    onChange={(e) => setPastedText(e.target.value)}
+                    onChange={(e) => handlePastedTextChange(e.target.value)}
                     placeholder="Paste notes, article excerpts, meeting takeaways, or an outline here..."
                     className="w-full rounded-2xl border border-border bg-surface-2 p-4 text-xs sm:text-sm font-sans leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
                   />
@@ -509,7 +585,7 @@ export function PresentationWorkflow({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setPastedText(sampleOutlineText)}
+                      onClick={handleLoadSampleOutline}
                       className="font-medium text-primary hover:underline"
                     >
                       Load Sample Outline

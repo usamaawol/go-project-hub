@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
+import { addWorkspaceJob } from "@/lib/workspace-history";
 
 export const Route = createFileRoute("/pdf-compressor")({
   head: () => ({
@@ -153,6 +154,15 @@ function PdfCompressorPage() {
         filename: outputFilename,
       });
 
+      addWorkspaceJob({
+        name: outputFilename,
+        tool: "PDF Compressor",
+        format: "PDF",
+        originalSize: formatBytes(originalBytes),
+        resultSize: `${formatBytes(compressedBytes)} (-${reductionPercent}%)`,
+        downloadUrl,
+      });
+
       toast.success("PDF Compressed Successfully!", {
         description: `Saved ${formatBytes(savedBytes)} (${reductionPercent}% reduction).`,
       });
@@ -163,13 +173,23 @@ function PdfCompressorPage() {
         selectedProfile === "aggressive" ? 48 : selectedProfile === "balanced" ? 34 : 18;
       const estCompressed = Math.floor(selectedFile.size * (1 - mockSavedPercent / 100));
       const blobUrl = URL.createObjectURL(selectedFile);
+      const fallbackFilename = `optimized_${selectedFile.name}`;
 
       setResult({
         originalBytes: selectedFile.size,
         compressedBytes: estCompressed,
         reductionPercent: mockSavedPercent,
         downloadUrl: blobUrl,
-        filename: `optimized_${selectedFile.name}`,
+        filename: fallbackFilename,
+      });
+
+      addWorkspaceJob({
+        name: fallbackFilename,
+        tool: "PDF Compressor",
+        format: "PDF",
+        originalSize: formatBytes(selectedFile.size),
+        resultSize: `${formatBytes(estCompressed)} (-${mockSavedPercent}%)`,
+        downloadUrl: blobUrl,
       });
 
       toast.success("PDF Compressed!", {

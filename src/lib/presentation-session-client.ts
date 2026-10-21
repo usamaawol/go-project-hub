@@ -48,6 +48,291 @@ const STORAGE_PREFIX = "documind_presentation_session_";
  * Builds structured slide items deterministically from text content and user settings.
  * Pure logic compatible with both browser and Node runtime.
  */
+/**
+ * Detects a clean, presentation-ready title from text.
+ */
+export function detectTitleFromText(text: string): string {
+  if (!text || !text.trim()) return "";
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const clean = line.replace(/^[#*->\d.\s]+/, "").trim();
+    if (clean.length >= 3 && clean.length <= 80 && !clean.endsWith(".")) {
+      return clean;
+    }
+  }
+
+  if (lines[0]) {
+    const firstClean = lines[0].replace(/^[#*->\d.\s]+/, "").trim();
+    return firstClean.length > 80 ? firstClean.slice(0, 75).trim() + "..." : firstClean;
+  }
+  return "";
+}
+
+interface ParsedSection {
+  title: string;
+  subtitle?: string;
+  bullets: string[];
+  metrics?: Array<{ label: string; value: string; description?: string }>;
+  leftColumn?: { title: string; bullets: string[] };
+  rightColumn?: { title: string; bullets: string[] };
+}
+
+/**
+ * Parses user text into rich structured presentation sections without any dummy corporate text.
+ */
+function parseContentIntoSections(
+  rawContent: string,
+  targetSectionCount: number,
+  density: "concise" | "balanced" | "detailed",
+  defaultTitle: string,
+): ParsedSection[] {
+  const bulletLimit = density === "concise" ? 3 : density === "detailed" ? 5 : 4;
+  const lines = rawContent
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  // If no content is supplied, build a clean structure around the title
+  if (lines.length === 0) {
+    const sections: ParsedSection[] = [];
+    for (let i = 0; i < targetSectionCount; i++) {
+      sections.push({
+        title: `Section 0${i + 1} — Core Analysis`,
+        subtitle: `Strategic exploration of ${defaultTitle}`,
+        bullets: [
+          `Primary premise and scope for ${defaultTitle}`,
+          `Methodological approach and implementation criteria`,
+          `Operational checkpoint and key milestone`,
+        ].slice(0, bulletLimit),
+      });
+    }
+    return sections;
+  }
+
+  // 1. Detect headings and group lines into raw section groups
+  const rawSections: Array<{ header: string; items: string[] }> = [];
+  let currentHeader = "";
+  let currentItems: string[] = [];
+
+  const isHeadingLine = (line: string): boolean => {
+    if (line.startsWith("#")) return true;
+    if (line.endsWith(":") && line.length < 80) return true;
+    if (/^\d+[.)]\s+[A-Z]/.test(line) && line.length < 80) return true;
+    if (
+      /^(Introduction|Overview|Background|Problem|Methodology|Analysis|Results|Findings|Challenges|Solutions|Architecture|Implementation|Conclusion|Summary|Next Steps|Roadmap)/i.test(
+        line,
+      ) &&
+      line.length < 70
+    ) {
+      return true;
+    }
+    if (line === line.toUpperCase() && line.length > 3 && line.length < 60 && !line.includes(".")) {
+      return true;
+    }
+    return false;
+  };
+
+  for (const line of lines) {
+    if (isHeadingLine(line)) {
+      if (currentHeader || currentItems.length > 0) {
+        if (currentHeader) {
+          rawSections.push({ header: currentHeader, items: currentItems });
+        } else if (currentItems.length === 1) {
+          rawSections.push({
+            header: "Key Performance & Metrics",
+            items: currentItems,
+          });
+        } else {
+          rawSections.push({
+            header: currentItems[0] || "Topic Overview",
+            items: currentItems.slice(1),
+          });
+        }
+        currentItems = [];
+      }
+      currentHeader = line
+        .replace(/^[-#*>\d.\s]+/, "")
+        .replace(/:$/, "")
+        .trim();
+    } else {
+      currentItems.push(line.replace(/^[-*•]\s*/, "").trim());
+    }
+  }
+
+  if (currentHeader || currentItems.length > 0) {
+    if (currentHeader) {
+      rawSections.push({
+        header: currentHeader,
+        items: currentItems,
+      });
+    } else if (currentItems.length === 1) {
+      rawSections.push({
+        header: "Key Performance & Metrics",
+        items: currentItems,
+      });
+    } else {
+      rawSections.push({
+        header: currentItems[0] || "Topic Overview",
+        items: currentItems.slice(1),
+      });
+    }
+  }
+
+  // 2. If no headings were detected, split by paragraphs or chunk lines
+  if (rawSections.length === 1 && rawSections[0]!.items.length > 4) {
+    const single = rawSections[0]!;
+    const allLines = [single.header, ...single.items].filter(Boolean);
+    const chunkSize = Math.max(2, Math.ceil(allLines.length / targetSectionCount));
+    rawSections.length = 0;
+
+    for (let i = 0; i < allLines.length; i += chunkSize) {
+      const slice = allLines.slice(i, i + chunkSize);
+      const header =
+        slice[0]?.replace(/^[-#*>\d.\s]+/, "").slice(0, 50) || `Section 0${rawSections.length + 1}`;
+      const items = slice.slice(1);
+      rawSections.push({
+        header,
+        items: items.length > 0 ? items : [slice[0]!],
+      });
+    }
+  }
+
+  // 3. Balance sections to match targetSectionCount
+  while (rawSections.length < targetSectionCount) {
+    let maxIdx = -1;
+    let maxCount = -1;
+    for (let i = 0; i < rawSections.length; i++) {
+      if (rawSections[i]!.items.length > maxCount) {
+        maxCount = rawSections[i]!.items.length;
+        maxIdx = i;
+      }
+    }
+
+    if (maxIdx >= 0 && maxCount >= 2) {
+      const target = rawSections[maxIdx]!;
+      const half = Math.ceil(target.items.length / 2);
+      const part1 = target.items.slice(0, half);
+      const part2 = target.items.slice(half);
+
+      rawSections.splice(
+        maxIdx,
+        1,
+        { header: target.header, items: part1 },
+        { header: `${target.header} (Cont.)`, items: part2 },
+      );
+    } else {
+      rawSections.push({
+        header: `Strategic Alignment & Focus`,
+        items: rawSections[0]?.items.slice(0, 3) || [`Exploration of ${defaultTitle}`],
+      });
+    }
+  }
+
+  while (rawSections.length > targetSectionCount) {
+    const last = rawSections.pop()!;
+    if (rawSections.length > 0) {
+      rawSections[rawSections.length - 1]!.items.push(...last.items);
+    }
+  }
+
+  // 4. Transform into rich ParsedSection items with automatic layout detection
+  const result: ParsedSection[] = [];
+
+  for (let idx = 0; idx < rawSections.length; idx++) {
+    const raw = rawSections[idx]!;
+    const title = raw.header.slice(0, 70);
+    const rawBullets = raw.items.map((b) => b.trim()).filter(Boolean);
+
+    const bullets: string[] = [];
+    for (const b of rawBullets) {
+      if (b.length > 120 && b.includes(". ")) {
+        const sentences = b.split(/(?<=\.)\s+/).filter((s) => s.length > 10);
+        bullets.push(...sentences);
+      } else {
+        bullets.push(b);
+      }
+    }
+
+    // A. Detect Metrics in this section across both title and bullets
+    const metricPattern =
+      /(?:\$?\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?[kKmMbB]?|\b\d+(?:\.\d+)?\s*(?:MB|GB|ms|users|tons|kg|billion|million|x)\b|\b\d+x\b)/gi;
+    const detectedMetrics: Array<{ label: string; value: string; description?: string }> = [];
+
+    const textSources = [title, ...bullets];
+    for (const textItem of textSources) {
+      const match = textItem.match(metricPattern);
+      if (match && match[0]) {
+        const val = match[0];
+        const labelText = textItem
+          .replace(val, "")
+          .replace(/^[-:\s,]+|[-:\s,]+$/g, "")
+          .trim();
+        const shortLabel = labelText.split(/[,.;]/)[0]?.slice(0, 28) || "Metric Indicator";
+        if (shortLabel.length > 2 && !detectedMetrics.some((m) => m.value === val)) {
+          detectedMetrics.push({
+            value: val,
+            label: shortLabel,
+            description: textItem.slice(0, 60),
+          });
+        }
+      }
+    }
+
+    // B. Detect Comparison in this section
+    const isComparison =
+      /\b(vs\.?|versus|compared to|on the other hand|pros and cons|difference between)\b/i.test(
+        title,
+      ) || bullets.some((b) => /\b(vs\.?|versus)\b/i.test(b));
+
+    if (
+      detectedMetrics.length >= 1 &&
+      (idx === 1 ||
+        detectedMetrics.length >= 2 ||
+        rawContent.toLowerCase().includes("metric") ||
+        rawContent.toLowerCase().includes("indicator") ||
+        rawContent.toLowerCase().includes("performance"))
+    ) {
+      result.push({
+        title,
+        subtitle: `Key Metrics & Quantitative Analysis`,
+        bullets: bullets.slice(0, bulletLimit),
+        metrics: detectedMetrics.slice(0, 3),
+      });
+    } else if (isComparison && bullets.length >= 2) {
+      const mid = Math.ceil(bullets.length / 2);
+      result.push({
+        title,
+        subtitle: "Comparative Analysis & Key Distinctions",
+        bullets: bullets.slice(0, bulletLimit),
+        leftColumn: {
+          title: "Primary Perspective",
+          bullets: bullets.slice(0, mid),
+        },
+        rightColumn: {
+          title: "Contrasting Factors",
+          bullets: bullets.slice(mid, mid * 2),
+        },
+      });
+    } else {
+      result.push({
+        title,
+        subtitle: `Section 0${idx + 1} — Core Analysis`,
+        bullets: bullets.length > 0 ? bullets.slice(0, bulletLimit) : [`Key insights for ${title}`],
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Builds structured slide items deterministically from text content and user settings.
+ * Pure logic compatible with both browser and Node runtime.
+ */
 export function buildSlideDeckContent(
   title: string,
   rawContent: string,
@@ -56,12 +341,17 @@ export function buildSlideDeckContent(
   purpose: string,
 ): SlidePreviewItem[] {
   const slides: SlidePreviewItem[] = [];
-  const lines = rawContent
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
 
-  const cleanTitle = title.trim() || "Strategic Operations & Knowledge Review";
+  // 1. Title detection: If title is empty or generic, detect from rawContent
+  let cleanTitle = (title || "").trim();
+  if (
+    !cleanTitle ||
+    cleanTitle === "Strategic Operations & Knowledge Review" ||
+    cleanTitle.toLowerCase() === "untitled presentation"
+  ) {
+    const detected = detectTitleFromText(rawContent);
+    cleanTitle = detected || cleanTitle || "Document Presentation";
+  }
 
   // Slide 1: Title / Cover
   slides.push({
@@ -70,161 +360,93 @@ export function buildSlideDeckContent(
     layout: "title",
     title: cleanTitle,
     subtitle: `${purpose.toUpperCase()} // Prepared with DocuMind`,
-    notes: "Welcome the audience and introduce the core thesis.",
+    notes: `Welcome the audience and introduce the core thesis of ${cleanTitle}.`,
   });
 
-  // Slide 2: Agenda
+  const totalSlots = Math.min(20, Math.max(3, slideCount));
+  const hasConclusion = totalSlots >= 4;
+  const contentSlotCount = Math.max(1, totalSlots - (hasConclusion ? 3 : 2));
+
+  // 2. Parse rawContent into structured sections from the user's actual text
+  const sections = parseContentIntoSections(rawContent, contentSlotCount, density, cleanTitle);
+
+  // 3. Slide 2: Agenda
+  // Agenda bullets are the real titles of the content slides generated from user text
+  const agendaTopics = sections.map((s) => s.title);
+  if (hasConclusion) {
+    agendaTopics.push("Conclusion & Next Steps");
+  }
+
   slides.push({
     id: "slide-2",
     slideNumber: 2,
     layout: "agenda",
     title: "Agenda & Structural Roadmap",
     subtitle: "Core topics covered in this presentation",
-    bullets: [
-      "Executive Summary & Current Landscape",
-      "Detailed Analysis & Findings",
-      "Strategic Solutions & Methodology",
-      "Key Metrics & Performance Indicators",
-      "Actionable Recommendations & Next Steps",
-    ].slice(0, Math.min(5, Math.max(3, Math.floor(slideCount / 2)))),
-    notes: "Briefly outline the sequence before diving into technical details.",
+    bullets: agendaTopics.slice(0, 6),
+    notes: `Briefly outline the presentation roadmap for ${cleanTitle}.`,
   });
 
-  // Intermediate slides (3 to slideCount - 1)
-  const remainingSlots = Math.max(1, slideCount - 2);
-
-  // Group text lines into sections
-  const contentChunks: string[][] = [];
-  let currentChunk: string[] = [];
-  for (const line of lines) {
-    if (line.length > 2 && (line.endsWith(":") || line.startsWith("#") || line.startsWith("-"))) {
-      if (currentChunk.length > 0) {
-        contentChunks.push(currentChunk);
-        currentChunk = [];
-      }
-    }
-    currentChunk.push(line.replace(/^[#-]\s*/, ""));
-    if (currentChunk.length >= 4) {
-      contentChunks.push(currentChunk);
-      currentChunk = [];
-    }
-  }
-  if (currentChunk.length > 0) {
-    contentChunks.push(currentChunk);
-  }
-
-  const defaultTopics = [
-    {
-      title: "Context & Market Dynamics",
-      bullets: [
-        "Rapid acceleration in digital document infrastructure",
-        "Deterministic accuracy prioritized over stochastic approximations",
-        "Zero-retention ephemeral privacy guarantees",
-      ],
-    },
-    {
-      title: "Key Performance & Metrics",
-      layout: "metrics" as const,
-      metrics: [
-        { label: "Processing Latency", value: "<18ms", description: "Sub-second client rendering" },
-        { label: "Storage Overhead", value: "0 MB", description: "Zero permanent data retention" },
-        { label: "Theme Catalog", value: "110+", description: "Curated vector templates" },
-      ],
-    },
-    {
-      title: "Strategic Comparative Analysis",
-      layout: "two-column" as const,
-      leftColumn: {
-        title: "Traditional Workflows",
-        bullets: [
-          "Manual slide formatting",
-          "Permanent document tracking",
-          "Watermarked free trials",
-        ],
-      },
-      rightColumn: {
-        title: "DocuMind Architecture",
-        bullets: [
-          "Automated vector generation",
-          "10-minute ephemeral isolation",
-          "50 100% free themes",
-        ],
-      },
-    },
-    {
-      title: "Implementation Milestones",
-      bullets: [
-        "Phase 1: In-memory document parsing and font scaling",
-        "Phase 2: Live interactive PowerPoint slide preview",
-        "Phase 3: Clean vector PPTX export with zero telemetry leakage",
-      ],
-    },
-  ];
-
-  for (let i = 0; i < remainingSlots; i++) {
+  // 4. Intermediate Content Slides (Slide 3 to totalSlots - 1 or totalSlots)
+  for (let i = 0; i < sections.length; i++) {
     const slideNumber = i + 3;
-    const isLastContent = i === remainingSlots - 1;
+    const s = sections[i]!;
 
-    if (isLastContent && slideCount >= 4) {
-      // Conclusion slide
-      slides.push({
-        id: `slide-${slideNumber}`,
-        slideNumber,
-        layout: "conclusion",
-        title: "Key Takeaways & Conclusion",
-        subtitle: "Summary of strategic insights and immediate actions",
-        bullets: [
-          "Clear document structure elevates communication and engagement.",
-          "Vector-grade layouts ensure flawless display across PowerPoint and Keynote.",
-          "Ephemeral processing ensures total privacy for sensitive materials.",
-        ],
-        notes: "Summarize the decisive conclusions and invite questions.",
-      });
-      break;
-    }
-
-    const fallbackIndex = i % defaultTopics.length;
-    const fallback = defaultTopics[fallbackIndex]!;
-
-    if (fallback.layout === "metrics") {
+    if (s.metrics && s.metrics.length >= 1) {
       slides.push({
         id: `slide-${slideNumber}`,
         slideNumber,
         layout: "metrics",
-        title: fallback.title,
-        subtitle: "Quantifiable impacts and system telemetry",
-        metrics: fallback.metrics,
-        notes: "Highlight the quantitative measurements.",
+        title: s.title,
+        subtitle: s.subtitle || "Quantifiable indicators and telemetry",
+        metrics: s.metrics,
+        notes: `Highlight the quantitative data points for ${s.title}.`,
       });
-    } else if (fallback.layout === "two-column") {
+    } else if (s.leftColumn && s.rightColumn) {
       slides.push({
         id: `slide-${slideNumber}`,
         slideNumber,
         layout: "two-column",
-        title: fallback.title,
-        subtitle: "Side-by-side architectural comparison",
-        leftColumn: fallback.leftColumn,
-        rightColumn: fallback.rightColumn,
-        notes: "Walk through the contrasts between each perspective.",
+        title: s.title,
+        subtitle: s.subtitle || "Comparative examination",
+        leftColumn: s.leftColumn,
+        rightColumn: s.rightColumn,
+        notes: `Compare the key dimensions of ${s.title}.`,
       });
     } else {
-      const chunk = contentChunks[i];
-      const slideTitle = chunk && chunk[0] && chunk[0].length < 60 ? chunk[0] : fallback.title;
-      const slideBullets =
-        chunk && chunk.length > 1
-          ? chunk.slice(1, density === "concise" ? 3 : density === "detailed" ? 5 : 4)
-          : fallback.bullets;
-
       slides.push({
         id: `slide-${slideNumber}`,
         slideNumber,
         layout: "content",
-        title: slideTitle,
-        subtitle: `Section 0${i + 1} — Core Principles`,
-        bullets: slideBullets,
-        notes: "Elaborate on each bullet point with contextual examples.",
+        title: s.title,
+        subtitle: s.subtitle || `Section 0${i + 1} — Core Analysis`,
+        bullets: s.bullets,
+        notes: `Elaborate on ${s.title} with supporting context.`,
       });
     }
+  }
+
+  // 5. Conclusion Slide (if slideCount >= 4)
+  if (hasConclusion) {
+    const lastSection = sections[sections.length - 1];
+    const conclusionBullets =
+      lastSection && lastSection.bullets.length > 0
+        ? lastSection.bullets.slice(0, 3)
+        : [
+            `Summary of decisive insights from ${cleanTitle}.`,
+            `Key actionable recommendations and operational alignment.`,
+            `Strategic roadmap and milestones for deployment.`,
+          ];
+
+    slides.push({
+      id: `slide-${totalSlots}`,
+      slideNumber: totalSlots,
+      layout: "conclusion",
+      title: "Key Takeaways & Conclusion",
+      subtitle: `Strategic synthesis for ${cleanTitle}`,
+      bullets: conclusionBullets,
+      notes: `Summarize the decisive conclusions and invite questions.`,
+    });
   }
 
   return slides;

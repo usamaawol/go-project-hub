@@ -203,14 +203,14 @@ export function AuthModal({ open, onOpenChange, defaultMode = "signup" }: AuthMo
                   htmlFor="auth-name"
                   className="text-xs font-mono text-muted-foreground uppercase font-semibold"
                 >
-                  Full Name (Optional)
+                  Full Name
                 </label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     id="auth-name"
                     type="text"
-                    placeholder="Alex Rivera"
+                    placeholder="Your name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full rounded-lg border border-border bg-surface-2 px-9 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:outline-hidden focus:ring-1 focus:ring-primary transition-colors"
@@ -224,7 +224,7 @@ export function AuthModal({ open, onOpenChange, defaultMode = "signup" }: AuthMo
                 htmlFor="auth-email"
                 className="text-xs font-mono text-muted-foreground uppercase font-semibold"
               >
-                Work or Academic Email
+                Email Address
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -232,7 +232,7 @@ export function AuthModal({ open, onOpenChange, defaultMode = "signup" }: AuthMo
                   id="auth-email"
                   type="email"
                   required
-                  placeholder="alex@university.edu"
+                  placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-lg border border-border bg-surface-2 px-9 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:outline-hidden focus:ring-1 focus:ring-primary transition-colors"
@@ -341,10 +341,7 @@ export function AuthModal({ open, onOpenChange, defaultMode = "signup" }: AuthMo
 
                 <p className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground pt-1 text-center font-sans">
                   <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
-                  {isFirebaseConfigured
-                    ? "Firebase Secure Authentication"
-                    : "Demo Session Active"}{" "}
-                  · 100% Free · No credit card required
+                  Secure Workspace Authentication · 100% Free · No credit card required
                 </p>
               </>
             )}

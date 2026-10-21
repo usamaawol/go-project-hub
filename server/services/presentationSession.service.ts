@@ -4,6 +4,7 @@ import os from "os";
 import crypto from "crypto";
 import PptxGenJS from "pptxgenjs";
 import { buildSlideDeckContent } from "../../src/lib/presentation-session-client";
+import { ENV } from "../config/env";
 
 export type SlideLayoutType =
   "title" | "agenda" | "content" | "two-column" | "metrics" | "conclusion";
@@ -418,6 +419,133 @@ async function generatePptxFile(session: PresentationSession, destPath: string):
 }
 
 /**
+ * Synthesizes dynamic slide content using Gemini 2.5 Flash if available
+ */
+async function generateSlidesWithGemini(
+  title: string,
+  content: string,
+  slideCount: number,
+  density: "concise" | "balanced" | "detailed",
+  purpose: string,
+): Promise<SlideData[] | null> {
+  if (!ENV.GEMINI_API_KEY || !content || content.trim().length < 20) return null;
+
+  try {
+    const prompt = `You are DocuMind's presentation engine.
+Analyze the following source document/notes and generate a cohesive, professional presentation of exactly ${slideCount} slides with purpose "${purpose}" and content density "${density}".
+The user's requested title is "${title || "Detect best title from text"}".
+
+SOURCE TEXT:
+"""
+${content.slice(0, 10000)}
+"""
+
+Respond in JSON adhering strictly to this schema:
+{
+  "title": "string",
+  "slides": [
+    {
+      "slideNumber": 1,
+      "layout": "title",
+      "title": "string",
+      "subtitle": "string",
+      "notes": "string"
+    },
+    {
+      "slideNumber": 2,
+      "layout": "agenda",
+      "title": "Agenda & Topics",
+      "subtitle": "Core topics covered in this presentation",
+      "bullets": ["topic 1", "topic 2"]
+    },
+    ... (intermediate slides with layout 'content', 'two-column', or 'metrics')
+    {
+      "slideNumber": ${slideCount},
+      "layout": "conclusion",
+      "title": "Key Takeaways & Conclusion",
+      "subtitle": "Summary of insights and forward actions",
+      "bullets": ["conclusion 1", "conclusion 2"]
+    }
+  ]
+}
+
+STRICT REQUIREMENTS:
+1. Every slide title, bullet point, metric, and comparison MUST be derived directly from the source text.
+2. DO NOT use generic corporate filler or placeholder text.
+3. Slide 2 Agenda bullets MUST list the actual topics covered in the subsequent slides.
+4. Return exactly ${slideCount} slides.`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+        signal: AbortSignal.timeout(12000),
+      },
+    );
+
+    interface GeminiSlideOutput {
+      layout?: SlideLayoutType;
+      title?: string;
+      subtitle?: string;
+      bullets?: string[];
+      leftColumn?: { title: string; bullets: string[] };
+      rightColumn?: { title: string; bullets: string[] };
+      metrics?: Array<{ label: string; value: string; description?: string }>;
+      notes?: string;
+    }
+
+    interface GeminiApiResponse {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
+        };
+      }>;
+    }
+
+    if (res.ok) {
+      const data = (await res.json()) as GeminiApiResponse;
+      const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (rawJson) {
+        const parsed = JSON.parse(rawJson) as { slides?: GeminiSlideOutput[] };
+        if (Array.isArray(parsed.slides) && parsed.slides.length >= 3) {
+          return parsed.slides.map((s: GeminiSlideOutput, idx: number) => ({
+            id: `slide-${idx + 1}`,
+            slideNumber: idx + 1,
+            layout:
+              (s.layout as SlideLayoutType) ||
+              (idx === 0
+                ? "title"
+                : idx === 1
+                  ? "agenda"
+                  : idx === parsed.slides.length - 1
+                    ? "conclusion"
+                    : "content"),
+            title: s.title || `Slide ${idx + 1}`,
+            subtitle: s.subtitle,
+            bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+            leftColumn: s.leftColumn,
+            rightColumn: s.rightColumn,
+            metrics: Array.isArray(s.metrics) ? s.metrics : undefined,
+            notes: s.notes,
+          }));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "Gemini slide synthesis unavailable or timed out, falling back to local semantic parser:",
+      err,
+    );
+  }
+  return null;
+}
+
+/**
  * Creates a temporary presentation session with genuine PPTX and structured slides
  */
 export async function createPresentationSession(
@@ -434,11 +562,24 @@ export async function createPresentationSession(
   const fontFamily = input.typography?.fontFamily || "Inter";
   const fontSizePreset = input.typography?.fontSizePreset || "standard";
 
-  const slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+  // First attempt AI synthesis with Gemini 2.5 Flash if available, otherwise use deterministic semantic parser
+  let slides: SlideData[] = [];
+  const aiSlides = await generateSlidesWithGemini(
+    input.title,
+    input.content,
+    slideCount,
+    density,
+    purpose,
+  );
+  if (aiSlides && aiSlides.length === slideCount) {
+    slides = aiSlides;
+  } else {
+    slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+  }
 
   const pptxFilePath = path.join(sessionDir, "presentation.pptx");
 
-  const defaultTheme: PresentationTheme = {
+  const defaultTheme: CreatePresentationSessionInput["theme"] = {
     id: "executive-brief",
     name: "Executive Brief",
     category: "Business",
@@ -449,9 +590,11 @@ export async function createPresentationSession(
   };
   const theme = input.theme || defaultTheme;
 
+  const derivedTitle = input.title.trim() || slides[0]?.title || "Presentation";
+
   const session: PresentationSession = {
     id: sessionId,
-    title: input.title.trim() || "Untitled Presentation",
+    title: derivedTitle,
     purpose,
     density,
     theme,

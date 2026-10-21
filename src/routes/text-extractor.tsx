@@ -18,6 +18,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
+import { addWorkspaceJob } from "@/lib/workspace-history";
 
 export const Route = createFileRoute("/text-extractor")({
   head: () => ({
@@ -97,6 +98,14 @@ function TextExtractorPage() {
         charCount,
         filename: file.name,
         format: result.format || ext.toUpperCase(),
+      });
+
+      addWorkspaceJob({
+        name: `${file.name.replace(/\.[^/.]+$/, "")}_extracted.txt`,
+        tool: "Text Extractor",
+        format: "TXT",
+        originalSize: `${(file.size / 1024).toFixed(1)} KB`,
+        resultSize: `${wordCount} Words`,
       });
 
       toast.success("Text Extracted!", {

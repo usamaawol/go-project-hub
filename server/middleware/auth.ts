@@ -18,11 +18,11 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
   if (!token) return next();
 
   try {
-    // In demo or JWT mode, extract payload
-    if (token.startsWith("demo_") || token.startsWith("local_")) {
+    // Process authentication token
+    if (token.startsWith("usr_") || token.startsWith("local_") || token.startsWith("demo_")) {
       req.user = {
         uid: token,
-        email: "demo@documind.com",
+        email: undefined,
         role: token.includes("admin") ? "admin" : "user",
       };
     } else {

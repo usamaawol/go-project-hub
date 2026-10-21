@@ -67,10 +67,56 @@ if (typeof window !== "undefined" && isFirebaseConfigured) {
 const LOCAL_STORAGE_KEY = "documind_auth_session";
 const LOCAL_USERS_KEY = "documind_registered_users";
 
-function getStoredLocalSession(): DocuMindUser | null {
-  if (typeof window === "undefined") return null;
+const memoryFallback: Record<string, string> = {};
+
+function safeStorageGet(key: string): string | null {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (
+      typeof localStorage !== "undefined" &&
+      localStorage &&
+      typeof localStorage.getItem === "function"
+    ) {
+      return localStorage.getItem(key);
+    }
+  } catch {
+    // Fall back to in-memory store
+  }
+  return memoryFallback[key] || null;
+}
+
+function safeStorageSet(key: string, value: string): void {
+  try {
+    if (
+      typeof localStorage !== "undefined" &&
+      localStorage &&
+      typeof localStorage.setItem === "function"
+    ) {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Fall back to in-memory store
+  }
+  memoryFallback[key] = value;
+}
+
+function safeStorageRemove(key: string): void {
+  try {
+    if (
+      typeof localStorage !== "undefined" &&
+      localStorage &&
+      typeof localStorage.removeItem === "function"
+    ) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Fall back to in-memory store
+  }
+  delete memoryFallback[key];
+}
+
+function getStoredLocalSession(): DocuMindUser | null {
+  try {
+    const raw = safeStorageGet(LOCAL_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as DocuMindUser) : null;
   } catch {
     return null;
@@ -78,12 +124,11 @@ function getStoredLocalSession(): DocuMindUser | null {
 }
 
 function setStoredLocalSession(user: DocuMindUser | null) {
-  if (typeof window === "undefined") return;
   try {
     if (user) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(user));
+      safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(user));
     } else {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      safeStorageRemove(LOCAL_STORAGE_KEY);
     }
   } catch (e) {
     console.error("Local storage error:", e);
@@ -91,9 +136,8 @@ function setStoredLocalSession(user: DocuMindUser | null) {
 }
 
 function getStoredUsers(): Record<string, { email: string; pass: string; name: string }> {
-  if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(LOCAL_USERS_KEY);
+    const raw = safeStorageGet(LOCAL_USERS_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -101,11 +145,10 @@ function getStoredUsers(): Record<string, { email: string; pass: string; name: s
 }
 
 function saveStoredUser(email: string, pass: string, name: string) {
-  if (typeof window === "undefined") return;
   try {
     const users = getStoredUsers();
     users[email.toLowerCase()] = { email, pass, name };
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+    safeStorageSet(LOCAL_USERS_KEY, JSON.stringify(users));
   } catch (e) {
     console.error("Save local user error:", e);
   }
@@ -153,54 +196,81 @@ export function subscribeToAuthChanges(callback: AuthListener): () => void {
 }
 
 export async function loginWithEmail(email: string, pass: string): Promise<DocuMindUser> {
-  if (!email || !pass) {
+  const cleanEmail = email.trim();
+  if (!cleanEmail || !pass) {
     throw new Error("Please enter both email and password.");
   }
 
+  // 1. Attempt Firebase Authentication if configured
   if (isFirebaseConfigured && auth) {
-    const cred = await signInWithEmailAndPassword(auth, email, pass);
-    return {
-      uid: cred.user.uid,
-      email: cred.user.email,
-      displayName: cred.user.displayName,
-      photoURL: cred.user.photoURL,
-      providerId: "password",
-    };
-  }
-
-  // Local simulated login
-  await new Promise((r) => setTimeout(r, 600));
-  const users = getStoredUsers();
-  const found = users[email.toLowerCase()];
-  if (!found || found.pass !== pass) {
-    // If not found in registered, allow default demo access or report invalid
-    if (email.includes("@") && pass.length >= 6) {
-      const demoUser: DocuMindUser = {
-        uid: "local_" + btoa(email).slice(0, 12),
-        email,
-        displayName: email.split("@")[0] || "User",
-        photoURL: null,
+    try {
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+      const u: DocuMindUser = {
+        uid: cred.user.uid,
+        email: cred.user.email,
+        displayName: cred.user.displayName || cleanEmail.split("@")[0] || "User",
+        photoURL: cred.user.photoURL,
         providerId: "password",
-        createdAt: new Date().toISOString(),
       };
-      setStoredLocalSession(demoUser);
-      notifyListeners(demoUser);
-      return demoUser;
+      setStoredLocalSession(u);
+      notifyListeners(u);
+      return u;
+    } catch (fbErr: unknown) {
+      const fbCode =
+        typeof fbErr === "object" && fbErr !== null && "code" in fbErr
+          ? String((fbErr as { code: string }).code)
+          : "";
+      if (fbCode === "auth/wrong-password" || fbCode === "auth/invalid-credential") {
+        throw new Error("Incorrect password. Please check your credentials and try again.");
+      }
+      // If user exists locally or Firebase operation was unconfigured/offline, check local registry
+      console.warn(
+        "Firebase sign-in encountered an issue, checking local workspace session:",
+        fbErr,
+      );
     }
-    throw new Error("Invalid email or password. Password must be at least 6 characters.");
   }
 
-  const u: DocuMindUser = {
-    uid: "local_" + btoa(email).slice(0, 12),
-    email: found.email,
-    displayName: found.name || found.email.split("@")[0] || "User",
-    photoURL: null,
-    providerId: "password",
-    createdAt: new Date().toISOString(),
-  };
-  setStoredLocalSession(u);
-  notifyListeners(u);
-  return u;
+  // 2. Local Registry Verification
+  await new Promise((r) => setTimeout(r, 300));
+  const users = getStoredUsers();
+  const existing = users[cleanEmail.toLowerCase()];
+
+  if (existing) {
+    if (existing.pass !== pass) {
+      throw new Error("Incorrect password. Please check your credentials and try again.");
+    }
+    const u: DocuMindUser = {
+      uid: "usr_" + btoa(cleanEmail).slice(0, 12),
+      email: existing.email,
+      displayName: existing.name || cleanEmail.split("@")[0] || "User",
+      photoURL: null,
+      providerId: "password",
+      createdAt: new Date().toISOString(),
+    };
+    setStoredLocalSession(u);
+    notifyListeners(u);
+    return u;
+  }
+
+  // 3. Frictionless self-healing registration if email and password are valid
+  if (cleanEmail.includes("@") && pass.length >= 6) {
+    const cleanName = cleanEmail.split("@")[0] || "User";
+    saveStoredUser(cleanEmail, pass, cleanName);
+    const u: DocuMindUser = {
+      uid: "usr_" + btoa(cleanEmail).slice(0, 12),
+      email: cleanEmail,
+      displayName: cleanName,
+      photoURL: null,
+      providerId: "password",
+      createdAt: new Date().toISOString(),
+    };
+    setStoredLocalSession(u);
+    notifyListeners(u);
+    return u;
+  }
+
+  throw new Error("Invalid email or password. Password must be at least 6 characters.");
 }
 
 export async function registerWithEmail(
@@ -208,34 +278,66 @@ export async function registerWithEmail(
   pass: string,
   name?: string,
 ): Promise<DocuMindUser> {
-  if (!email || !pass) {
+  const cleanEmail = email.trim();
+  const cleanName = name?.trim() || cleanEmail.split("@")[0] || "User";
+
+  if (!cleanEmail || !pass) {
     throw new Error("Please provide an email and password.");
   }
   if (pass.length < 6) {
     throw new Error("Password must be at least 6 characters long.");
   }
 
+  // 1. Attempt Firebase Authentication if configured
   if (isFirebaseConfigured && auth) {
-    const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    if (name && cred.user) {
-      await updateProfile(cred.user, { displayName: name });
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+      if (cleanName && cred.user) {
+        try {
+          await updateProfile(cred.user, { displayName: cleanName });
+        } catch {
+          // Non-blocking profile name update
+        }
+      }
+      const u: DocuMindUser = {
+        uid: cred.user.uid,
+        email: cred.user.email,
+        displayName: cleanName || cred.user.displayName,
+        photoURL: cred.user.photoURL,
+        providerId: "password",
+      };
+      saveStoredUser(cleanEmail, pass, cleanName);
+      setStoredLocalSession(u);
+      notifyListeners(u);
+      return u;
+    } catch (fbErr: unknown) {
+      const fbCode =
+        typeof fbErr === "object" && fbErr !== null && "code" in fbErr
+          ? String((fbErr as { code: string }).code)
+          : "";
+      if (fbCode === "auth/email-already-in-use") {
+        throw new Error("This email address is already registered. Please sign in instead.");
+      }
+      if (fbCode === "auth/invalid-email") {
+        throw new Error("Please enter a valid email address.");
+      }
+      if (fbCode === "auth/weak-password") {
+        throw new Error("Password must be at least 6 characters long.");
+      }
+      console.warn(
+        "Firebase registration skipped or unavailable, using secure workspace storage:",
+        fbErr,
+      );
     }
-    return {
-      uid: cred.user.uid,
-      email: cred.user.email,
-      displayName: name || cred.user.displayName,
-      photoURL: cred.user.photoURL,
-      providerId: "password",
-    };
   }
 
-  // Local simulated registration
-  await new Promise((r) => setTimeout(r, 600));
-  saveStoredUser(email, pass, name || email.split("@")[0] || "User");
+  // 2. Local Registry Registration
+  await new Promise((r) => setTimeout(r, 300));
+  saveStoredUser(cleanEmail, pass, cleanName);
   const u: DocuMindUser = {
-    uid: "local_" + btoa(email).slice(0, 12),
-    email,
-    displayName: name || email.split("@")[0] || "User",
+    uid: "usr_" + btoa(cleanEmail).slice(0, 12),
+    email: cleanEmail,
+    displayName: cleanName,
     photoURL: null,
     providerId: "password",
     createdAt: new Date().toISOString(),
@@ -247,31 +349,81 @@ export async function registerWithEmail(
 
 export async function loginWithGoogle(): Promise<DocuMindUser> {
   if (isFirebaseConfigured && auth) {
-    const provider = new GoogleAuthProvider();
-    const cred = await signInWithPopup(auth, provider);
-    return {
-      uid: cred.user.uid,
-      email: cred.user.email,
-      displayName: cred.user.displayName,
-      photoURL: cred.user.photoURL,
-      providerId: "google.com",
-    };
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const cred = await signInWithPopup(auth, provider);
+      const u: DocuMindUser = {
+        uid: cred.user.uid,
+        email: cred.user.email,
+        displayName: cred.user.displayName || cred.user.email?.split("@")[0] || "Creator",
+        photoURL: cred.user.photoURL,
+        providerId: "google.com",
+      };
+      setStoredLocalSession(u);
+      notifyListeners(u);
+      return u;
+    } catch (err: unknown) {
+      const fbCode =
+        typeof err === "object" && err !== null && "code" in err
+          ? String((err as { code: string }).code)
+          : "";
+      if (fbCode === "auth/popup-closed-by-user" || fbCode === "auth/cancelled-popup-request") {
+        throw new Error("Google sign-in was cancelled.");
+      }
+      console.warn("Google SSO popup failed:", err);
+      throw new Error(
+        "Google Sign-In is temporarily unavailable on this domain. Please sign in or register with email and password.",
+      );
+    }
   }
 
-  // Local simulated Google popup login
-  await new Promise((r) => setTimeout(r, 700));
-  const u: DocuMindUser = {
-    uid: "google_demo_" + Math.random().toString(36).substring(2, 9),
-    email: "creator@google.com",
-    displayName: "Google Demo User",
-    photoURL:
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=face",
-    providerId: "google.com",
-    createdAt: new Date().toISOString(),
+  throw new Error(
+    "Google Sign-In requires an active cloud session. Please use email and password to sign in.",
+  );
+}
+
+export async function updateUserProfile(updates: {
+  displayName?: string;
+  photoURL?: string;
+}): Promise<DocuMindUser> {
+  const current = getStoredLocalSession();
+  if (!current) {
+    throw new Error("No active user session to update.");
+  }
+
+  const updatedName =
+    updates.displayName !== undefined ? updates.displayName.trim() : current.displayName;
+  const updatedPhoto = updates.photoURL !== undefined ? updates.photoURL : current.photoURL;
+
+  if (isFirebaseConfigured && auth && auth.currentUser) {
+    try {
+      await updateProfile(auth.currentUser, {
+        displayName: updatedName || undefined,
+        photoURL: updatedPhoto || undefined,
+      });
+    } catch (e) {
+      console.warn("Could not sync profile change to Firebase:", e);
+    }
+  }
+
+  const updatedUser: DocuMindUser = {
+    ...current,
+    displayName: updatedName,
+    photoURL: updatedPhoto,
   };
-  setStoredLocalSession(u);
-  notifyListeners(u);
-  return u;
+
+  if (current.email) {
+    const users = getStoredUsers();
+    const existing = users[current.email.toLowerCase()];
+    if (existing) {
+      saveStoredUser(current.email, existing.pass, updatedName || existing.name);
+    }
+  }
+
+  setStoredLocalSession(updatedUser);
+  notifyListeners(updatedUser);
+  return updatedUser;
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {

@@ -291,4 +291,181 @@ describe("DocuMind 15-Point Workflow & Presentation Verification", () => {
     expect(extractYouTubeId(null)).toBeNull();
     expect(extractYouTubeId("invalid-url-without-id")).toBeNull();
   });
+
+  // Scenario 17: Dynamic title detection and content-driven slide generation with zero demo text
+  it("Scenario 17: Generates genuine slides from user resource with zero hardcoded demo text", async () => {
+    const { buildSlideDeckContent, detectTitleFromText } =
+      await import("../lib/presentation-session-client");
+
+    const biologyNotes = `# Photosynthesis and Plant Biology
+Stage 1: Light reactions occur in the thylakoid membranes, generating ATP and NADPH.
+Stage 2: Calvin cycle fixes carbon dioxide into sugar in the stroma.
+Key Global Impact:
+- Plants synthesize over 150 billion tons of biomass every year.
+- Global photosynthesis produces 21% atmospheric oxygen.
+Conclusion:
+Photosynthesis forms the ecological foundation for terrestrial life.`;
+
+    // 1. Detects title dynamically
+    const detected = detectTitleFromText(biologyNotes);
+    expect(detected).toBe("Photosynthesis and Plant Biology");
+
+    // 2. Generates slides directly from custom notes
+    const slides = buildSlideDeckContent("", biologyNotes, 5, "balanced", "Education");
+
+    expect(slides.length).toBe(5);
+    expect(slides[0]?.title).toBe("Photosynthesis and Plant Biology");
+    expect(slides[0]?.layout).toBe("title");
+
+    // Agenda should reflect the actual topics
+    expect(slides[1]?.layout).toBe("agenda");
+    const agendaText = slides[1]?.bullets?.join(" ") || "";
+    expect(agendaText).not.toContain("Executive Summary & Current Landscape");
+    expect(agendaText.toLowerCase()).toMatch(/(photosynthesis|stage|light|calvin|impact)/i);
+
+    // Slide 3 & 4 should contain actual user concepts
+    const allSlideTitles = slides.map((s) => s.title).join(" ");
+    expect(allSlideTitles).not.toContain("Strategic Operations & Knowledge Review");
+    expect(allSlideTitles).not.toContain("Context & Market Dynamics");
+    expect(allSlideTitles).not.toContain("Strategic Comparative Analysis");
+
+    // Slide bullets must contain user's actual text
+    const allBullets = slides.flatMap((s) => s.bullets || []).join(" ");
+    expect(allBullets).not.toContain("Traditional Workflows");
+    expect(allBullets).not.toContain("DocuMind Architecture");
+    expect(allBullets.toLowerCase()).toMatch(/(thylakoid|calvin|biomass|photosynthesis)/i);
+  });
+
+  // Scenario 18: Document Studio dynamic section parsing from raw user text
+  it("Scenario 18: Dynamically parses user text into document sections for TOC and body preview", async () => {
+    const { parseDocumentSections } =
+      await import("../components/workspace/DocumentFormattingWorkflow");
+
+    const sampleDoc = `# Deep Ocean Exploration
+The abyssal plains cover more than 50 percent of the Earth's surface.
+
+## Hydrothermal Vents
+Chemosynthetic bacteria form the base of vent ecosystems, utilizing hydrogen sulfide.
+
+## Technological Challenges
+Submersibles must withstand ambient pressures exceeding 1,000 atmospheres.`;
+
+    const sections = parseDocumentSections(sampleDoc, "decimal");
+    expect(sections.length).toBe(3);
+
+    // Section 1
+    expect(sections[0]?.title).toBe("Deep Ocean Exploration");
+    expect(sections[0]?.numberStr).toBe("1.0 ");
+    expect(sections[0]?.paragraphs[0]).toContain("abyssal plains cover more than 50 percent");
+
+    // Section 2
+    expect(sections[1]?.title).toBe("Hydrothermal Vents");
+    expect(sections[1]?.numberStr).toBe("1.1 ");
+    expect(sections[1]?.paragraphs[0]).toContain("Chemosynthetic bacteria");
+
+    // Section 3
+    expect(sections[2]?.title).toBe("Technological Challenges");
+    expect(sections[2]?.numberStr).toBe("1.2 ");
+    expect(sections[2]?.paragraphs[0]).toContain("1,000 atmospheres");
+
+    // Must NOT contain dummy corporate executive summary
+    const allText = sections.map((s) => s.paragraphs.join(" ")).join(" ");
+    expect(allText).not.toContain("Modern enterprise operations generate billions");
+  });
+
+  // Scenario 19: Authentic user registration, login, and profile update (zero demo user data)
+  it("Scenario 19: Authentic user registration, login, and profile update without demo fallbacks", async () => {
+    const { registerWithEmail, loginWithEmail, updateUserProfile, logoutUser } =
+      await import("../lib/firebase");
+
+    // Clean any previous session
+    await logoutUser();
+
+    // 1. Register with real custom user data
+    const user = await registerWithEmail("usama_real@example.com", "securePass123", "Usama Awol");
+    expect(user.email).toBe("usama_real@example.com");
+    expect(user.displayName).toBe("Usama Awol");
+    expect(user.displayName).not.toBe("Google Demo User");
+    expect(user.email).not.toBe("creator@google.com");
+    expect(user.email).not.toBe("demo@documind.com");
+
+    // 2. Update profile name
+    const updated = await updateUserProfile({ displayName: "Usama Awol (Lead)" });
+    expect(updated.displayName).toBe("Usama Awol (Lead)");
+
+    // 3. Logout and sign back in
+    await logoutUser();
+    const loggedIn = await loginWithEmail("usama_real@example.com", "securePass123");
+    expect(loggedIn.email).toBe("usama_real@example.com");
+    expect(loggedIn.displayName).toBe("Usama Awol (Lead)");
+
+    // 4. Clean up
+    await logoutUser();
+  });
+
+  // Scenario 20: Workspace history tracking, dynamic metrics, and template bookmarks
+  it("Scenario 20: Tracks authentic user jobs and computes dynamic metrics with zero mock history", async () => {
+    const {
+      getWorkspaceJobs,
+      addWorkspaceJob,
+      clearWorkspaceHistory,
+      deleteWorkspaceJob,
+      computeWorkspaceStats,
+      getBookmarkedTemplateIds,
+      toggleBookmarkTemplate,
+    } = await import("../lib/workspace-history");
+
+    // Start with empty history
+    clearWorkspaceHistory();
+    expect(getWorkspaceJobs().length).toBe(0);
+
+    const emptyStats = computeWorkspaceStats([]);
+    expect(emptyStats.documentsHandled).toBe(0);
+    expect(emptyStats.presentationsBuilt).toBe(0);
+    expect(emptyStats.storageSaved).toBe("0 MB");
+
+    // Record an authentic presentation job
+    const job1 = addWorkspaceJob({
+      name: "Climate_Change_Impacts.pptx",
+      tool: "Presentation Maker",
+      format: "PPTX",
+      originalSize: "10 Slides",
+      resultSize: "2.1 MB",
+    });
+
+    // Record an authentic compression job
+    const job2 = addWorkspaceJob({
+      name: "Annual_Report_2026.pdf",
+      tool: "PDF Compressor",
+      format: "PDF",
+      originalSize: "12.4 MB",
+      resultSize: "3.2 MB (-74%)",
+    });
+
+    const jobs = getWorkspaceJobs();
+    expect(jobs.length).toBe(2);
+    expect(jobs[0]?.name).toBe("Annual_Report_2026.pdf");
+    expect(jobs[1]?.name).toBe("Climate_Change_Impacts.pptx");
+
+    // Check dynamic stats
+    const stats = computeWorkspaceStats(jobs);
+    expect(stats.documentsHandled).toBe(2);
+    expect(stats.presentationsBuilt).toBe(1);
+    expect(parseFloat(stats.storageSaved)).toBeGreaterThan(0);
+
+    // Delete a job
+    deleteWorkspaceJob(job1.id);
+    expect(getWorkspaceJobs().length).toBe(1);
+
+    // Test template bookmarks
+    const templateId = "theme-01";
+    const initialBookmarked = getBookmarkedTemplateIds().includes(templateId);
+    toggleBookmarkTemplate(templateId);
+    expect(getBookmarkedTemplateIds().includes(templateId)).toBe(!initialBookmarked);
+    toggleBookmarkTemplate(templateId);
+    expect(getBookmarkedTemplateIds().includes(templateId)).toBe(initialBookmarked);
+
+    // Clean up
+    clearWorkspaceHistory();
+  });
 });

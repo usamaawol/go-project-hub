@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
+import { addWorkspaceJob } from "@/lib/workspace-history";
 
 export interface FormattingConfig {
   // Cover Page
@@ -90,6 +91,111 @@ Implementation benchmarks across 12,000 academic and enterprise documents indica
 5. Recommendations and Conclusion
 Organizations should mandate standardized typographic blueprints for all external technical submissions to ensure cross-platform accessibility and archival longevity.`;
 
+export interface DocSection {
+  level: 1 | 2 | 3;
+  numberStr: string;
+  title: string;
+  paragraphs: string[];
+}
+
+export function parseDocumentSections(
+  text: string,
+  headingNumbering: "decimal" | "roman" | "none",
+): DocSection[] {
+  if (!text || !text.trim()) {
+    return [
+      {
+        level: 1,
+        numberStr:
+          headingNumbering === "decimal" ? "1.0 " : headingNumbering === "roman" ? "I. " : "",
+        title: "Overview",
+        paragraphs: ["Paste or upload your source text to preview formatted document sections."],
+      },
+    ];
+  }
+
+  const lines = text.split("\n").map((l) => l.trim());
+  const sections: DocSection[] = [];
+  let currentSec: DocSection | null = null;
+  let sectionCounter = 0;
+  let subSectionCounter = 0;
+
+  const isHeader = (line: string): { isHeader: boolean; level: 1 | 2 | 3; cleanTitle: string } => {
+    if (!line || line.length > 90) return { isHeader: false, level: 1, cleanTitle: "" };
+    if (line.startsWith("###")) {
+      return { isHeader: true, level: 3, cleanTitle: line.replace(/^###\s*/, "") };
+    }
+    if (line.startsWith("##")) {
+      return { isHeader: true, level: 2, cleanTitle: line.replace(/^##\s*/, "") };
+    }
+    if (line.startsWith("#")) {
+      return { isHeader: true, level: 1, cleanTitle: line.replace(/^#\s*/, "") };
+    }
+    const numMatch = line.match(/^(\d+(?:\.\d+)?)\s*[:.]?\s+(.*)$/);
+    if (numMatch && numMatch[2] && numMatch[2].length > 2 && !numMatch[2].endsWith(".")) {
+      const hasDot = numMatch[1]?.includes(".");
+      return { isHeader: true, level: hasDot ? 2 : 1, cleanTitle: numMatch[2] };
+    }
+    if (line.endsWith(":") && line.length < 60) {
+      return { isHeader: true, level: 1, cleanTitle: line.replace(/:$/, "") };
+    }
+    return { isHeader: false, level: 1, cleanTitle: "" };
+  };
+
+  for (const line of lines) {
+    if (!line) continue;
+    const check = isHeader(line);
+    if (check.isHeader) {
+      if (currentSec) {
+        sections.push(currentSec);
+      }
+      if (check.level === 1) {
+        sectionCounter++;
+        subSectionCounter = 0;
+      } else {
+        subSectionCounter++;
+      }
+
+      const numStr =
+        headingNumbering === "decimal"
+          ? check.level === 1
+            ? `${sectionCounter}.0 `
+            : `${sectionCounter}.${subSectionCounter} `
+          : headingNumbering === "roman"
+            ? check.level === 1
+              ? `${["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"][sectionCounter - 1] || sectionCounter}. `
+              : `${String.fromCharCode(64 + subSectionCounter)}. `
+            : "";
+
+      currentSec = {
+        level: check.level,
+        numberStr: numStr,
+        title: check.cleanTitle,
+        paragraphs: [],
+      };
+    } else {
+      if (!currentSec) {
+        sectionCounter = 1;
+        const numStr =
+          headingNumbering === "decimal" ? "1.0 " : headingNumbering === "roman" ? "I. " : "";
+        currentSec = {
+          level: 1,
+          numberStr: numStr,
+          title: "Introduction & Context",
+          paragraphs: [],
+        };
+      }
+      currentSec.paragraphs.push(line);
+    }
+  }
+
+  if (currentSec) {
+    sections.push(currentSec);
+  }
+
+  return sections;
+}
+
 export function DocumentFormattingWorkflow({
   onSwitchToPresentation,
 }: {
@@ -100,7 +206,7 @@ export function DocumentFormattingWorkflow({
 
   // Content state
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
-  const [rawText, setRawText] = useState(sampleDocumentText);
+  const [rawText, setRawText] = useState("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [detectedFormat, setDetectedFormat] = useState<string | null>(null);
@@ -110,10 +216,10 @@ export function DocumentFormattingWorkflow({
   const [config, setConfig] = useState<FormattingConfig>({
     hasCoverPage: true,
     coverStyle: "academic",
-    docTitle: "The Role of Generative Computation in Modern Document Workflows",
-    docSubtitle: "A Comprehensive Analysis of Semantic Parsing and Automated Formatting",
-    authorName: "Dr. Elena Vance & Research Associates",
-    institution: "Institute for Advanced Computational Systems",
+    docTitle: "Document Title",
+    docSubtitle: "Executive Analysis and Implementation Report",
+    authorName: "Author / Researcher",
+    institution: "Academic / Professional Department",
     dateStr: "October 2026",
 
     fontFamily: "serif",
@@ -142,6 +248,7 @@ export function DocumentFormattingWorkflow({
 
   // Active preview tab in Step 3
   const [previewPage, setPreviewPage] = useState<"cover" | "toc" | "body">("body");
+  const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
 
   // File handling
   const handleFileUpload = async (file: File) => {
@@ -201,13 +308,23 @@ export function DocumentFormattingWorkflow({
     const htmlContent = generateFormattedHtml(rawText, config);
     const blob = new Blob([htmlContent], { type: "application/msword;charset=utf-8" });
     const url = URL.createObjectURL(blob);
+    const docName = `${config.docTitle.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32) || "formatted_document"}.doc`;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${config.docTitle.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32) || "formatted_document"}.doc`;
+    a.download = docName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
+    addWorkspaceJob({
+      name: docName,
+      tool: "Document Studio",
+      format: "DOCX",
+      originalSize: `${rawText.split("\n\n").length} Sections`,
+      resultSize: `${(blob.size / 1024).toFixed(1)} KB`,
+    });
+
     toast.success("Document downloaded in editable Word-compatible format!");
   };
 
@@ -221,6 +338,15 @@ export function DocumentFormattingWorkflow({
     printWindow.document.write(htmlContent);
     printWindow.document.close();
     printWindow.focus();
+
+    addWorkspaceJob({
+      name: `${config.docTitle.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32) || "formatted_document"}.pdf`,
+      tool: "Document Studio",
+      format: "PDF",
+      originalSize: `${rawText.split("\n\n").length} Sections`,
+      resultSize: "Print/PDF Export",
+    });
+
     setTimeout(() => {
       printWindow.print();
     }, 500);
@@ -994,8 +1120,8 @@ export function DocumentFormattingWorkflow({
             </div>
           </div>
 
-          {/* Preview Viewport Switcher */}
-          <div className="flex items-center justify-between">
+          {/* Preview Viewport Switcher & Paper Mode */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
               {config.hasCoverPage && (
                 <button
@@ -1036,16 +1162,46 @@ export function DocumentFormattingWorkflow({
               </button>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Eye className="h-3.5 w-3.5" />
-              <span>Simulated A4 / Letter Page Rendering</span>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setPaperMode("standard")}
+                  className={`rounded-md px-2.5 py-1 transition-all ${
+                    paperMode === "standard"
+                      ? "bg-card text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Print White Paper
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaperMode("dark")}
+                  className={`rounded-md px-2.5 py-1 transition-all ${
+                    paperMode === "dark"
+                      ? "bg-card text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Dark Canvas
+                </button>
+              </div>
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground pl-2">
+                <Eye className="h-3.5 w-3.5" />
+                <span>A4 Page Preview</span>
+              </div>
             </div>
           </div>
 
           {/* Realistic A4 Document Sheet Display */}
-          <div className="flex justify-center py-4 bg-muted/40 rounded-2xl border border-border/80 p-4 sm:p-8">
+          <div className="flex justify-center py-4 bg-muted/40 dark:bg-zinc-950/80 rounded-2xl border border-border/80 p-4 sm:p-8">
             <div
-              className={`w-full max-w-[760px] min-h-[960px] bg-white text-stone-900 shadow-2xl rounded-sm border border-stone-200 p-10 sm:p-14 flex flex-col justify-between transition-all ${
+              className={`w-full max-w-[760px] min-h-[960px] shadow-2xl rounded-sm border p-10 sm:p-14 flex flex-col justify-between transition-all ${
+                paperMode === "dark"
+                  ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-black/50"
+                  : "bg-white border-stone-200 text-stone-900 shadow-2xl"
+              } ${
                 config.fontFamily === "serif"
                   ? "font-serif"
                   : config.fontFamily === "mono"
@@ -1059,27 +1215,55 @@ export function DocumentFormattingWorkflow({
               {/* ================= COVER PAGE PREVIEW ================= */}
               {previewPage === "cover" && (
                 <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left">
-                  <div className="space-y-2 border-b-2 border-stone-900 pb-8">
-                    <p className="text-xs uppercase tracking-widest text-stone-500 font-sans font-semibold">
+                  <div
+                    className={`space-y-2 border-b-2 pb-8 ${
+                      paperMode === "dark" ? "border-zinc-700" : "border-stone-900"
+                    }`}
+                  >
+                    <p
+                      className={`text-xs uppercase tracking-widest font-sans font-semibold ${
+                        paperMode === "dark" ? "text-zinc-400" : "text-stone-500"
+                      }`}
+                    >
                       {config.institution || "ACADEMIC PUBLICATION"}
                     </p>
-                    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-stone-900 leading-tight">
+                    <h1
+                      className={`text-3xl sm:text-4xl font-bold tracking-tight leading-tight ${
+                        paperMode === "dark" ? "text-zinc-50" : "text-stone-900"
+                      }`}
+                    >
                       {config.docTitle}
                     </h1>
                     {config.docSubtitle && (
-                      <p className="text-base sm:text-lg text-stone-600 font-normal italic mt-2">
+                      <p
+                        className={`text-base sm:text-lg font-normal italic mt-2 ${
+                          paperMode === "dark" ? "text-zinc-300" : "text-stone-600"
+                        }`}
+                      >
                         {config.docSubtitle}
                       </p>
                     )}
                   </div>
 
                   <div className="my-16 space-y-4">
-                    <div className="inline-block rounded border border-stone-300 bg-stone-50 px-4 py-2 font-mono text-xs text-stone-700">
+                    <div
+                      className={`inline-block rounded border px-4 py-2 font-mono text-xs ${
+                        paperMode === "dark"
+                          ? "bg-zinc-800 text-zinc-300 border-zinc-700"
+                          : "bg-stone-50 text-stone-700 border-stone-300"
+                      }`}
+                    >
                       Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
                     </div>
                   </div>
 
-                  <div className="border-t border-stone-300 pt-6 text-xs text-stone-700 space-y-1 font-sans">
+                  <div
+                    className={`border-t pt-6 text-xs space-y-1 font-sans ${
+                      paperMode === "dark"
+                        ? "border-zinc-700 text-zinc-300"
+                        : "border-stone-300 text-stone-700"
+                    }`}
+                  >
                     <p>
                       <strong>Author:</strong> {config.authorName}
                     </p>
@@ -1097,60 +1281,78 @@ export function DocumentFormattingWorkflow({
               {previewPage === "toc" && (
                 <div className="flex-1 flex flex-col">
                   {/* Running Header */}
-                  <div className="flex items-center justify-between text-[11px] text-stone-500 border-b border-stone-200 pb-2 mb-8 font-sans">
+                  <div
+                    className={`flex items-center justify-between text-[11px] border-b pb-2 mb-8 font-sans ${
+                      paperMode === "dark"
+                        ? "border-zinc-800 text-zinc-400"
+                        : "border-stone-200 text-stone-500"
+                    }`}
+                  >
                     <span>{config.headerText}</span>
                     <span>Preliminary Section</span>
                   </div>
 
-                  <h2 className="text-2xl font-bold text-stone-900 mb-6 tracking-tight">
+                  <h2
+                    className={`text-2xl font-bold mb-6 tracking-tight ${
+                      paperMode === "dark" ? "text-zinc-50" : "text-stone-900"
+                    }`}
+                  >
                     Table of Contents
                   </h2>
 
-                  <div className="space-y-3 text-sm text-stone-800">
-                    {[
-                      { num: "1.0", title: "Executive Summary", page: "3" },
-                      { num: "2.0", title: "Background and Problem Statement", page: "4" },
-                      {
-                        num: "2.1",
-                        title: "Format Divergence (PDF vs DOCX)",
-                        page: "5",
-                        indent: true,
-                      },
-                      { num: "3.0", title: "Methodological Framework", page: "6" },
-                      {
-                        num: "3.1",
-                        title: "Semantic Boundary Identification",
-                        page: "6",
-                        indent: true,
-                      },
-                      {
-                        num: "3.2",
-                        title: "Typographic Hierarchy Normalization",
-                        page: "7",
-                        indent: true,
-                      },
-                      { num: "4.0", title: "Results and Operational Efficiency", page: "8" },
-                      { num: "5.0", title: "Recommendations and Conclusion", page: "9" },
-                    ].map((item, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex items-baseline justify-between ${
-                          item.indent ? "pl-6 text-xs text-stone-600" : "font-semibold"
-                        }`}
-                      >
-                        <div className="flex items-baseline gap-2 max-w-[80%] truncate">
-                          <span className="font-mono text-xs text-stone-500">{item.num}</span>
-                          <span>{item.title}</span>
+                  <div className="space-y-3 text-sm">
+                    {parseDocumentSections(rawText, config.headingNumbering)
+                      .slice(0, 10)
+                      .map((item, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-baseline justify-between ${
+                            item.level > 1
+                              ? paperMode === "dark"
+                                ? "pl-6 text-xs text-zinc-400"
+                                : "pl-6 text-xs text-stone-600"
+                              : "font-semibold"
+                          }`}
+                        >
+                          <div className="flex items-baseline gap-2 max-w-[80%] truncate">
+                            <span
+                              className={`font-mono text-xs ${
+                                paperMode === "dark" ? "text-zinc-500" : "text-stone-500"
+                              }`}
+                            >
+                              {item.numberStr.trim() || `0${idx + 1}`}
+                            </span>
+                            <span
+                              className={paperMode === "dark" ? "text-zinc-100" : "text-stone-800"}
+                            >
+                              {item.title}
+                            </span>
+                          </div>
+                          {config.tocDotLeaders && (
+                            <div
+                              className={`flex-1 mx-3 border-b border-dotted ${
+                                paperMode === "dark" ? "border-zinc-700" : "border-stone-400"
+                              }`}
+                            />
+                          )}
+                          <span
+                            className={`font-mono text-xs ${
+                              paperMode === "dark" ? "text-zinc-400" : "text-stone-600"
+                            }`}
+                          >
+                            {3 + idx}
+                          </span>
                         </div>
-                        {config.tocDotLeaders && (
-                          <div className="flex-1 mx-3 border-b border-dotted border-stone-400" />
-                        )}
-                        <span className="font-mono text-xs">{item.page}</span>
-                      </div>
-                    ))}
+                      ))}
                   </div>
 
-                  <div className="mt-auto pt-8 border-t border-stone-200 text-center font-mono text-xs text-stone-500">
+                  <div
+                    className={`mt-auto pt-8 border-t text-center font-mono text-xs ${
+                      paperMode === "dark"
+                        ? "border-zinc-800 text-zinc-400"
+                        : "border-stone-200 text-stone-500"
+                    }`}
+                  >
                     ii
                   </div>
                 </div>
@@ -1162,67 +1364,82 @@ export function DocumentFormattingWorkflow({
                   <div>
                     {/* Running Header */}
                     <div
-                      className={`flex items-center justify-between text-[11px] text-stone-500 mb-6 font-sans ${
-                        config.headerRule ? "border-b border-stone-200 pb-2" : ""
+                      className={`flex items-center justify-between text-[11px] mb-6 font-sans ${
+                        config.headerRule
+                          ? paperMode === "dark"
+                            ? "border-b border-zinc-800 pb-2 text-zinc-400"
+                            : "border-b border-stone-200 pb-2 text-stone-500"
+                          : paperMode === "dark"
+                            ? "text-zinc-400"
+                            : "text-stone-500"
                       }`}
                     >
                       <span className="truncate max-w-[60%]">{config.headerText}</span>
-                      <span className="text-stone-400">Section 1</span>
+                      <span className={paperMode === "dark" ? "text-zinc-500" : "text-stone-400"}>
+                        Section 1
+                      </span>
                     </div>
 
-                    {/* Body content with heading hierarchy applied */}
-                    <div className="space-y-4 text-stone-900">
-                      <h1 className="text-2xl font-bold tracking-tight text-stone-900 border-b border-stone-300 pb-2">
-                        {config.headingNumbering === "decimal"
-                          ? "1.0 "
-                          : config.headingNumbering === "roman"
-                            ? "I. "
-                            : ""}
-                        Executive Summary
-                      </h1>
-                      <p className="text-sm leading-relaxed text-stone-800 text-justify">
-                        Modern enterprise operations generate billions of digital documents weekly,
-                        ranging from brief memoranda to comprehensive technical specifications.
-                        However, an estimated 68% of knowledge worker time spent in document
-                        production is consumed not by ideation or analytical synthesis, but rather
-                        by repetitive typographic adjustments, margin correction, and formatting
-                        reconciliation.
-                      </p>
-
-                      <h2 className="text-lg font-semibold tracking-tight text-stone-900 pt-3">
-                        {config.headingNumbering === "decimal"
-                          ? "2.0 "
-                          : config.headingNumbering === "roman"
-                            ? "II. "
-                            : ""}
-                        Background and Problem Statement
-                      </h2>
-                      <p className="text-sm leading-relaxed text-stone-800 text-justify">
-                        The proliferation of competing digital formats—principally Portable Document
-                        Format (PDF) and Office Open XML (DOCX)—has produced an acute divergence in
-                        workflow mechanics. While DOCX enables dynamic reflow, PDFs anchor textual
-                        glyphs in absolute vector coordinates.
-                      </p>
-
-                      <h3 className="text-sm font-semibold text-stone-800 pt-2 italic">
-                        {config.headingNumbering === "decimal"
-                          ? "2.1 "
-                          : config.headingNumbering === "roman"
-                            ? "A. "
-                            : ""}
-                        Format Normalization Heuristics
-                      </h3>
-                      <p className="text-sm leading-relaxed text-stone-800 text-justify">
-                        Standardized document stylesheets normalize font sizing, line spacing ratio
-                        ({config.lineSpacing}x), and vertical paragraph rhythm to yield consistent,
-                        accessible publishing outputs.
-                      </p>
+                    {/* Body content with heading hierarchy applied directly from user resource */}
+                    <div className="space-y-5">
+                      {parseDocumentSections(rawText, config.headingNumbering).map((sec, sIdx) => (
+                        <div key={sIdx} className="space-y-2">
+                          {sec.level === 1 && (
+                            <h1
+                              className={`text-2xl font-bold tracking-tight pb-2 ${
+                                config.headingDivider
+                                  ? paperMode === "dark"
+                                    ? "border-b border-zinc-800"
+                                    : "border-b border-stone-300"
+                                  : ""
+                              } ${paperMode === "dark" ? "text-zinc-50" : "text-stone-900"}`}
+                            >
+                              {sec.numberStr}
+                              {sec.title}
+                            </h1>
+                          )}
+                          {sec.level === 2 && (
+                            <h2
+                              className={`text-lg font-semibold tracking-tight pt-3 ${
+                                paperMode === "dark" ? "text-zinc-100" : "text-stone-900"
+                              }`}
+                            >
+                              {sec.numberStr}
+                              {sec.title}
+                            </h2>
+                          )}
+                          {sec.level === 3 && (
+                            <h3
+                              className={`text-sm font-semibold pt-2 italic ${
+                                paperMode === "dark" ? "text-zinc-300" : "text-stone-800"
+                              }`}
+                            >
+                              {sec.numberStr}
+                              {sec.title}
+                            </h3>
+                          )}
+                          {sec.paragraphs.map((p, pIdx) => (
+                            <p
+                              key={pIdx}
+                              className={`text-sm leading-relaxed text-justify ${
+                                paperMode === "dark" ? "text-zinc-200" : "text-stone-800"
+                              }`}
+                            >
+                              {p}
+                            </p>
+                          ))}
+                        </div>
+                      ))}
                     </div>
                   </div>
 
                   {/* Page Footer */}
                   <div
-                    className={`mt-10 pt-4 border-t border-stone-200 font-mono text-xs text-stone-500 ${
+                    className={`mt-10 pt-4 border-t font-mono text-xs ${
+                      paperMode === "dark"
+                        ? "border-zinc-800 text-zinc-400"
+                        : "border-stone-200 text-stone-500"
+                    } ${
                       config.pageNumberPosition === "bottom-center"
                         ? "text-center"
                         : config.pageNumberPosition === "bottom-right"

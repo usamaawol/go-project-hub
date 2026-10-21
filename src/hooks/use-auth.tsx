@@ -5,6 +5,7 @@ import {
   registerWithEmail,
   loginWithGoogle,
   requestPasswordReset,
+  updateUserProfile,
   logoutUser,
   type DocuMindUser,
   isFirebaseConfigured,
@@ -18,6 +19,7 @@ interface AuthContextType {
   signUpWithEmail: (email: string, pass: string, name?: string) => Promise<DocuMindUser>;
   signInWithGoogle: () => Promise<DocuMindUser>;
   resetPassword: (email: string) => Promise<void>;
+  updateProfile: (updates: { displayName?: string; photoURL?: string }) => Promise<DocuMindUser>;
   logout: () => Promise<void>;
 }
 
@@ -57,6 +59,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await requestPasswordReset(email);
   };
 
+  const handleUpdateProfile = async (updates: { displayName?: string; photoURL?: string }) => {
+    const updated = await updateUserProfile(updates);
+    setUser(updated);
+    return updated;
+  };
+
   const handleLogout = async () => {
     await logoutUser();
     setUser(null);
@@ -72,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUpWithEmail: handleSignUpWithEmail,
         signInWithGoogle: handleSignInWithGoogle,
         resetPassword: handleResetPassword,
+        updateProfile: handleUpdateProfile,
         logout: handleLogout,
       }}
     >

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   User as UserIcon,
@@ -7,16 +7,16 @@ import {
   Bookmark,
   Settings,
   Download,
-  ExternalLink,
   Clock,
   Sparkles,
   LogOut,
   ArrowLeft,
   CheckCircle2,
-  Sliders,
-  HardDrive,
-  Layers,
+  Trash2,
   Play,
+  Minimize2,
+  ArrowRightLeft,
+  ScanText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { TEMPLATES } from "@/data/templates";
 import { downloadTemplatePptx } from "@/lib/pptx-export";
 import { restartProductTour } from "@/components/tour/ProductTour";
+import {
+  getWorkspaceJobs,
+  deleteWorkspaceJob,
+  clearWorkspaceHistory,
+  populateSampleWorkspaceHistory,
+  computeWorkspaceStats,
+  getBookmarkedTemplateIds,
+  toggleBookmarkTemplate,
+  type WorkspaceJob,
+} from "@/lib/workspace-history";
 
 export const Route = createFileRoute("/account")({
   head: () => ({
@@ -41,67 +51,92 @@ export const Route = createFileRoute("/account")({
   component: AccountPage,
 });
 
-interface SavedJob {
-  id: string;
-  name: string;
-  tool: string;
-  format: string;
-  originalSize: string;
-  resultSize?: string;
-  date: string;
-  status: "completed" | "processing";
-}
-
-const mockHistory: SavedJob[] = [
-  {
-    id: "job-101",
-    name: "Quarterly_Financial_Report_Q4.pdf",
-    tool: "Compress Files (Balanced)",
-    format: "PDF",
-    originalSize: "18.4 MB",
-    resultSize: "4.8 MB (-74%)",
-    date: "Today at 2:15 PM",
-    status: "completed",
-  },
-  {
-    id: "job-102",
-    name: "Series_A_Venture_Pitch.pptx",
-    tool: "Presentation Studio (Series A Deck)",
-    format: "PPTX",
-    originalSize: "16 Slides",
-    resultSize: "2.1 MB",
-    date: "Yesterday at 11:30 AM",
-    status: "completed",
-  },
-  {
-    id: "job-103",
-    name: "Clinical_Trial_Findings_Protocol.docx",
-    tool: "Convert to PDF",
-    format: "PDF",
-    originalSize: "3.2 MB",
-    resultSize: "1.9 MB",
-    date: "Oct 18, 2026",
-    status: "completed",
-  },
-];
-
 function AccountPage() {
-  const { user, logout, isFirebaseConfigured } = useAuth();
+  const { user, logout, updateProfile, isFirebaseConfigured } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"history" | "bookmarks" | "settings">("history");
-  const [savedJobs, setSavedJobs] = useState<SavedJob[]>(mockHistory);
-  const [displayName, setDisplayName] = useState(user?.displayName || "");
+  const [savedJobs, setSavedJobs] = useState<WorkspaceJob[]>([]);
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
+  const [displayName, setDisplayName] = useState("");
   const [defaultCompression, setDefaultCompression] = useState("Balanced (60-75% reduction)");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  // Sample favorited templates
-  const favoritedTemplates = TEMPLATES.slice(0, 4);
+  // Sync workspace state on mount and subscribe to background updates
+  useEffect(() => {
+    setSavedJobs(getWorkspaceJobs());
+    setBookmarkedIds(getBookmarkedTemplateIds());
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+    const handleHistoryUpdate = (e: Event) => {
+      const custom = e as CustomEvent<WorkspaceJob[]>;
+      if (custom.detail) {
+        setSavedJobs(custom.detail);
+      } else {
+        setSavedJobs(getWorkspaceJobs());
+      }
+    };
+
+    const handleBookmarksUpdate = (e: Event) => {
+      const custom = e as CustomEvent<string[]>;
+      if (custom.detail) {
+        setBookmarkedIds(custom.detail);
+      } else {
+        setBookmarkedIds(getBookmarkedTemplateIds());
+      }
+    };
+
+    window.addEventListener("documind_history_changed", handleHistoryUpdate);
+    window.addEventListener("documind_bookmarks_changed", handleBookmarksUpdate);
+
+    return () => {
+      window.removeEventListener("documind_history_changed", handleHistoryUpdate);
+      window.removeEventListener("documind_bookmarks_changed", handleBookmarksUpdate);
+    };
+  }, []);
+
+  // Sync display name with authenticated user
+  useEffect(() => {
+    if (user?.displayName && !displayName) {
+      setDisplayName(user.displayName);
+    }
+  }, [user?.displayName, displayName]);
+
+  // Derived favorited templates from the catalog
+  const favoritedTemplates = TEMPLATES.filter((t) => bookmarkedIds.includes(t.id));
+
+  // Dynamic metrics computed directly from real jobs
+  const stats = computeWorkspaceStats(savedJobs);
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Preferences Saved", {
-      description: "Your workspace defaults and display name have been updated.",
-    });
+    setIsSavingProfile(true);
+    try {
+      await updateProfile({ displayName });
+      toast.success("Preferences Saved", {
+        description: "Your workspace profile and display name have been updated.",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update profile";
+      toast.error(msg);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleDownloadJob = (job: WorkspaceJob) => {
+    if (job.downloadUrl) {
+      const a = document.createElement("a");
+      a.href = job.downloadUrl;
+      a.download = job.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success(`Downloading ${job.name}`);
+    } else {
+      toast.info(`Ready for export: ${job.name}`, {
+        description: `Generated via ${job.tool} (${job.format}).`,
+      });
+    }
   };
 
   const handleDownloadPptx = async (t: (typeof TEMPLATES)[0]) => {
@@ -130,8 +165,8 @@ function AccountPage() {
             </h1>
             <p className="mt-3 text-sm text-foreground/70 leading-relaxed max-w-md mx-auto">
               DocuMind's tools and 110+ templates are accessible for everyone. Sign in or create a
-              free account to sync your document transformations and bookmarked designs across
-              devices.
+              free account to track your presentations, converted files, and bookmarked designs
+              across sessions.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button variant="hero" size="lg" onClick={() => setAuthOpen(true)}>
@@ -202,16 +237,18 @@ function AccountPage() {
                       Auth: {user.providerId === "google.com" ? "Google SSO" : "Email & Password"}
                     </span>
                     <span>•</span>
-                    <span>{isFirebaseConfigured ? "Firebase Cloud Sync" : "Local Workspace"}</span>
+                    <span>
+                      {isFirebaseConfigured ? "Firebase Cloud Sync" : "DocuMind Workspace"}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <Button variant="glass" size="sm" asChild>
-                  <a href="/#workspace">
-                    <FileText className="h-4 w-4 mr-1.5" /> Launch Workspace
-                  </a>
+                  <Link to="/presentation-maker">
+                    <Sparkles className="h-4 w-4 mr-1.5 text-primary" /> Presentation Maker
+                  </Link>
                 </Button>
                 <Button
                   variant="ghost"
@@ -227,26 +264,30 @@ function AccountPage() {
               </div>
             </div>
 
-            {/* Quick Metrics Strip */}
+            {/* Dynamic Real Metrics Strip */}
             <div className="mt-8 grid grid-cols-2 gap-4 border-t border-border pt-6 sm:grid-cols-4">
               <div>
                 <p className="text-[11px] font-mono text-muted-foreground uppercase">
                   Documents Handled
                 </p>
-                <p className="mt-1 font-serif text-2xl font-bold text-foreground">24</p>
+                <p className="mt-1 font-serif text-2xl font-bold text-foreground">
+                  {stats.documentsHandled}
+                </p>
               </div>
               <div>
                 <p className="text-[11px] font-mono text-muted-foreground uppercase">
                   Presentations Built
                 </p>
-                <p className="mt-1 font-serif text-2xl font-bold text-primary">8 Decks</p>
+                <p className="mt-1 font-serif text-2xl font-bold text-primary">
+                  {stats.presentationsBuilt} Decks
+                </p>
               </div>
               <div>
                 <p className="text-[11px] font-mono text-muted-foreground uppercase">
                   Data Storage Saved
                 </p>
                 <p className="mt-1 font-serif text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                  142 MB
+                  {stats.storageSaved}
                 </p>
               </div>
               <div>
@@ -305,57 +346,125 @@ function AccountPage() {
           {activeTab === "history" && (
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between text-xs text-muted-foreground font-mono">
-                <span>Recent Document Jobs (30-day retention)</span>
-                <span>All files processed deterministically</span>
+                <span>Recent Workspace Activity ({savedJobs.length} items)</span>
+                {savedJobs.length > 0 && (
+                  <button
+                    onClick={() => {
+                      clearWorkspaceHistory();
+                      toast.success("Workspace history cleared.");
+                    }}
+                    className="hover:text-destructive transition-colors text-[11px]"
+                  >
+                    Clear History
+                  </button>
+                )}
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xs">
-                <div className="divide-y divide-border">
-                  {savedJobs.map((job) => (
-                    <div
-                      key={job.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:px-6 gap-3 hover:bg-surface-2/50 transition-colors"
+              {savedJobs.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-card/60 p-12 text-center shadow-xs">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 mb-4">
+                    <FileText className="h-7 w-7" />
+                  </div>
+                  <h3 className="font-serif text-xl font-bold text-foreground">
+                    No document jobs yet
+                  </h3>
+                  <p className="mt-2 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                    Transform a document, generate an authentic presentation, or compress a PDF to
+                    start recording your workspace activity here.
+                  </p>
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
+                    <Button size="sm" variant="hero" asChild>
+                      <Link to="/presentation-maker">
+                        <Sparkles className="h-4 w-4 mr-1.5" /> Make Presentation
+                      </Link>
+                    </Button>
+                    <Button size="sm" variant="glass" asChild>
+                      <Link to="/document-studio">
+                        <FileText className="h-4 w-4 mr-1.5" /> Document Studio
+                      </Link>
+                    </Button>
+                    <Button size="sm" variant="glass" asChild>
+                      <Link to="/pdf-compressor">
+                        <Minimize2 className="h-4 w-4 mr-1.5" /> Compress PDF
+                      </Link>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs text-muted-foreground"
+                      onClick={() => {
+                        populateSampleWorkspaceHistory();
+                        toast.success("Loaded sample history preview.");
+                      }}
                     >
-                      <div className="flex items-start gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
-                          <FileText className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-foreground">{job.name}</p>
-                            <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase">
-                              {job.format}
-                            </span>
+                      Load Sample Preview
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xs">
+                  <div className="divide-y divide-border">
+                    {savedJobs.map((job) => (
+                      <div
+                        key={job.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:px-6 gap-3 hover:bg-surface-2/50 transition-colors"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                            {job.format === "PPTX" ? (
+                              <Sparkles className="h-4 w-4" />
+                            ) : job.format === "TXT" ? (
+                              <ScanText className="h-4 w-4" />
+                            ) : job.tool.toLowerCase().includes("compress") ? (
+                              <Minimize2 className="h-4 w-4" />
+                            ) : (
+                              <FileText className="h-4 w-4" />
+                            )}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground">{job.name}</p>
+                              <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase">
+                                {job.format}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {job.tool} • {job.originalSize}{" "}
+                              {job.resultSize && `→ ${job.resultSize}`}
+                            </p>
                           </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {job.tool} • {job.originalSize}{" "}
-                            {job.resultSize && `→ ${job.resultSize}`}
-                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3 text-xs font-mono">
+                          <span className="text-muted-foreground">{job.date}</span>
+                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-sans font-medium">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Ready
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="glass"
+                            className="h-8 text-xs"
+                            onClick={() => handleDownloadJob(job)}
+                          >
+                            <Download className="h-3.5 w-3.5 mr-1" /> Export
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              deleteWorkspaceJob(job.id);
+                              toast.success("Job removed from history.");
+                            }}
+                            title="Remove from history"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex items-center justify-between sm:justify-end gap-4 text-xs font-mono">
-                        <span className="text-muted-foreground">{job.date}</span>
-                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-sans font-medium">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Ready
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="glass"
-                          className="h-8 text-xs"
-                          onClick={() =>
-                            toast.success(`Exporting ${job.name}`, {
-                              description: "Ready for download.",
-                            })
-                          }
-                        >
-                          <Download className="h-3.5 w-3.5 mr-1" /> Download
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -366,50 +475,83 @@ function AccountPage() {
                 <p className="text-xs text-muted-foreground font-mono">
                   Saved Presentation Themes ({favoritedTemplates.length} of 110 Available)
                 </p>
-                <Link to="/" className="text-xs font-semibold text-primary hover:underline">
+                <Link
+                  to="/templates"
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
                   Browse Full Catalog →
                 </Link>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {favoritedTemplates.map((t) => (
-                  <div
-                    key={t.id}
-                    className="rounded-2xl border border-border bg-card p-4 shadow-paper flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary font-bold">
-                          {t.category}
-                        </span>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {t.slidesCount} slides
-                        </span>
-                      </div>
-                      <h3 className="mt-3 font-serif text-lg font-bold text-foreground">
-                        {t.name}
-                      </h3>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {t.description}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
-                      <Button
-                        size="sm"
-                        variant="glass"
-                        className="text-xs flex-1"
-                        onClick={() => handleDownloadPptx(t)}
-                      >
-                        <Download className="h-3.5 w-3.5 mr-1" /> PPTX
-                      </Button>
-                      <Button size="sm" variant="hero" className="text-xs flex-1" asChild>
-                        <a href="/#workspace">Use</a>
-                      </Button>
-                    </div>
+              {favoritedTemplates.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-card/60 p-12 text-center shadow-xs">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 mb-4">
+                    <Bookmark className="h-7 w-7" />
                   </div>
-                ))}
-              </div>
+                  <h3 className="font-serif text-xl font-bold text-foreground">
+                    No bookmarked templates yet
+                  </h3>
+                  <p className="mt-2 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                    Explore DocuMind's 110+ presentation themes and bookmark your favorites to
+                    quickly export or apply them in the studio.
+                  </p>
+                  <div className="mt-6">
+                    <Button size="sm" variant="hero" asChild>
+                      <Link to="/templates">
+                        <Sparkles className="h-4 w-4 mr-1.5" /> Explore 110+ Free Themes
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {favoritedTemplates.map((t) => (
+                    <div
+                      key={t.id}
+                      className="rounded-2xl border border-border bg-card p-4 shadow-paper flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary font-bold">
+                            {t.category}
+                          </span>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {t.slidesCount} slides
+                          </span>
+                        </div>
+                        <h3 className="mt-3 font-serif text-lg font-bold text-foreground">
+                          {t.name}
+                        </h3>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                          {t.description}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
+                        <Button
+                          size="sm"
+                          variant="glass"
+                          className="text-xs flex-1"
+                          onClick={() => handleDownloadPptx(t)}
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1" /> PPTX
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            toggleBookmarkTemplate(t.id);
+                            toast.success(`Removed "${t.name}" from bookmarks.`);
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -420,7 +562,7 @@ function AccountPage() {
                 Workspace Preferences
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Configure your default document processing parameters and layout presets.
+                Configure your document parameters, display name, and export preferences.
               </p>
 
               <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
@@ -432,7 +574,7 @@ function AccountPage() {
                     type="text"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Your Name"
+                    placeholder="Your Full Name"
                     className="w-full rounded-lg border border-border bg-surface-2 px-3.5 py-2 text-sm text-foreground focus:border-primary focus:outline-hidden"
                   />
                 </div>
@@ -465,8 +607,8 @@ function AccountPage() {
                 </div>
 
                 <div className="pt-4 border-t border-border flex items-center justify-between">
-                  <Button type="submit" variant="hero" size="sm">
-                    Save Workspace Defaults
+                  <Button type="submit" variant="hero" size="sm" disabled={isSavingProfile}>
+                    {isSavingProfile ? "Saving..." : "Save Workspace Defaults"}
                   </Button>
                   <Button
                     type="button"
@@ -474,10 +616,10 @@ function AccountPage() {
                     size="sm"
                     onClick={() => {
                       localStorage.removeItem("documind_auth_session");
-                      toast.info("Local Cache Cleared");
+                      toast.info("Session Cache Reset");
                     }}
                   >
-                    Clear Local Cache
+                    Reset Session Cache
                   </Button>
                 </div>
               </form>
