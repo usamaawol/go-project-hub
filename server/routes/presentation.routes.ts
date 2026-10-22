@@ -15,7 +15,8 @@ const router = Router();
  */
 router.post("/presentations/generate", async (req: Request, res: Response) => {
   try {
-    const { title, content, purpose, density, theme, typography, slideCount } = req.body;
+    const { title, content, purpose, density, theme, typography, slideCount, geminiApiKey } = req.body;
+    const headerApiKey = req.headers["x-gemini-api-key"] as string | undefined;
 
     if (!theme || !theme.name) {
       return res.status(400).json({
@@ -35,6 +36,7 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
         fontSizePreset: typography?.fontSizePreset || "standard",
       },
       slideCount: Number(slideCount) || 8,
+      geminiApiKey: geminiApiKey || headerApiKey,
     };
 
     const session = await createPresentationSession(input);
@@ -48,9 +50,15 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
         expiresAt: session.expiresAt,
         secondsRemaining: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000)),
         theme: {
+          id: session.theme.id,
           name: session.theme.name,
           category: session.theme.category,
+          kind: session.theme.kind,
+          colors: session.theme.colors,
+          fonts: session.theme.fonts,
+          tier: session.theme.tier,
         },
+        typography: session.typography,
         slides: session.slides,
         downloadUrl: `/api/presentations/${session.id}/download`,
       },

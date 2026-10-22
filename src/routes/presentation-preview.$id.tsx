@@ -31,6 +31,8 @@ import {
   type SlidePreviewItem,
 } from "@/lib/api-client";
 import { generateAndDownloadClientPptx } from "@/lib/presentation-session-client";
+import { computeThemeTokens } from "@/lib/presentation-theme";
+import { buildContextualVisual } from "@/lib/presentation-visual-generator";
 
 export const Route = createFileRoute("/presentation-preview/$id")({
   head: () => ({
@@ -331,12 +333,38 @@ export function PresentationPreviewPage() {
     );
   }
 
-  // Active Presentation Preview Screen
+  // Active Presentation Preview Screen — Tokens computed from unified theme design system
+  const tokens = computeThemeTokens(session.theme, session.typography);
   const theme = session.theme;
-  const primaryColor = theme.colors.primary || "#0F172A";
-  const accentColor = theme.colors.accent || "#2563EB";
-  const bgColor = theme.colors.bg || "#FFFFFF";
-  const fontFamily = session.typography.fontFamily || "Inter";
+  const primaryColor = tokens.textPrimary;
+  const accentColor = tokens.accent;
+  const bgColor = tokens.bg;
+  const fontFamily = tokens.fontBody;
+
+  const renderSlideHeader = (slide: SlidePreviewItem) => (
+    <div>
+      <h2
+        className={`${
+          slide.title.length > 70
+            ? "text-xl sm:text-2xl lg:text-3xl"
+            : slide.title.length > 40
+              ? "text-2xl sm:text-3xl lg:text-4xl"
+              : "text-2xl sm:text-4xl"
+        } font-bold tracking-tight leading-tight line-clamp-2`}
+        style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+      >
+        {slide.title}
+      </h2>
+      {slide.subtitle && (
+        <p
+          className="mt-1 text-xs sm:text-sm italic line-clamp-2"
+          style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+        >
+          {slide.subtitle}
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -479,67 +507,162 @@ export function PresentationPreviewPage() {
                   />
 
                   {/* Header / Layout Badge */}
-                  <div className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase border-b border-black/10 dark:border-white/10 pb-3">
+                  <div
+                    className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase pb-3 border-b"
+                    style={{ borderColor: tokens.dividerColor }}
+                  >
                     <div className="flex items-center gap-2">
                       <span
                         className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: accentColor }}
+                        style={{ backgroundColor: tokens.accent }}
                       />
-                      <span style={{ color: accentColor }} className="font-bold">
+                      <span style={{ color: tokens.accent }} className="font-bold">
                         Slide 0{currentSlide.slideNumber} // {currentSlide.layout}
                       </span>
                     </div>
-                    <span className="text-muted-foreground opacity-75">{session.purpose}</span>
+                    <span style={{ color: tokens.textMuted }}>{session.purpose}</span>
                   </div>
 
                   {/* Dynamic Slide Body Layouts */}
                   <div className="my-auto py-4">
+                    {/* 1. TITLE / COVER */}
                     {currentSlide.layout === "title" && (
-                      <div className="max-w-3xl space-y-4">
+                      <div className="max-w-4xl space-y-4">
                         <div
-                          className="h-1.5 w-16 rounded-full"
-                          style={{ backgroundColor: accentColor }}
-                        />
-                        <h2 className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-tight">
+                          className="inline-flex items-center gap-2 px-3 py-1 rounded-lg border text-[11px] font-mono font-bold tracking-wider uppercase"
+                          style={{
+                            backgroundColor: tokens.cardBg,
+                            borderColor: tokens.accent,
+                            color: tokens.accent,
+                          }}
+                        >
+                          {(
+                            currentSlide.categoryTag ||
+                            session.purpose ||
+                            "STRATEGIC OVERVIEW"
+                          ).toUpperCase()}
+                        </div>
+                        <h2
+                          className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-tight"
+                          style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                        >
                           {currentSlide.title}
                         </h2>
                         {currentSlide.subtitle && (
-                          <p className="text-base sm:text-xl text-muted-foreground/90 font-medium">
+                          <p
+                            className="text-base sm:text-xl font-medium"
+                            style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                          >
                             {currentSlide.subtitle}
                           </p>
                         )}
+                        <div
+                          className="h-1 w-24 rounded-full mt-4"
+                          style={{ backgroundColor: tokens.accent }}
+                        />
                       </div>
                     )}
 
-                    {currentSlide.layout === "metrics" && (
-                      <div className="space-y-6">
-                        <div>
-                          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">
+                    {/* 2. AGENDA */}
+                    {currentSlide.layout === "agenda" && (
+                      <div className="space-y-5">
+                        {renderSlideHeader(currentSlide)}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+                          {(currentSlide.bullets || []).map((topic, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-3.5 rounded-xl border p-3.5 transition-all"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.cardBorder,
+                                color: tokens.cardText,
+                              }}
+                            >
+                              <span
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold font-mono text-white"
+                                style={{ backgroundColor: tokens.accent }}
+                              >
+                                0{idx + 1}
+                              </span>
+                              <span className="text-xs sm:text-sm font-semibold">{topic}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3. SECTION HEADER */}
+                    {currentSlide.layout === "section-header" && (
+                      <div
+                        className="rounded-2xl border p-8 sm:p-12 flex items-center gap-8"
+                        style={{
+                          backgroundColor: tokens.cardBg,
+                          borderColor: tokens.accent,
+                        }}
+                      >
+                        <div
+                          className="text-5xl sm:text-7xl font-mono font-bold"
+                          style={{ color: tokens.accent, fontFamily: tokens.fontTitle }}
+                        >
+                          0{currentSlide.slideNumber}
+                        </div>
+                        <div className="space-y-2">
+                          <h2
+                            className="text-2xl sm:text-4xl font-bold tracking-tight"
+                            style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                          >
                             {currentSlide.title}
                           </h2>
                           {currentSlide.subtitle && (
-                            <p className="mt-1 text-xs sm:text-sm text-muted-foreground italic">
+                            <p
+                              className="text-sm sm:text-base"
+                              style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                            >
                               {currentSlide.subtitle}
                             </p>
                           )}
                         </div>
+                      </div>
+                    )}
+
+                    {/* 4. METRICS / TELEMETRY */}
+                    {currentSlide.layout === "metrics" && (
+                      <div className="space-y-5">
+                        {renderSlideHeader(currentSlide)}
 
                         {currentSlide.metrics && (
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                             {currentSlide.metrics.map((m, mIdx) => (
                               <div
                                 key={mIdx}
-                                className="rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 p-5 shadow-xs"
+                                className="rounded-2xl border p-5 shadow-xs flex flex-col justify-between"
+                                style={{
+                                  backgroundColor: tokens.cardBg,
+                                  borderColor: tokens.cardBorder,
+                                }}
                               >
                                 <div
+                                  className="h-1 w-8 rounded-full mb-3"
+                                  style={{ backgroundColor: tokens.accent }}
+                                />
+                                <div
                                   className="text-3xl sm:text-4xl font-mono font-bold"
-                                  style={{ color: accentColor }}
+                                  style={{ color: tokens.accent, fontFamily: tokens.fontTitle }}
                                 >
                                   {m.value}
                                 </div>
-                                <div className="mt-2 text-sm font-semibold">{m.label}</div>
+                                <div
+                                  className="mt-2 text-sm font-semibold"
+                                  style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                                >
+                                  {m.label}
+                                </div>
                                 {m.description && (
-                                  <div className="mt-1 text-xs text-muted-foreground">
+                                  <div
+                                    className="mt-1 text-xs"
+                                    style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
+                                  >
                                     {m.description}
                                   </div>
                                 )}
@@ -550,14 +673,21 @@ export function PresentationPreviewPage() {
                       </div>
                     )}
 
+                    {/* 5. TWO-COLUMN COMPARISON */}
                     {currentSlide.layout === "two-column" && (
-                      <div className="space-y-6">
+                      <div className="space-y-5">
                         <div>
-                          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">
+                          <h2
+                            className="text-2xl sm:text-4xl font-bold tracking-tight"
+                            style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                          >
                             {currentSlide.title}
                           </h2>
                           {currentSlide.subtitle && (
-                            <p className="mt-1 text-xs sm:text-sm text-muted-foreground italic">
+                            <p
+                              className="mt-1 text-xs sm:text-sm italic"
+                              style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                            >
                               {currentSlide.subtitle}
                             </p>
                           )}
@@ -565,16 +695,33 @@ export function PresentationPreviewPage() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
                           {currentSlide.leftColumn && (
-                            <div className="rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 p-5">
-                              <h3 className="font-bold text-sm sm:text-base border-b border-black/10 pb-2">
+                            <div
+                              className="rounded-2xl border p-5"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.cardBorder,
+                              }}
+                            >
+                              <h3
+                                className="font-bold text-sm sm:text-base border-b pb-2"
+                                style={{
+                                  color: tokens.cardText,
+                                  borderColor: tokens.dividerColor,
+                                  fontFamily: tokens.fontTitle,
+                                }}
+                              >
                                 {currentSlide.leftColumn.title}
                               </h3>
-                              <ul className="mt-3 space-y-2 text-xs sm:text-sm text-muted-foreground">
+                              <ul className="mt-3 space-y-2 text-xs sm:text-sm">
                                 {currentSlide.leftColumn.bullets.map((b, bIdx) => (
-                                  <li key={bIdx} className="flex items-start gap-2">
+                                  <li
+                                    key={bIdx}
+                                    className="flex items-start gap-2"
+                                    style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                                  >
                                     <span
                                       className="h-1.5 w-1.5 rounded-full mt-2 shrink-0"
-                                      style={{ backgroundColor: accentColor }}
+                                      style={{ backgroundColor: tokens.accent }}
                                     />
                                     <span>{b}</span>
                                   </li>
@@ -585,21 +732,32 @@ export function PresentationPreviewPage() {
 
                           {currentSlide.rightColumn && (
                             <div
-                              className="rounded-2xl border p-5 bg-black/5 dark:bg-white/5"
-                              style={{ borderColor: accentColor }}
+                              className="rounded-2xl border p-5"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.accent,
+                              }}
                             >
                               <h3
-                                className="font-bold text-sm sm:text-base border-b border-black/10 pb-2"
-                                style={{ color: accentColor }}
+                                className="font-bold text-sm sm:text-base border-b pb-2"
+                                style={{
+                                  color: tokens.accent,
+                                  borderColor: tokens.dividerColor,
+                                  fontFamily: tokens.fontTitle,
+                                }}
                               >
                                 {currentSlide.rightColumn.title}
                               </h3>
-                              <ul className="mt-3 space-y-2 text-xs sm:text-sm text-muted-foreground">
+                              <ul className="mt-3 space-y-2 text-xs sm:text-sm">
                                 {currentSlide.rightColumn.bullets.map((b, bIdx) => (
-                                  <li key={bIdx} className="flex items-start gap-2">
+                                  <li
+                                    key={bIdx}
+                                    className="flex items-start gap-2"
+                                    style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                                  >
                                     <span
                                       className="h-1.5 w-1.5 rounded-full mt-2 shrink-0"
-                                      style={{ backgroundColor: accentColor }}
+                                      style={{ backgroundColor: tokens.accent }}
                                     />
                                     <span>{b}</span>
                                   </li>
@@ -611,30 +769,359 @@ export function PresentationPreviewPage() {
                       </div>
                     )}
 
-                    {(currentSlide.layout === "content" ||
-                      currentSlide.layout === "agenda" ||
-                      currentSlide.layout === "conclusion") && (
-                      <div className="space-y-5 max-w-4xl">
+                    {/* 6. THREE-CARD PILLARS */}
+                    {currentSlide.layout === "three-card" && (
+                      <div className="space-y-5">
+                        {renderSlideHeader(currentSlide)}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                          {(currentSlide.cards || []).map((card, cIdx) => (
+                            <div
+                              key={cIdx}
+                              className="rounded-2xl border p-5 space-y-3"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.cardBorder,
+                              }}
+                            >
+                              <span
+                                className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold text-white uppercase"
+                                style={{ backgroundColor: tokens.accent }}
+                              >
+                                {card.tag || `PILLAR 0${cIdx + 1}`}
+                              </span>
+                              <h4
+                                className="text-base font-bold"
+                                style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                              >
+                                {card.title}
+                              </h4>
+                              <p
+                                className="text-xs leading-relaxed"
+                                style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
+                              >
+                                {card.description}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 7. TIMELINE & PHASES */}
+                    {currentSlide.layout === "timeline" && (
+                      <div className="space-y-6">
+                        {renderSlideHeader(currentSlide)}
+
+                        <div className="relative pt-6">
+                          <div
+                            className="absolute top-10 left-6 right-6 h-1 rounded-full"
+                            style={{ backgroundColor: tokens.dividerColor }}
+                          />
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 relative z-10">
+                            {(currentSlide.timeline || []).map((t, tIdx) => (
+                              <div key={tIdx} className="space-y-3 text-center sm:text-left">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="h-4 w-4 rounded-full border-2 border-white ring-2"
+                                    style={{ backgroundColor: tokens.accent }}
+                                  />
+                                  <span
+                                    className="font-mono text-xs font-bold uppercase"
+                                    style={{ color: tokens.accent }}
+                                  >
+                                    {t.phase}
+                                  </span>
+                                </div>
+                                <h4
+                                  className="text-sm sm:text-base font-bold"
+                                  style={{
+                                    color: tokens.textPrimary,
+                                    fontFamily: tokens.fontTitle,
+                                  }}
+                                >
+                                  {t.title}
+                                </h4>
+                                <p
+                                  className="text-xs leading-relaxed"
+                                  style={{
+                                    color: tokens.textSecondary,
+                                    fontFamily: tokens.fontBody,
+                                  }}
+                                >
+                                  {t.description}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 8. PROCESS WORKFLOW */}
+                    {currentSlide.layout === "process" && (
+                      <div className="space-y-5">
+                        {renderSlideHeader(currentSlide)}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 pt-2">
+                          {(currentSlide.processSteps || []).map((step, sIdx) => (
+                            <div
+                              key={sIdx}
+                              className="rounded-2xl border p-4 space-y-2.5"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.cardBorder,
+                              }}
+                            >
+                              <div
+                                className="h-8 w-8 rounded-full flex items-center justify-center font-bold text-white text-sm"
+                                style={{ backgroundColor: tokens.accent }}
+                              >
+                                {step.stepNumber || sIdx + 1}
+                              </div>
+                              <h4
+                                className="text-sm font-bold"
+                                style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                              >
+                                {step.title}
+                              </h4>
+                              <p
+                                className="text-xs leading-relaxed"
+                                style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
+                              >
+                                {step.description}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 9. QUOTE / STANDOUT TAKEAWAY */}
+                    {currentSlide.layout === "quote" && (
+                      <div
+                        className="rounded-3xl border p-8 sm:p-12 space-y-4 max-w-4xl mx-auto"
+                        style={{
+                          backgroundColor: tokens.cardBg,
+                          borderColor: tokens.accent,
+                        }}
+                      >
+                        <span
+                          className="text-5xl sm:text-6xl font-serif font-bold leading-none block"
+                          style={{ color: tokens.accent }}
+                        >
+                          “
+                        </span>
+                        <blockquote
+                          className="text-lg sm:text-2xl font-serif italic leading-relaxed"
+                          style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                        >
+                          {currentSlide.quote?.text ||
+                            currentSlide.subtitle ||
+                            currentSlide.bullets?.[0]}
+                        </blockquote>
+                        {currentSlide.quote?.author && (
+                          <div
+                            className="pt-2 border-t text-xs sm:text-sm font-semibold"
+                            style={{ borderColor: tokens.dividerColor, color: tokens.accent }}
+                          >
+                            — {currentSlide.quote.author}{" "}
+                            {currentSlide.quote.role ? `• ${currentSlide.quote.role}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 10. TEXT WITH VISUAL / DIAGRAM / PICTURE */}
+                    {(currentSlide.layout === "text-visual" ||
+                      currentSlide.layout === "image-led") && (
+                      <div className="space-y-4">
                         <div>
-                          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">
+                          <h2
+                            className={`${
+                              currentSlide.title.length > 70
+                                ? "text-xl sm:text-2xl lg:text-3xl"
+                                : currentSlide.title.length > 40
+                                  ? "text-2xl sm:text-3xl lg:text-4xl"
+                                  : "text-2xl sm:text-4xl"
+                            } font-bold tracking-tight leading-tight line-clamp-2`}
+                            style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                          >
                             {currentSlide.title}
                           </h2>
                           {currentSlide.subtitle && (
-                            <p className="mt-1 text-xs sm:text-sm text-muted-foreground italic">
+                            <p
+                              className="mt-1 text-xs sm:text-sm italic line-clamp-2"
+                              style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                            >
+                              {currentSlide.subtitle}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6 items-center pt-2">
+                          {currentSlide.bullets && (
+                            <ul className="space-y-3 text-sm sm:text-base">
+                              {currentSlide.bullets.map((b, idx) => (
+                                <li
+                                  key={idx}
+                                  className="flex items-start gap-3"
+                                  style={{ color: tokens.textPrimary, fontFamily: tokens.fontBody }}
+                                >
+                                  <span
+                                    className="h-2 w-2 rounded-full mt-2 shrink-0"
+                                    style={{ backgroundColor: tokens.accent }}
+                                  />
+                                  <span className="leading-relaxed">{b}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          {/* Contextual Visual Asset Box */}
+                          {(() => {
+                            const visualData = currentSlide.visual?.imageUrl
+                              ? {
+                                  imageUrl: currentSlide.visual.imageUrl,
+                                  type: currentSlide.visual.type || "picture",
+                                  concept: currentSlide.visual.concept || currentSlide.title,
+                                  caption: currentSlide.visual.caption || currentSlide.subtitle,
+                                }
+                              : buildContextualVisual({
+                                  title: currentSlide.title,
+                                  subtitle: currentSlide.subtitle,
+                                  bullets: currentSlide.bullets,
+                                  accentColor: tokens.accent,
+                                  isDark: tokens.isDark,
+                                });
+
+                            return (
+                              <div
+                                className="rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2.5 shadow-xs transition-all"
+                                style={{
+                                  backgroundColor: tokens.cardBg,
+                                  borderColor: tokens.cardBorder,
+                                }}
+                              >
+                                <div className="w-full flex items-center justify-between px-1">
+                                  <span
+                                    className="text-[10px] font-mono uppercase font-bold tracking-wider"
+                                    style={{ color: tokens.accent }}
+                                  >
+                                    {(visualData.type || "VISUAL").toUpperCase()} //{" "}
+                                    {(visualData.concept || "CONCEPT MATRIX").slice(0, 24)}
+                                  </span>
+                                  <span
+                                    className="text-[9px] font-mono px-2 py-0.5 rounded-full border"
+                                    style={{
+                                      borderColor: tokens.cardBorder,
+                                      color: tokens.cardMuted,
+                                    }}
+                                  >
+                                    16:9 Vector
+                                  </span>
+                                </div>
+
+                                <div
+                                  className="w-full rounded-xl overflow-hidden border flex items-center justify-center bg-black/5 min-h-[190px] max-h-[250px]"
+                                  style={{ borderColor: tokens.cardBorder }}
+                                >
+                                  <img
+                                    src={visualData.imageUrl}
+                                    alt={visualData.concept || "Slide visual asset"}
+                                    className="w-full h-auto max-h-[240px] object-contain rounded-lg"
+                                  />
+                                </div>
+
+                                <span
+                                  className="text-[11px] italic px-1 line-clamp-1"
+                                  style={{ color: tokens.cardMuted }}
+                                >
+                                  {visualData.caption ||
+                                    currentSlide.subtitle ||
+                                    "Visual representation & structural topology"}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 11. CONCLUSION */}
+                    {currentSlide.layout === "conclusion" && (
+                      <div
+                        className="rounded-2xl border p-6 sm:p-8 space-y-5"
+                        style={{
+                          backgroundColor: tokens.cardBg,
+                          borderColor: tokens.cardBorder,
+                        }}
+                      >
+                        <div>
+                          <span
+                            className="text-[10px] font-mono uppercase font-bold tracking-wider"
+                            style={{ color: tokens.accent }}
+                          >
+                            SYNTHESIS & ACTION CHECKLIST
+                          </span>
+                          <h2
+                            className="text-2xl sm:text-3xl font-bold tracking-tight mt-1"
+                            style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                          >
+                            {currentSlide.title}
+                          </h2>
+                          {currentSlide.subtitle && (
+                            <p
+                              className="text-xs sm:text-sm mt-0.5"
+                              style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
+                            >
                               {currentSlide.subtitle}
                             </p>
                           )}
                         </div>
 
                         {currentSlide.bullets && currentSlide.bullets.length > 0 && (
-                          <ul className="space-y-3 pt-2 text-sm sm:text-lg">
+                          <ul className="space-y-3 pt-2">
+                            {currentSlide.bullets.map((b, idx) => (
+                              <li key={idx} className="flex items-start gap-3">
+                                <span
+                                  className="h-5 w-5 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5"
+                                  style={{ backgroundColor: tokens.accent }}
+                                >
+                                  ✓
+                                </span>
+                                <span
+                                  className="text-xs sm:text-sm leading-relaxed"
+                                  style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                                >
+                                  {b}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 12. STANDARD CONTENT */}
+                    {currentSlide.layout === "content" && (
+                      <div className="space-y-5 max-w-4xl">
+                        {renderSlideHeader(currentSlide)}
+
+                        {currentSlide.bullets && currentSlide.bullets.length > 0 && (
+                          <ul className="space-y-3.5 pt-2 text-sm sm:text-base">
                             {currentSlide.bullets.map((bullet, idx) => (
                               <li key={idx} className="flex items-start gap-3">
                                 <span
                                   className="h-2 w-2 rounded-full mt-2.5 shrink-0"
-                                  style={{ backgroundColor: accentColor }}
+                                  style={{ backgroundColor: tokens.accent }}
                                 />
-                                <span className="leading-relaxed">{bullet}</span>
+                                <span
+                                  className="leading-relaxed"
+                                  style={{ color: tokens.textPrimary, fontFamily: tokens.fontBody }}
+                                >
+                                  {bullet}
+                                </span>
                               </li>
                             ))}
                           </ul>
@@ -644,8 +1131,11 @@ export function PresentationPreviewPage() {
                   </div>
 
                   {/* Slide Footer */}
-                  <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground border-t border-black/10 dark:border-white/10 pt-3">
-                    <span>DocuMind Vector PowerPoint Studio</span>
+                  <div
+                    className="flex items-center justify-between text-[10px] font-mono pt-3 border-t"
+                    style={{ borderColor: tokens.dividerColor, color: tokens.textMuted }}
+                  >
+                    <span>DocuMind Vector PowerPoint Studio | {tokens.name}</span>
                     <span>
                       Slide {currentSlide.slideNumber} of {slides.length}
                     </span>

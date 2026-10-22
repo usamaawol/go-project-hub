@@ -469,4 +469,61 @@ Submersibles must withstand ambient pressures exceeding 1,000 atmospheres.`;
     // Clean up
     clearWorkspaceHistory();
   });
+
+  it("Scenario 21: Document Studio transforms raw prompt/video brief into executive editorial layout with callouts, scene cards, and color tokens", async () => {
+    const {
+      parseDocumentSections,
+      deriveDocumentMetadata,
+      sampleVideoBriefText,
+    } = await import("../components/workspace/DocumentFormattingWorkflow");
+
+    // 1. Verify Metadata Derivation
+    const metadata = deriveDocumentMetadata(sampleVideoBriefText);
+    expect(metadata.docTitle).not.toBe("1.0 Introduction & Context");
+    expect(metadata.docTitle).toContain("Promotional Video");
+    expect(metadata.recommendedArchetype).toBe("creative");
+
+    // 2. Verify Section Parsing with Decimal Numbering
+    const sections = parseDocumentSections(sampleVideoBriefText, "decimal");
+    expect(sections.length).toBeGreaterThanOrEqual(4);
+
+    // Section 1: 1.0 Introduction & Context
+    expect(sections[0]?.numberStr).toBe("1.0 ");
+    expect(sections[0]?.title).toBe("Introduction & Context");
+    expect(sections[0]?.blocks.some((b) => b.type === "parameter" && b.key === "Duration")).toBe(
+      true,
+    );
+
+    // Section 2: 2.0 CRITICAL CONTINUITY REQUIREMENT
+    // Should be Level 1 (major section, NOT subsection 1.1)
+    expect(sections[1]?.level).toBe(1);
+    expect(sections[1]?.numberStr).toBe("2.0 ");
+    expect(sections[1]?.title).toContain("CRITICAL CONTINUITY REQUIREMENT");
+
+    // Must have a Callout Block with critical guardrail
+    const calloutBlock = sections[1]?.blocks.find((b) => b.type === "callout");
+    expect(calloutBlock).toBeDefined();
+    expect(calloutBlock?.calloutType).toBe("critical");
+    expect(calloutBlock?.content).toContain("final frame of Part 1");
+
+    // Must have a Palette Block with extracted design tokens
+    const paletteBlock = sections[1]?.blocks.find((b) => b.type === "palette");
+    expect(paletteBlock).toBeDefined();
+    expect(paletteBlock?.colors?.length).toBeGreaterThanOrEqual(3);
+    const hexes = paletteBlock?.colors?.map((c) => c.hex.toLowerCase());
+    expect(hexes).toContain("#0a1128");
+    expect(hexes).toContain("#00e5ff");
+    expect(hexes).toContain("#ffb703");
+
+    // Section 3: 3.0 SCENE 1 — 0–10 SECONDS: THE FRICTION (THE OLD WAY)
+    expect(sections[2]?.level).toBe(1);
+    expect(sections[2]?.numberStr).toBe("3.0 ");
+
+    // Must have a Scene Block with timestamp and visual/audio cues
+    const sceneBlock = sections[2]?.blocks.find((b) => b.type === "scene");
+    expect(sceneBlock).toBeDefined();
+    expect(sceneBlock?.sceneMeta?.timestamp).toContain("0–10");
+    expect(sceneBlock?.sceneMeta?.visual).toContain("Split-screen montage");
+    expect(sceneBlock?.sceneMeta?.audio).toContain("Knowledge teams spend 68%");
+  });
 });

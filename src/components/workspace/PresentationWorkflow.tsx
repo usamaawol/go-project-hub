@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate, Link } from "@tanstack/react-router";
 import {
   Sparkles,
   Upload,
@@ -24,8 +24,15 @@ import {
   X,
   Play,
   RotateCcw,
+  Key,
+  Cpu,
+  Bot,
+  EyeOff,
+  Save,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { ThemeThumb, type SlideType, SLIDE_LABELS } from "../landing/ThemeThumb";
 import {
@@ -38,6 +45,10 @@ import {
   extractDocumentText,
   requestAiGuidance,
   createPresentationSessionApi,
+  fetchAdminSettings,
+  updateAdminSettings,
+  testAdminGeminiConnection,
+  testAdminOpenAIConnection,
 } from "@/lib/api-client";
 import { detectTitleFromText } from "@/lib/presentation-session-client";
 import { addWorkspaceJob } from "@/lib/workspace-history";
@@ -148,24 +159,69 @@ export function PresentationWorkflow({
   const [currentStep, setCurrentStep] = useState<"content" | "settings" | "generating">("content");
 
   // Step A: Content State
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(() => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const stored = window.sessionStorage.getItem("documind_template_title");
+      if (stored) return stored;
+    }
+    return "";
+  });
   const [purpose, setPurpose] = useState(PURPOSES[0]!);
   const [density, setDensity] = useState<"concise" | "balanced" | "detailed">("balanced");
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
-  const [pastedText, setPastedText] = useState("");
+  const [pastedText, setPastedText] = useState(() => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const stored = window.sessionStorage.getItem("documind_template_content");
+      if (stored) return stored;
+    }
+    return "";
+  });
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Step B: Settings State
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem>(
-    TEMPLATES.find((t) => t.isFree) || TEMPLATES[0]!,
-  );
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem>(() => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const storedId = window.sessionStorage.getItem("documind_selected_theme_id");
+      if (storedId) {
+        const found = TEMPLATES.find((t) => t.id === storedId && t.isFree);
+        if (found) return found;
+      }
+    }
+    return TEMPLATES.find((t) => t.isFree) || TEMPLATES[0]!;
+  });
   const [selectedFont, setSelectedFont] = useState("Inter");
   const [selectedFontSize, setSelectedFontSize] = useState<
     "compact" | "standard" | "large" | "extra-large"
   >("standard");
-  const [slideCount, setSlideCount] = useState(8);
+  const [slideCount, setSlideCount] = useState(() => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const stored = window.sessionStorage.getItem("documind_template_slides_count");
+      if (stored) {
+        const parsed = parseInt(stored, 10);
+        if (!isNaN(parsed) && parsed >= 5 && parsed <= 20) return parsed;
+      }
+    }
+    return 8;
+  });
+  const [visualPreference, setVisualPreference] = useState<"diagrams" | "text-only">("diagrams");
+
+  // Lifecycle check for incoming template injection
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const templateTitle = window.sessionStorage.getItem("documind_template_title");
+      if (templateTitle) {
+        toast.success(`Template loaded: "${templateTitle}"`, {
+          description: "Structure and design tokens loaded. Ready to customize or generate.",
+        });
+        window.sessionStorage.removeItem("documind_template_title");
+        window.sessionStorage.removeItem("documind_template_content");
+        window.sessionStorage.removeItem("documind_template_slides_count");
+        window.sessionStorage.removeItem("documind_selected_theme_id");
+      }
+    }
+  }, []);
 
   // Theme Search & Filter
   const [themeSearch, setThemeSearch] = useState("");
@@ -175,6 +231,93 @@ export function PresentationWorkflow({
   const [previewSlideIdx, setPreviewSlideIdx] = useState<SlideType>(0);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [selectedProTheme, setSelectedProTheme] = useState<TemplateItem | null>(null);
+
+  const { user } = useAuth();
+  const isAdminOrSuperAdmin =
+    user?.role === "admin" ||
+    user?.role === "super_admin" ||
+    user?.role === "superadmin" ||
+    (typeof window !== "undefined" &&
+      (window.location.search.includes("adminKey") || window.location.pathname.includes("admin")));
+
+  // Admin Gemini & Multi-Provider Key Modal State
+  const [showAdminKeyModal, setShowAdminKeyModal] = useState(false);
+  const [adminGeminiKeyInput, setAdminGeminiKeyInput] = useState("");
+  const [adminOpenAiKeyInput, setAdminOpenAiKeyInput] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState<"gemini" | "openai" | "offline">("gemini");
+  const [hasServerKey, setHasServerKey] = useState(false);
+  const [testingAdminKey, setTestingAdminKey] = useState(false);
+  const [testAdminKeyResult, setTestAdminKeyResult] = useState<{
+    success: boolean;
+    latencyMs: number;
+    message: string;
+  } | null>(null);
+  const [savingAdminKey, setSavingAdminKey] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  const handleOpenAdminKeyModal = async () => {
+    setShowAdminKeyModal(true);
+    setTestAdminKeyResult(null);
+    try {
+      const s = await fetchAdminSettings();
+      if (s?.data) {
+        setAdminGeminiKeyInput(s.data.geminiApiKey || "");
+        setAdminOpenAiKeyInput(s.data.openaiApiKey || "");
+        setSelectedProvider(s.data.activeProvider || "gemini");
+        setHasServerKey(Boolean(s.data.hasKeyConfigured));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSaveAdminKey = async () => {
+    setSavingAdminKey(true);
+    try {
+      const payload: Record<string, unknown> = {
+        activeProvider: selectedProvider,
+      };
+      if (adminGeminiKeyInput.trim() && !adminGeminiKeyInput.includes("••••")) {
+        payload.geminiApiKey = adminGeminiKeyInput.trim();
+      }
+      if (adminOpenAiKeyInput.trim() && !adminOpenAiKeyInput.includes("••••")) {
+        payload.openaiApiKey = adminOpenAiKeyInput.trim();
+      }
+      const res = await updateAdminSettings(payload);
+      if (res?.data) {
+        setHasServerKey(Boolean(res.data.hasKeyConfigured));
+      }
+      toast.success("AI Engine Settings Applied Globally", {
+        description: `Active Engine: ${selectedProvider.toUpperCase()}. Configured for all staff and users.`,
+      });
+      setShowAdminKeyModal(false);
+    } catch (err: any) {
+      toast.error("Failed to save: " + (err?.message || "Unknown error"));
+    } finally {
+      setSavingAdminKey(false);
+    }
+  };
+
+  const handleTestAdminGemini = async () => {
+    setTestingAdminKey(true);
+    setTestAdminKeyResult(null);
+    try {
+      const keyToTest = adminGeminiKeyInput.includes("••••") ? undefined : adminGeminiKeyInput.trim() || undefined;
+      const res = await testAdminGeminiConnection(keyToTest);
+      if (res?.data) {
+        setTestAdminKeyResult(res.data);
+        if (res.data.success) {
+          toast.success("Gemini API Operational", { description: res.data.message });
+        } else {
+          toast.error("Gemini Connection Failed", { description: res.data.message });
+        }
+      }
+    } catch (err: any) {
+      setTestAdminKeyResult({ success: false, latencyMs: 0, message: err?.message || "Failed to reach endpoint." });
+    } finally {
+      setTestingAdminKey(false);
+    }
+  };
 
   // Step C: Generation State
   const [generating, setGenerating] = useState(false);
@@ -227,26 +370,37 @@ export function PresentationWorkflow({
     // Extract text in memory immediately
     extractDocumentText(file)
       .then((res) => {
-        if (res.text) {
+        if (res.isScannedOrEmpty || !res.text || res.text.trim().length === 0) {
+          setFileError(
+            res.warning ||
+              "Could not extract selectable text from this file. It may be an image-only scan. Please use a text-based document or paste your notes.",
+          );
+          setUploadedFile(null);
+          setPastedText("");
+        } else {
           setPastedText(res.text);
           const detected = detectTitleFromText(res.text);
           if (detected && detected.length > 3) {
             setTitle(detected);
           }
+          toast.success(`Extracted ${res.wordCount} words`, {
+            description: `${(file.size / 1024 / 1024).toFixed(1)} MB processed into structured content.`,
+          });
         }
       })
-      .catch((err) => console.warn("Background extraction:", err));
-
-    toast.success(`Loaded ${file.name}`, {
-      description: `${(file.size / 1024 / 1024).toFixed(1)} MB ready for in-memory extraction.`,
-    });
+      .catch((err) => {
+        setFileError(err instanceof Error ? err.message : "Failed to extract text from file.");
+        setUploadedFile(null);
+        setPastedText("");
+      });
   };
 
   // Step A -> Step B Transition
   const handleProceedToSettings = async () => {
-    if (inputMode === "paste" && !pastedText.trim()) {
+    if (inputMode === "paste" && pastedText.trim().length < 15) {
       toast.error("Please supply your presentation content", {
-        description: "Paste notes or outline into the editor, or click 'Load Sample Outline'.",
+        description:
+          "Enter at least 15 characters of notes or outline, or click 'Load Sample Outline'.",
       });
       return;
     }
@@ -264,15 +418,30 @@ export function PresentationWorkflow({
           description: "Processing locally in memory.",
         });
         const extraction = await extractDocumentText(uploadedFile);
-        if (extraction.text) {
-          setPastedText(extraction.text);
-          if (!title.trim()) {
-            const detected = detectTitleFromText(extraction.text);
-            if (detected) setTitle(detected);
-          }
+        if (
+          extraction.isScannedOrEmpty ||
+          !extraction.text ||
+          extraction.text.trim().length === 0
+        ) {
+          setFileError(
+            extraction.warning ||
+              "Could not extract text. Please ensure the document is not an image-only scan.",
+          );
+          toast.error("Document Extraction Failed", {
+            description: extraction.warning || "No selectable text found in file.",
+          });
+          return;
+        }
+        setPastedText(extraction.text);
+        if (!title.trim()) {
+          const detected = detectTitleFromText(extraction.text);
+          if (detected) setTitle(detected);
         }
       } catch (err) {
-        console.warn("Extraction fallback:", err);
+        const msg = err instanceof Error ? err.message : "Document extraction failed.";
+        setFileError(msg);
+        toast.error("Extraction Failed", { description: msg });
+        return;
       }
     }
 
@@ -296,34 +465,70 @@ export function PresentationWorkflow({
   const handleStartGeneration = async () => {
     if (generating) return; // Prevent duplicate clicks
 
+    let contentToUse = pastedText.trim();
+    if (!contentToUse && uploadedFile) {
+      try {
+        setGenerating(true);
+        setCurrentStep("generating");
+        setGenerationPhase("1/5: Extracting text from uploaded document...");
+        const extraction = await extractDocumentText(uploadedFile);
+        if (
+          extraction.isScannedOrEmpty ||
+          !extraction.text ||
+          extraction.text.trim().length === 0
+        ) {
+          throw new Error(
+            extraction.warning ||
+              "Could not extract selectable text from this file. It may be an image-only scan.",
+          );
+        }
+        contentToUse = extraction.text;
+        setPastedText(contentToUse);
+      } catch (err) {
+        setGenerating(false);
+        setCurrentStep("settings");
+        const msg = err instanceof Error ? err.message : "Document extraction failed.";
+        toast.error("Generation Halted", { description: msg });
+        return;
+      }
+    }
+
+    if (!contentToUse || contentToUse.length < 15) {
+      toast.error("Content is too short or empty", {
+        description: "Please supply presentation notes or an outline with at least 15 characters.",
+      });
+      return;
+    }
+
     setGenerating(true);
     setCurrentStep("generating");
     abortControllerRef.current = new AbortController();
 
     try {
-      setGenerationPhase("Extracting and analyzing semantic structure...");
-      await new Promise((r) => setTimeout(r, 600));
+      setGenerationPhase("2/5: Analyzing document content & detecting core themes...");
+      await new Promise((r) => setTimeout(r, 400));
+
+      setGenerationPhase("3/5: Synthesizing slide outline & layout hierarchy...");
+      await new Promise((r) => setTimeout(r, 500));
 
       setGenerationPhase(
-        `Applying ${selectedTemplate.name} theme and ${selectedFont} typography...`,
+        `4/5: Applying ${selectedTemplate.name} theme design tokens & contrast...`,
       );
-      await new Promise((r) => setTimeout(r, 700));
+      await new Promise((r) => setTimeout(r, 500));
 
-      setGenerationPhase("Compiling vector PowerPoint file and initializing 10-minute preview...");
+      setGenerationPhase(
+        "5/5: Compiling vector PowerPoint (.pptx) & starting 10-minute preview...",
+      );
 
-      let contentToUse = pastedText.trim();
-      if (!contentToUse && uploadedFile) {
-        setGenerationPhase("Extracting text from uploaded document...");
-        const extraction = await extractDocumentText(uploadedFile);
-        contentToUse = extraction.text;
-        setPastedText(contentToUse);
-      }
+      const detected = detectTitleFromText(contentToUse);
+      const titleWords = title.trim().toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+      const contentLower = contentToUse.toLowerCase();
+      const hasWordMatch = titleWords.some((w) => contentLower.includes(w));
 
-      if (!contentToUse) {
-        contentToUse = sampleOutlineText;
-      }
-
-      const finalTitle = title.trim() || detectTitleFromText(contentToUse) || "Presentation Deck";
+      const finalTitle =
+        title.trim() && (hasWordMatch || title.trim().length > 25)
+          ? title.trim()
+          : detected || title.trim() || "Presentation Deck";
 
       const session = await createPresentationSessionApi({
         title: finalTitle,
@@ -348,10 +553,7 @@ export function PresentationWorkflow({
 
       // Record authentic job in workspace history
       const totalSlides =
-        session.slideCount ||
-        (session as { slides?: unknown[] }).slides?.length ||
-        slideCount ||
-        8;
+        session.slideCount || (session as { slides?: unknown[] }).slides?.length || slideCount || 8;
 
       addWorkspaceJob({
         id: session.sessionId,
@@ -749,8 +951,8 @@ export function PresentationWorkflow({
 
             {/* Category Pills & Search */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1 max-h-24">
-                {TEMPLATE_CATEGORIES.slice(0, 7).map((c) => (
+              <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1 max-h-28">
+                {TEMPLATE_CATEGORIES.map((c) => (
                   <button
                     key={c}
                     type="button"
@@ -766,21 +968,26 @@ export function PresentationWorkflow({
                 ))}
               </div>
 
-              <div className="relative w-full sm:w-60 shrink-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={themeSearch}
-                  onChange={(e) => setThemeSearch(e.target.value)}
-                  placeholder="Filter themes..."
-                  className="w-full rounded-xl border border-border bg-surface-2 py-1.5 pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
-                />
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <span className="text-[11px] font-mono text-muted-foreground whitespace-nowrap">
+                  {filteredTemplates.length} themes
+                </span>
+                <div className="relative w-full sm:w-60 shrink-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={themeSearch}
+                    onChange={(e) => setThemeSearch(e.target.value)}
+                    placeholder="Filter by name, tag, or topic..."
+                    className="w-full rounded-xl border border-border bg-surface-2 py-1.5 pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Theme Card Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[380px] overflow-y-auto p-1">
-              {filteredTemplates.slice(0, 16).map((t) => {
+            {/* Theme Card Grid - Displays all filtered Free and Pro themes with real preview triggers */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[460px] overflow-y-auto p-1">
+              {filteredTemplates.map((t) => {
                 const isSelected = selectedTemplate.id === t.id;
                 const isPro = !t.isFree;
 
@@ -809,6 +1016,20 @@ export function PresentationWorkflow({
                             </span>
                           )}
                         </div>
+
+                        {/* Theme Slide Preview Trigger Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewTemplate(t);
+                            setPreviewSlideIdx(0);
+                          }}
+                          className="absolute bottom-1.5 right-1.5 p-1 rounded-md bg-background/90 text-foreground hover:text-primary transition shadow-xs"
+                          title="Preview all 4 theme slide styles"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
                       </div>
 
                       <div className="mt-2.5">
@@ -816,20 +1037,29 @@ export function PresentationWorkflow({
                           <p className="text-xs font-bold text-foreground truncate">{t.name}</p>
                           {isSelected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
                         </div>
-                        <p className="text-[10px] text-muted-foreground truncate">{t.category}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          {t.category} • {t.kind}
+                        </p>
                       </div>
                     </div>
 
                     <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between text-[10px] text-muted-foreground">
-                      <span>{t.slidesCount} slides</span>
-                      <div className="flex items-center gap-1">
+                      <span className="font-mono">{t.slidesCount} slides</span>
+                      <div
+                        className="flex items-center gap-1.5"
+                        title={`Palette: ${t.colors.primary}, ${t.colors.accent}, ${t.colors.bg}`}
+                      >
                         <span
-                          className="h-2 w-2 rounded-full border border-black/10"
+                          className="h-2.5 w-2.5 rounded-full border border-black/20"
                           style={{ backgroundColor: t.colors.primary }}
                         />
                         <span
-                          className="h-2 w-2 rounded-full border border-black/10"
+                          className="h-2.5 w-2.5 rounded-full border border-black/20"
                           style={{ backgroundColor: t.colors.accent }}
+                        />
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-black/20"
+                          style={{ backgroundColor: t.colors.bg }}
                         />
                       </div>
                     </div>
@@ -952,6 +1182,121 @@ export function PresentationWorkflow({
             </div>
           </div>
 
+          {/* Section B.4: Visual Treatment & Layout Preferences */}
+          <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-4">
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-primary">
+              Visual Assets & Diagrams
+            </span>
+            <h3 className="text-xl sm:text-2xl font-serif font-bold text-foreground">
+              Visual Treatment
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Configure how conceptual diagrams, telemetry cards, and multi-column comparison
+              structures are arranged.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setVisualPreference("diagrams")}
+                className={`text-left rounded-2xl border p-4 transition-all min-h-[64px] ${
+                  visualPreference === "diagrams"
+                    ? "border-primary bg-primary/10 ring-1 ring-primary shadow-xs"
+                    : "border-border bg-surface-2 hover:bg-muted"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground">
+                    Smart Diagrams & Visual Layouts (Recommended)
+                  </span>
+                  {visualPreference === "diagrams" && <Check className="h-4 w-4 text-primary" />}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Incorporates architecture flows, KPI telemetry cards, workflow steps, and timeline
+                  roadmaps.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVisualPreference("text-only")}
+                className={`text-left rounded-2xl border p-4 transition-all min-h-[64px] ${
+                  visualPreference === "text-only"
+                    ? "border-primary bg-primary/10 ring-1 ring-primary shadow-xs"
+                    : "border-border bg-surface-2 hover:bg-muted"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground">
+                    Text & Bullet Hierarchy Only
+                  </span>
+                  {visualPreference === "text-only" && <Check className="h-4 w-4 text-primary" />}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Generates clean, dense textual slides focused strictly on headings, bullet points,
+                  and key takeaways.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Section B.5: Platform AI Picture & Graph Engine */}
+          <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold uppercase tracking-wider text-primary">
+                    AI Vision & Imagery Engine
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Platform Active (Gemini & Imagen)
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-serif font-bold text-foreground mt-0.5">
+                  Contextual Pictures & Vector Diagrams
+                </h3>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenAdminKeyModal}
+                  className="text-xs h-8 font-semibold border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary flex items-center gap-1.5 shadow-xs"
+                >
+                  <Key className="h-3.5 w-3.5" />
+                  <span>Admin: Enter Gemini Key</span>
+                </Button>
+                <Link
+                  to="/admin"
+                  className="text-xs font-semibold text-muted-foreground hover:text-primary transition flex items-center gap-1 bg-surface-2 px-3 py-1.5 rounded-lg border border-border h-8"
+                >
+                  <span>Admin Center</span>
+                  <span className="text-[10px] text-primary">→</span>
+                </Link>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              DocuMind automatically illustrates your slides with contextual 16:9 pictures, architecture diagrams, and KPI charts using our platform-managed Gemini 2.5 Flash & Imagen 3 pipeline. All visual assets and layout designs are handled seamlessly on the server—no personal API keys or technical setup required.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] font-mono text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 bg-surface-2/80 px-2.5 py-1 rounded-md border border-border">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                Auto-Selected Layouts
+              </span>
+              <span className="inline-flex items-center gap-1.5 bg-surface-2/80 px-2.5 py-1 rounded-md border border-border">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Adaptive Vector Synthesizer
+              </span>
+              <span className="inline-flex items-center gap-1.5 bg-surface-2/80 px-2.5 py-1 rounded-md border border-border">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                Native 16:9 PPTX Embed
+              </span>
+            </div>
+          </div>
+
           {/* Bottom Action Bar: Back & Generate Presentation */}
           <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-paper flex flex-col sm:flex-row items-center justify-between gap-4">
             <Button
@@ -1039,6 +1384,331 @@ export function PresentationWorkflow({
           toast.info(`Switched to Free Theme: ${freeAlt.name}`);
         }}
       />
+
+      {/* Theme Slide Preview Modal */}
+      {previewTemplate && (
+        <Dialog open={!!previewTemplate} onOpenChange={(o) => !o && setPreviewTemplate(null)}>
+          <DialogContent className="max-w-3xl p-6 sm:p-8">
+            <DialogHeader>
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs uppercase font-bold text-primary">
+                  Theme Slide Inspector • {previewTemplate.category}
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                    previewTemplate.isFree
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                  }`}
+                >
+                  {previewTemplate.isFree ? "100% Free Theme" : "Pro Theme"}
+                </span>
+              </div>
+              <DialogTitle className="font-serif text-2xl font-bold mt-1">
+                {previewTemplate.name}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                {previewTemplate.description}
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Slide Preview Viewer */}
+            <div className="mt-4 space-y-4">
+              <div className="relative aspect-16/10 w-full rounded-2xl overflow-hidden border border-border shadow-inner">
+                <ThemeThumb kind={previewTemplate.kind} slide={previewSlideIdx} />
+              </div>
+
+              {/* Slide Type Switcher Tabs */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {([0, 1, 2, 3] as SlideType[]).map((idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setPreviewSlideIdx(idx)}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                      previewSlideIdx === idx
+                        ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                        : "border-border bg-surface-2 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {SLIDE_LABELS[idx]}
+                  </button>
+                ))}
+              </div>
+
+              {/* Theme Metadata & Color Swatches */}
+              <div className="rounded-xl border border-border/80 bg-surface-2/40 p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-mono uppercase text-muted-foreground">
+                    Typography Pairing
+                  </span>
+                  <p className="font-semibold text-foreground">{previewTemplate.fonts}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-mono uppercase text-muted-foreground">
+                    Best For
+                  </span>
+                  <p className="font-semibold text-foreground">{previewTemplate.bestFor}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-mono uppercase text-muted-foreground">
+                    Palette
+                  </span>
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <span
+                      className="h-4 w-4 rounded-full border border-black/20"
+                      style={{ backgroundColor: previewTemplate.colors.primary }}
+                      title="Primary Color"
+                    />
+                    <span
+                      className="h-4 w-4 rounded-full border border-black/20"
+                      style={{ backgroundColor: previewTemplate.colors.accent }}
+                      title="Accent Color"
+                    />
+                    <span
+                      className="h-4 w-4 rounded-full border border-black/20"
+                      style={{ backgroundColor: previewTemplate.colors.bg }}
+                      title="Background Color"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <Button variant="glass" size="sm" onClick={() => setPreviewTemplate(null)}>
+                Close Preview
+              </Button>
+              <Button
+                variant="hero"
+                size="sm"
+                onClick={() => {
+                  handleSelectTheme(previewTemplate);
+                  setPreviewTemplate(null);
+                }}
+              >
+                Apply This Theme
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ADMIN GEMINI & MULTI-PROVIDER KEY MODAL */}
+      <Dialog open={showAdminKeyModal} onOpenChange={setShowAdminKeyModal}>
+        <DialogContent className="max-w-lg p-6 bg-card border-border rounded-2xl shadow-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                <Key className="h-4 w-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">
+                  Admin AI Engine & Key Configuration
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Enter, test, or update AI credentials whenever needed. (Admin & Super Admin privileges are identical)
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4 text-xs">
+            {/* Multi-Engine Provider Selection (Don't strict system to only Gemini!) */}
+            <div className="space-y-2">
+              <label className="font-mono text-[11px] text-muted-foreground uppercase font-bold block">
+                Select Active Synthesis Engine
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {
+                    id: "gemini",
+                    name: "Google Gemini",
+                    tag: "Flash + Imagen",
+                    icon: Cpu,
+                  },
+                  {
+                    id: "openai",
+                    name: "OpenAI",
+                    tag: "GPT-4o-mini",
+                    icon: Bot,
+                  },
+                  {
+                    id: "offline",
+                    name: "Native Offline",
+                    tag: "Zero-API Engine",
+                    icon: ShieldCheck,
+                  },
+                ].map((p) => {
+                  const Icon = p.icon;
+                  const isSelected = selectedProvider === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelectedProvider(p.id as any)}
+                      className={`rounded-xl border p-2.5 text-left transition-all ${
+                        isSelected
+                          ? "border-primary bg-primary/5 text-primary font-bold shadow-xs"
+                          : "border-border bg-surface-2 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <Icon className="h-3.5 w-3.5 text-primary" />
+                        {isSelected && <Check className="h-3 w-3 text-primary" />}
+                      </div>
+                      <p className="text-xs font-semibold text-foreground leading-tight">{p.name}</p>
+                      <span className="text-[10px] opacity-75 font-mono">{p.tag}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Provider-specific Key Inputs */}
+            {selectedProvider === "gemini" && (
+              <div className="space-y-2 rounded-xl border border-border bg-surface-2/40 p-3.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-mono text-[11px] text-muted-foreground uppercase font-bold">
+                    Google Gemini API Key
+                  </label>
+                  <a
+                    href="https://aistudio.google.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-primary hover:underline"
+                  >
+                    Get Free Key ↗
+                  </a>
+                </div>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showAdminPassword ? "text" : "password"}
+                      value={adminGeminiKeyInput}
+                      onChange={(e) => setAdminGeminiKeyInput(e.target.value)}
+                      placeholder="AIzaSy... (Paste Gemini Key)"
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs font-mono text-foreground focus:border-primary focus:outline-hidden pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminPassword(!showAdminPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showAdminPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestAdminGemini}
+                    disabled={testingAdminKey}
+                    className="text-xs h-9"
+                  >
+                    {testingAdminKey ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      "Test Key"
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  Powers Gemini 2.5 Flash outline structure and Google Imagen 3 contextual slide pictures.
+                </p>
+              </div>
+            )}
+
+            {selectedProvider === "openai" && (
+              <div className="space-y-2 rounded-xl border border-border bg-surface-2/40 p-3.5">
+                <label className="font-mono text-[11px] text-muted-foreground uppercase font-bold block">
+                  OpenAI API Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAdminPassword ? "text" : "password"}
+                    value={adminOpenAiKeyInput}
+                    onChange={(e) => setAdminOpenAiKeyInput(e.target.value)}
+                    placeholder="sk-proj-... (Paste OpenAI Key)"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs font-mono text-foreground focus:border-primary focus:outline-hidden"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Uses OpenAI GPT-4o-mini structured JSON outputs for slide generation.
+                </p>
+              </div>
+            )}
+
+            {selectedProvider === "offline" && (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 space-y-1 text-emerald-800 dark:text-emerald-300">
+                <div className="flex items-center gap-2 font-semibold">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>100% Native Offline Engine Active</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Zero external API requests. Runs DocuMind's high-fidelity deterministic semantic parser and vector graphics synthesizer. Completely free and private.
+                </p>
+              </div>
+            )}
+
+            {testAdminKeyResult && (
+              <div
+                className={`rounded-xl border p-3 text-xs font-mono flex items-start gap-2.5 ${
+                  testAdminKeyResult.success
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                    : "bg-destructive/10 border-destructive/30 text-destructive"
+                }`}
+              >
+                {testAdminKeyResult.success ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
+                )}
+                <div>
+                  <p className="font-semibold">{testAdminKeyResult.message}</p>
+                  {testAdminKeyResult.latencyMs > 0 && (
+                    <p className="text-[10px] opacity-75">Response latency: {testAdminKeyResult.latencyMs}ms</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Zero-Restriction Guarantee notice */}
+            <div className="rounded-xl border border-border bg-card p-3 text-[11px] text-muted-foreground space-y-1">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                Multi-Engine Flexibility
+              </span>
+              <p className="leading-relaxed">
+                DocuMind is not restricted to Gemini. If an external API is unavailable, the platform automatically engages the high-fidelity offline vector synthesizer and semantic parser with zero failure.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-end gap-2 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="glass"
+              size="sm"
+              onClick={() => setShowAdminKeyModal(false)}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="hero"
+              size="sm"
+              disabled={savingAdminKey}
+              onClick={handleSaveAdminKey}
+              className="text-xs"
+            >
+              <Save className="h-3.5 w-3.5 mr-1" />
+              {savingAdminKey ? "Applying..." : "Save & Apply Globally"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

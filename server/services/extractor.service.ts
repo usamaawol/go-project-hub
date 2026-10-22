@@ -7,6 +7,8 @@ export interface ExtractionResult {
   lineCount: number;
   pageCount?: number;
   format: "pdf" | "docx" | "txt" | "unknown";
+  isScannedOrEmpty?: boolean;
+  warning?: string;
   meta?: Record<string, unknown>;
 }
 
@@ -17,15 +19,33 @@ export async function extractTextFromBuffer(
 ): Promise<ExtractionResult> {
   const lowerName = filename.toLowerCase();
 
+  if (!buffer || buffer.length === 0) {
+    throw new Error("The uploaded file is empty (0 bytes). Please supply a valid document.");
+  }
+
   // 1. PDF Extraction
   if (mimeType.includes("pdf") || lowerName.endsWith(".pdf")) {
     try {
       const parser = new PDFParse(new Uint8Array(buffer));
       await parser.load();
       const parsed = await parser.getText();
-      const text = parsed.text || "";
-      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-      const lines = text.split("\n").length;
+      const text = (parsed.text || "").trim();
+
+      if (text.length < 15) {
+        return {
+          text: "",
+          wordCount: 0,
+          lineCount: 0,
+          pageCount: parsed.total || 1,
+          format: "pdf",
+          isScannedOrEmpty: true,
+          warning:
+            "This PDF appears to be an image-only scan or contains no selectable text layer. Please use a text-based document or paste your outline directly.",
+        };
+      }
+
+      const words = text.split(/\s+/).filter(Boolean).length;
+      const lines = text.split("\n").filter((l) => l.trim().length > 0).length;
 
       return {
         text,
@@ -34,17 +54,11 @@ export async function extractTextFromBuffer(
         pageCount: parsed.total || 1,
         format: "pdf",
       };
-    } catch (err) {
-      console.error("PDF parse error, using fallback extraction:", err);
-      // Fallback text extractor from binary
-      const fallbackText = buffer.toString("utf-8").replace(/[^\x20-\x7E\n\r\t]/g, " ");
-      return {
-        text: fallbackText.slice(0, 5000),
-        wordCount: fallbackText.split(/\s+/).length,
-        lineCount: fallbackText.split("\n").length,
-        pageCount: 1,
-        format: "pdf",
-      };
+    } catch (err: unknown) {
+      console.error("PDF parse error:", err);
+      throw new Error(
+        "Could not parse the PDF file. The file may be password-protected, corrupted, or formatted with unsupported encoding.",
+      );
     }
   }
 
@@ -56,9 +70,22 @@ export async function extractTextFromBuffer(
   ) {
     try {
       const result = await mammoth.extractRawText({ buffer });
-      const text = result.value || "";
-      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-      const lines = text.split("\n").length;
+      const text = (result.value || "").trim();
+
+      if (text.length < 15) {
+        return {
+          text: "",
+          wordCount: 0,
+          lineCount: 0,
+          format: "docx",
+          isScannedOrEmpty: true,
+          warning:
+            "This Word document contains no readable text or is empty. Please verify the document content.",
+        };
+      }
+
+      const words = text.split(/\s+/).filter(Boolean).length;
+      const lines = text.split("\n").filter((l) => l.trim().length > 0).length;
 
       return {
         text,
@@ -68,13 +95,27 @@ export async function extractTextFromBuffer(
       };
     } catch (err) {
       console.error("Mammoth DOCX parse error:", err);
+      throw new Error(
+        "Could not read the Word document. The file may be damaged or saved in an incompatible legacy format.",
+      );
     }
   }
 
   // 3. Plain Text / TXT / Markdown
-  const text = buffer.toString("utf-8");
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-  const lines = text.split("\n").length;
+  const text = buffer.toString("utf-8").trim();
+  if (text.length === 0) {
+    return {
+      text: "",
+      wordCount: 0,
+      lineCount: 0,
+      format: "txt",
+      isScannedOrEmpty: true,
+      warning: "The text document is empty.",
+    };
+  }
+
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const lines = text.split("\n").filter((l) => l.trim().length > 0).length;
 
   return {
     text,

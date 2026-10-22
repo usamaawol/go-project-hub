@@ -70,6 +70,8 @@ export async function handleExtractText(
         lineCount: result.lineCount,
         pageCount: result.pageCount,
         text: result.text,
+        isScannedOrEmpty: result.isScannedOrEmpty,
+        warning: result.warning,
         processingTimeMs: duration,
       },
     });

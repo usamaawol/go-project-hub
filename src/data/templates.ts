@@ -18,6 +18,8 @@ export type TemplateCategory =
   | "Pitch Decks"
   | "Minimal";
 
+export type TemplateContentType = "presentation" | "document" | "webpage";
+
 export interface SlideTemplate {
   title: string;
   subtitle?: string;
@@ -43,6 +45,105 @@ export interface TemplateItem {
   slides: SlideTemplate[];
   tier: "free" | "pro";
   isFree: boolean;
+  // Gamma-style metadata
+  contentType?: TemplateContentType;
+  featuredBadge?: "Popular" | "Staff Pick" | "New" | "AI Optimized" | "Trending";
+  author?: string;
+  aspectRatio?: "16:9" | "A4" | "Responsive";
+}
+
+export function getTemplateContentType(template: TemplateItem): TemplateContentType {
+  if (template.contentType) return template.contentType;
+  const cat = template.category.toLowerCase();
+  const tags = template.tags.map((t) => t.toLowerCase());
+  if (
+    cat === "reports" ||
+    cat === "academic" ||
+    tags.includes("memo") ||
+    tags.includes("document") ||
+    tags.includes("brief") ||
+    tags.includes("report")
+  ) {
+    return "document";
+  }
+  if (tags.includes("webpage") || tags.includes("interactive") || tags.includes("microsite")) {
+    return "webpage";
+  }
+  return "presentation";
+}
+
+export function getTemplateBadge(template: TemplateItem): string {
+  if (template.featuredBadge) return template.featuredBadge;
+  if (
+    template.id === "executive-brief" ||
+    template.id === "seed-pitch" ||
+    template.category === "Pitch Decks"
+  ) {
+    return "Popular";
+  }
+  if (template.isFree && (template.category === "Business" || template.category === "Technology")) {
+    return "Staff Pick";
+  }
+  if (template.category === "Creative" || template.category === "Portfolio") {
+    return "Trending";
+  }
+  return "AI Optimized";
+}
+
+export function getTemplateAuthor(template: TemplateItem): string {
+  if (template.author) return template.author;
+  if (template.category === "Pitch Decks") return "YC Alum & Founders";
+  if (template.category === "Business" || template.category === "Reports") return "DocuMind Executive";
+  if (template.category === "Technology") return "Engineering & RFC Lab";
+  if (template.category === "Education" || template.category === "Academic") return "Academic Collective";
+  return "Gamma Studio Community";
+}
+
+export function getTemplateAspectRatio(template: TemplateItem): "16:9" | "A4" | "Responsive" {
+  if (template.aspectRatio) return template.aspectRatio;
+  const type = getTemplateContentType(template);
+  if (type === "document") return "A4";
+  if (type === "webpage") return "Responsive";
+  return "16:9";
+}
+
+export function templateToPresentationOutline(template: TemplateItem): string {
+  if (!template.slides || template.slides.length === 0) {
+    return `${template.name}\n${template.description}\n\n1.0 Executive Overview\n${template.bestFor}\n\n2.0 Strategic Core\nKey implementation pillars and deliverables.\n\n3.0 Action Plan & Next Steps\nTimelines and milestones.`;
+  }
+
+  let text = `${template.name}\n${template.description}\n\n`;
+  template.slides.forEach((s, idx) => {
+    text += `${idx + 1}.0 ${s.title}\n`;
+    if (s.subtitle) text += `${s.subtitle}\n`;
+    if (s.bullets && s.bullets.length > 0) {
+      s.bullets.forEach((b) => {
+        text += `- ${b}\n`;
+      });
+    }
+    text += "\n";
+  });
+  return text.trim();
+}
+
+export function templateToDocumentContent(template: TemplateItem): string {
+  let text = `${template.name}\n${template.description}\n\n`;
+  text += `1.0 Executive Scope & Objectives\nThis document outlines the operational implementation for ${template.name.toLowerCase()}. Best suited for: ${template.bestFor}.\n\n`;
+  text += `2.0 CRITICAL REQUIREMENTS & GUARDRAILS\nAll stakeholders must align with the approved typography (${template.fonts}) and design token palette: Primary (${template.colors.primary}), Accent (${template.colors.accent}), Background (${template.colors.bg}).\n\n`;
+
+  if (template.slides && template.slides.length > 0) {
+    template.slides.slice(1).forEach((s, idx) => {
+      text += `${idx + 3}.0 ${s.title}\n`;
+      if (s.subtitle) text += `${s.subtitle}\n`;
+      if (s.bullets && s.bullets.length > 0) {
+        s.bullets.forEach((b) => {
+          text += `- ${b}\n`;
+        });
+      }
+      text += "\n";
+    });
+  }
+  return text.trim();
 }
 
 export const TEMPLATE_CATEGORIES: TemplateCategory[] = [

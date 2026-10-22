@@ -35,6 +35,8 @@ export async function extractDocumentText(file: File): Promise<{
   wordCount: number;
   lineCount: number;
   format: string;
+  isScannedOrEmpty?: boolean;
+  warning?: string;
 }> {
   try {
     const formData = new FormData();
@@ -50,19 +52,48 @@ export async function extractDocumentText(file: File): Promise<{
       if (json.success && json.data) {
         return json.data;
       }
+    } else {
+      const errJson = await res.json().catch(() => null);
+      if (errJson?.error?.message) {
+        throw new Error(errJson.error.message);
+      }
     }
   } catch (e) {
-    console.warn("Backend extraction unavailable, using browser text reader:", e);
+    if (e instanceof Error && !e.message.includes("Failed to fetch")) {
+      throw e;
+    }
+    console.warn("Backend extraction unavailable, checking browser text extraction:", e);
   }
 
-  // Resilient browser-side fallback
-  const text = await file.text();
-  const clean = text.replace(/[^\x20-\x7E\n\r\t]/g, " ").slice(0, 10000);
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext === "txt" || ext === "md" || ext === "csv") {
+    const text = (await file.text()).trim();
+    if (text.length === 0) {
+      return {
+        text: "",
+        wordCount: 0,
+        lineCount: 0,
+        format: ext,
+        isScannedOrEmpty: true,
+        warning: "The uploaded text file is empty.",
+      };
+    }
+    return {
+      text,
+      wordCount: text.split(/\s+/).filter(Boolean).length,
+      lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
+      format: ext,
+    };
+  }
+
+  // Binary files (PDF, DOCX) require the backend extractor for accurate text extraction
   return {
-    text: clean,
-    wordCount: clean.split(/\s+/).length,
-    lineCount: clean.split("\n").length,
-    format: file.name.split(".").pop() || "txt",
+    text: "",
+    wordCount: 0,
+    lineCount: 0,
+    format: ext || "unknown",
+    isScannedOrEmpty: true,
+    warning: `Unable to extract selectable text from this ${ext?.toUpperCase() || "document"} file. Please ensure the backend server is active and the file is not a scanned image.`,
   };
 }
 
@@ -217,6 +248,66 @@ export async function purgeAdminTempFiles(adminKey = "documind-admin-secret") {
   return await res.json();
 }
 
+export async function fetchAdminSettings(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/settings?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function updateAdminSettings(settings: Record<string, unknown>, adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/settings?adminKey=${adminKey}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  return await res.json();
+}
+
+export async function testAdminGeminiConnection(apiKey?: string, adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/test-gemini?adminKey=${adminKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  return await res.json();
+}
+
+export async function testAdminOpenAIConnection(apiKey?: string, adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/test-openai?adminKey=${adminKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  return await res.json();
+}
+
+export async function fetchAdminStaff(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/staff?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function createAdminStaff(
+  staff: { name: string; email: string; role?: string; department?: string },
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/staff?adminKey=${adminKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(staff),
+  });
+  return await res.json();
+}
+
+export async function deleteAdminStaff(staffId: string, adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/staff/${staffId}?adminKey=${adminKey}`, {
+    method: "DELETE",
+  });
+  return await res.json();
+}
+
+export async function fetchAdminAuditLogs(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/audit-logs?adminKey=${adminKey}`);
+  return await res.json();
+}
 
 export interface SlidePreviewItem {
   id: string;
@@ -287,6 +378,7 @@ export async function createPresentationSessionApi(input: {
     fontSizePreset?: "compact" | "standard" | "large" | "extra-large";
   };
   slideCount?: number;
+  geminiApiKey?: string;
 }): Promise<{
   sessionId: string;
   title: string;

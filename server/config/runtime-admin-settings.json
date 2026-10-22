@@ -1,0 +1,100 @@
+{
+  "settings": {
+    "geminiApiKey": "",
+    "geminiModel": "gemini-2.5-flash",
+    "imagenModel": "imagen-3.0-generate-002",
+    "aiEngineMode": "full",
+    "maxSlideCount": 20,
+    "aiTimeoutSeconds": 15,
+    "temperature": 0.65,
+    "maintenanceMode": false,
+    "announcement": {
+      "enabled": false,
+      "text": "DocuMind System Update: Gemini 2.5 Flash and Imagen 3 vision models are now globally available.",
+      "type": "info"
+    }
+  },
+  "staff": [
+    {
+      "id": "staff-101",
+      "name": "Lead Administrator",
+      "email": "admin@documind.app",
+      "role": "super_admin",
+      "department": "Executive & System Infrastructure",
+      "avatarColor": "#2563EB",
+      "status": "active",
+      "lastActive": "Just now",
+      "createdAt": "2026-07-24T12:36:46.322Z"
+    },
+    {
+      "id": "staff-102",
+      "name": "Dr. Elena Rostova",
+      "email": "elena.rostova@techcorp.io",
+      "role": "admin",
+      "department": "AI Research & Model Engineering",
+      "avatarColor": "#7C3AED",
+      "status": "active",
+      "lastActive": "14m ago",
+      "createdAt": "2026-08-23T12:36:46.322Z"
+    },
+    {
+      "id": "staff-103",
+      "name": "Sarah Jenkins",
+      "email": "sarah.jenkins@designstudio.co",
+      "role": "staff",
+      "department": "Theme Design & Visual Systems",
+      "avatarColor": "#EC4899",
+      "status": "active",
+      "lastActive": "1h ago",
+      "createdAt": "2026-09-22T12:36:46.322Z"
+    },
+    {
+      "id": "staff-104",
+      "name": "Tariq Nasser",
+      "email": "tariq.n@mobilefirst.dev",
+      "role": "staff",
+      "department": "Client Experience & Web QA",
+      "avatarColor": "#059669",
+      "status": "active",
+      "lastActive": "3h ago",
+      "createdAt": "2026-10-02T12:36:46.322Z"
+    },
+    {
+      "id": "staff-105",
+      "name": "Dr. Marcus Vance",
+      "email": "dr.marcus@berkeley.edu",
+      "role": "moderator",
+      "department": "Academic & Scientific Review",
+      "avatarColor": "#D97706",
+      "status": "active",
+      "lastActive": "Yesterday",
+      "createdAt": "2026-10-07T12:36:46.322Z"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "log-1",
+      "staffName": "Lead Administrator",
+      "staffEmail": "admin@documind.app",
+      "action": "AI Engine Configuration",
+      "details": "Initialized Gemini 2.5 Flash and Imagen 3 vision pipeline globally for all users.",
+      "timestamp": "2026-10-22T10:36:46.322Z"
+    },
+    {
+      "id": "log-2",
+      "staffName": "Elena Rostova",
+      "staffEmail": "elena.rostova@techcorp.io",
+      "action": "System Verification",
+      "details": "Ran automated latency and model health diagnostics on Google AI endpoints.",
+      "timestamp": "2026-10-22T04:36:46.322Z"
+    },
+    {
+      "id": "log-3",
+      "staffName": "Sarah Jenkins",
+      "staffEmail": "sarah.jenkins@designstudio.co",
+      "action": "Theme Catalog Audit",
+      "details": "Verified all 110 presentation templates adhere to the 100% Free Access Policy.",
+      "timestamp": "2026-10-21T12:36:46.322Z"
+    }
+  ]
+}

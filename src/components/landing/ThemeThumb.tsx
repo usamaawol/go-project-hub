@@ -13,30 +13,32 @@ export const SLIDE_LABELS: Record<SlideType, string> = {
 interface ThemeThumbProps {
   kind: ThemeKind;
   slideIndex?: SlideType;
+  slide?: SlideType;
   className?: string;
 }
 
 /** Original slide compositions — each kind has its own layout, not a recolor. */
-export function ThemeThumb({ kind, slideIndex = 0, className = "" }: ThemeThumbProps) {
+export function ThemeThumb({ kind, slideIndex = 0, slide, className = "" }: ThemeThumbProps) {
+  const activeSlide = slide !== undefined ? slide : slideIndex;
   const base = `relative aspect-video w-full overflow-hidden rounded-md select-none ${className}`;
 
   switch (kind) {
     case "academic":
-      return renderAcademic(base, slideIndex);
+      return renderAcademic(base, activeSlide);
     case "business":
-      return renderBusiness(base, slideIndex);
+      return renderBusiness(base, activeSlide);
     case "tech":
-      return renderTech(base, slideIndex);
+      return renderTech(base, activeSlide);
     case "pitch":
-      return renderPitch(base, slideIndex);
+      return renderPitch(base, activeSlide);
     case "research":
-      return renderResearch(base, slideIndex);
+      return renderResearch(base, activeSlide);
     case "education":
-      return renderEducation(base, slideIndex);
+      return renderEducation(base, activeSlide);
     case "creative":
-      return renderCreative(base, slideIndex);
+      return renderCreative(base, activeSlide);
     case "minimal":
-      return renderMinimal(base, slideIndex);
+      return renderMinimal(base, activeSlide);
   }
 }
 

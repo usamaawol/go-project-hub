@@ -2,25 +2,26 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
-import PptxGenJS from "pptxgenjs";
-import { buildSlideDeckContent } from "../../src/lib/presentation-session-client";
+import {
+  buildSlideDeckContent,
+  type SlidePreviewItem,
+} from "../../src/lib/presentation-session-client";
+import {
+  computeThemeTokens,
+  type RawThemeInput,
+  type SlideLayoutType,
+} from "../../src/lib/presentation-theme";
+import { renderSlideDeckToPptx } from "../../src/lib/presentation-renderer";
+import { generateSlideVisual } from "./geminiVisual.service";
+import {
+  getEffectiveGeminiApiKey,
+  getEffectiveOpenAIApiKey,
+  getActiveProvider,
+} from "./adminSettings.service";
 import { ENV } from "../config/env";
 
-export type SlideLayoutType =
-  "title" | "agenda" | "content" | "two-column" | "metrics" | "conclusion";
-
-export interface SlideData {
-  id: string;
-  slideNumber: number;
-  layout: SlideLayoutType;
-  title: string;
-  subtitle?: string;
-  bullets?: string[];
-  leftColumn?: { title: string; bullets: string[] };
-  rightColumn?: { title: string; bullets: string[] };
-  metrics?: Array<{ label: string; value: string; description?: string }>;
-  notes?: string;
-}
+export type { SlideLayoutType };
+export type SlideData = SlidePreviewItem;
 
 export interface PresentationSession {
   id: string;
@@ -75,6 +76,7 @@ export interface CreatePresentationSessionInput {
     fontSizePreset?: "compact" | "standard" | "large" | "extra-large";
   };
   slideCount?: number;
+  geminiApiKey?: string;
 }
 
 // 10 Minutes in milliseconds
@@ -99,319 +101,19 @@ try {
  * Generate a physical PPTX file matching the slide deck, theme, and font choices
  */
 async function generatePptxFile(session: PresentationSession, destPath: string): Promise<number> {
-  const pptx = new PptxGenJS();
-  pptx.layout = "LAYOUT_16x9";
-  pptx.author = "DocuMind";
-  pptx.company = "DocuMind — The Intelligent Paper Studio";
-  pptx.title = session.title;
-
-  const primaryHex = (session.theme?.colors?.primary || "#0F172A").replace("#", "");
-  const accentHex = (session.theme?.colors?.accent || "#2563EB").replace("#", "");
-  const bgHex = (session.theme?.colors?.bg || "#FFFFFF").replace("#", "");
-
-  const fontFace = session.typography?.fontFamily || "Calibri";
-  const sizePreset = session.typography?.fontSizePreset || "standard";
-
-  // Sizing scale according to preset
-  const sizeMultipliers = {
-    compact: { title: 28, subtitle: 13, body: 13, header: 9 },
-    standard: { title: 34, subtitle: 15, body: 15, header: 10 },
-    large: { title: 40, subtitle: 17, body: 17, header: 11 },
-    "extra-large": { title: 46, subtitle: 20, body: 19, header: 12 },
+  const rawTheme: RawThemeInput = {
+    id: session.theme.id,
+    name: session.theme.name,
+    category: session.theme.category,
+    kind: session.theme.kind,
+    colors: session.theme.colors,
+    fonts: session.theme.fonts,
+    tier: session.theme.tier,
   };
-  const sizes = sizeMultipliers[sizePreset] || sizeMultipliers.standard;
 
-  for (const s of session.slides) {
-    const slide = pptx.addSlide();
-    slide.background = { color: bgHex };
+  const tokens = computeThemeTokens(rawTheme, session.typography);
+  const pptx = await renderSlideDeckToPptx(session.title, session.purpose, session.slides, tokens);
 
-    if (s.layout === "title") {
-      // Top accent bar
-      slide.addShape(pptx.ShapeType.rect, {
-        x: 1.0,
-        y: 1.2,
-        w: 1.2,
-        h: 0.08,
-        fill: { color: accentHex },
-      });
-
-      // Purpose tag
-      slide.addText((session.purpose || "PRESENTATION").toUpperCase(), {
-        x: 1.0,
-        y: 1.5,
-        w: 9.0,
-        h: 0.4,
-        fontSize: sizes.header,
-        bold: true,
-        color: accentHex,
-        fontFace,
-        charSpacing: 2,
-      });
-
-      // Big Title
-      slide.addText(s.title, {
-        x: 1.0,
-        y: 2.2,
-        w: 10.0,
-        h: 2.0,
-        fontSize: sizes.title + 6,
-        bold: true,
-        color: primaryHex,
-        fontFace,
-      });
-
-      // Subtitle
-      if (s.subtitle) {
-        slide.addText(s.subtitle, {
-          x: 1.0,
-          y: 4.4,
-          w: 9.5,
-          h: 0.6,
-          fontSize: sizes.subtitle,
-          color: "666666",
-          fontFace,
-        });
-      }
-
-      // Footer
-      slide.addText(
-        `Theme: ${session.theme.name}  |  Font: ${fontFace}  |  DocuMind Ephemeral Studio`,
-        {
-          x: 1.0,
-          y: 6.2,
-          w: 10.0,
-          h: 0.3,
-          fontSize: 9,
-          color: "888888",
-          fontFace,
-        },
-      );
-    } else if (s.layout === "metrics" && s.metrics) {
-      // Section tag
-      slide.addText(`SLIDE 0${s.slideNumber} // METRICS`, {
-        x: 0.8,
-        y: 0.8,
-        w: 6.0,
-        h: 0.3,
-        fontSize: sizes.header,
-        bold: true,
-        color: accentHex,
-        fontFace,
-        charSpacing: 2,
-      });
-
-      slide.addText(s.title, {
-        x: 0.8,
-        y: 1.2,
-        w: 10.0,
-        h: 0.8,
-        fontSize: sizes.title,
-        bold: true,
-        color: primaryHex,
-        fontFace,
-      });
-
-      // 3 metric cards
-      const cardWidth = 3.2;
-      for (const [mIdx, metric] of s.metrics.entries()) {
-        const xPos = 0.8 + mIdx * (cardWidth + 0.4);
-
-        slide.addShape(pptx.ShapeType.roundRect, {
-          x: xPos,
-          y: 2.4,
-          w: cardWidth,
-          h: 2.6,
-          fill: { color: "F8FAFC" },
-          line: { color: "E2E8F0", width: 1 },
-        });
-
-        slide.addText(metric.value, {
-          x: xPos + 0.2,
-          y: 2.7,
-          w: cardWidth - 0.4,
-          h: 0.9,
-          fontSize: 32,
-          bold: true,
-          color: accentHex,
-          fontFace,
-        });
-
-        slide.addText(metric.label, {
-          x: xPos + 0.2,
-          y: 3.7,
-          w: cardWidth - 0.4,
-          h: 0.5,
-          fontSize: sizes.body,
-          bold: true,
-          color: primaryHex,
-          fontFace,
-        });
-
-        if (metric.description) {
-          slide.addText(metric.description, {
-            x: xPos + 0.2,
-            y: 4.3,
-            w: cardWidth - 0.4,
-            h: 0.5,
-            fontSize: sizes.subtitle - 2,
-            color: "666666",
-            fontFace,
-          });
-        }
-      }
-    } else if (s.layout === "two-column" && s.leftColumn && s.rightColumn) {
-      // Section tag
-      slide.addText(`SLIDE 0${s.slideNumber} // COMPARISON`, {
-        x: 0.8,
-        y: 0.8,
-        w: 6.0,
-        h: 0.3,
-        fontSize: sizes.header,
-        bold: true,
-        color: accentHex,
-        fontFace,
-        charSpacing: 2,
-      });
-
-      slide.addText(s.title, {
-        x: 0.8,
-        y: 1.2,
-        w: 10.0,
-        h: 0.8,
-        fontSize: sizes.title,
-        bold: true,
-        color: primaryHex,
-        fontFace,
-      });
-
-      // Left Box
-      slide.addShape(pptx.ShapeType.roundRect, {
-        x: 0.8,
-        y: 2.3,
-        w: 4.8,
-        h: 3.8,
-        fill: { color: "F8FAFC" },
-        line: { color: "E2E8F0", width: 1 },
-      });
-      slide.addText(s.leftColumn.title, {
-        x: 1.1,
-        y: 2.5,
-        w: 4.2,
-        h: 0.4,
-        fontSize: sizes.body,
-        bold: true,
-        color: primaryHex,
-        fontFace,
-      });
-      const leftItems = s.leftColumn.bullets.map((b) => ({
-        text: b,
-        options: { breakLine: true },
-      }));
-      slide.addText(leftItems, {
-        x: 1.1,
-        y: 3.0,
-        w: 4.2,
-        h: 2.8,
-        fontSize: sizes.body - 1,
-        color: "444444",
-        bullet: true,
-        lineSpacing: 24,
-        fontFace,
-      });
-
-      // Right Box
-      slide.addShape(pptx.ShapeType.roundRect, {
-        x: 6.0,
-        y: 2.3,
-        w: 4.8,
-        h: 3.8,
-        fill: { color: "F8FAFC" },
-        line: { color: accentHex, width: 1.5 },
-      });
-      slide.addText(s.rightColumn.title, {
-        x: 6.3,
-        y: 2.5,
-        w: 4.2,
-        h: 0.4,
-        fontSize: sizes.body,
-        bold: true,
-        color: accentHex,
-        fontFace,
-      });
-      const rightItems = s.rightColumn.bullets.map((b) => ({
-        text: b,
-        options: { breakLine: true },
-      }));
-      slide.addText(rightItems, {
-        x: 6.3,
-        y: 3.0,
-        w: 4.2,
-        h: 2.8,
-        fontSize: sizes.body - 1,
-        color: "444444",
-        bullet: true,
-        lineSpacing: 24,
-        fontFace,
-      });
-    } else {
-      // Content / Agenda / Conclusion slide
-      slide.addText(`SLIDE 0${s.slideNumber} // ${s.layout.toUpperCase()}`, {
-        x: 0.8,
-        y: 0.8,
-        w: 6.0,
-        h: 0.3,
-        fontSize: sizes.header,
-        bold: true,
-        color: accentHex,
-        fontFace,
-        charSpacing: 2,
-      });
-
-      slide.addText(s.title, {
-        x: 0.8,
-        y: 1.2,
-        w: 10.0,
-        h: 0.8,
-        fontSize: sizes.title,
-        bold: true,
-        color: primaryHex,
-        fontFace,
-      });
-
-      if (s.subtitle) {
-        slide.addText(s.subtitle, {
-          x: 0.8,
-          y: 2.0,
-          w: 9.5,
-          h: 0.4,
-          fontSize: sizes.subtitle,
-          color: "666666",
-          italic: true,
-          fontFace,
-        });
-      }
-
-      if (s.bullets && s.bullets.length > 0) {
-        const bulletItems = s.bullets.map((b) => ({
-          text: b,
-          options: { breakLine: true },
-        }));
-        slide.addText(bulletItems, {
-          x: 0.8,
-          y: 2.6,
-          w: 9.5,
-          h: 3.5,
-          fontSize: sizes.body,
-          color: "333333",
-          bullet: true,
-          lineSpacing: 28,
-          fontFace,
-        });
-      }
-    }
-  }
-
-  // Write physical file to isolated temp path
   const rawData = await pptx.write({ outputType: "nodebuffer" });
   const buffer = Buffer.isBuffer(rawData) ? rawData : Buffer.from(rawData as ArrayBuffer);
   fs.writeFileSync(destPath, buffer);
@@ -419,7 +121,31 @@ async function generatePptxFile(session: PresentationSession, destPath: string):
 }
 
 /**
- * Synthesizes dynamic slide content using Gemini 2.5 Flash if available
+ * Summarizes long source documents into an outline brief if document exceeds 8,000 characters
+ */
+function prepareDocumentBrief(content: string): string {
+  if (content.length <= 8000) return content;
+
+  // Split into chunks across sections or paragraphs
+  const chunks = content.split(/\n\s*\n/).filter((c) => c.trim().length > 0);
+  if (chunks.length <= 4) {
+    return content.slice(0, 8000);
+  }
+
+  // Preserve introduction, intermediate sections, and conclusion
+  const intro = chunks.slice(0, 2).join("\n\n");
+  const middleIndices = Math.floor(chunks.length / 2);
+  const middle = chunks.slice(middleIndices - 1, middleIndices + 2).join("\n\n");
+  const conclusion = chunks.slice(-2).join("\n\n");
+
+  return `EXECUTIVE SUMMARY & INTRO:\n${intro}\n\nCORE BODY & ANALYSIS:\n${middle}\n\nCONCLUSIONS & METRICS:\n${conclusion}`.slice(
+    0,
+    9000,
+  );
+}
+
+/**
+ * Synthesizes dynamic slide content using Gemini Flash if API key is provided
  */
 async function generateSlidesWithGemini(
   title: string,
@@ -427,17 +153,21 @@ async function generateSlidesWithGemini(
   slideCount: number,
   density: "concise" | "balanced" | "detailed",
   purpose: string,
+  apiKey?: string,
 ): Promise<SlideData[] | null> {
-  if (!ENV.GEMINI_API_KEY || !content || content.trim().length < 20) return null;
+  const activeKey = apiKey || ENV.GEMINI_API_KEY;
+  if (!activeKey || !content || content.trim().length < 20) return null;
 
   try {
-    const prompt = `You are DocuMind's presentation engine.
+    const documentBrief = prepareDocumentBrief(content);
+
+    const prompt = `You are DocuMind's elite presentation engine.
 Analyze the following source document/notes and generate a cohesive, professional presentation of exactly ${slideCount} slides with purpose "${purpose}" and content density "${density}".
 The user's requested title is "${title || "Detect best title from text"}".
 
 SOURCE TEXT:
 """
-${content.slice(0, 10000)}
+${documentBrief}
 """
 
 Respond in JSON adhering strictly to this schema:
@@ -447,37 +177,48 @@ Respond in JSON adhering strictly to this schema:
     {
       "slideNumber": 1,
       "layout": "title",
-      "title": "string",
-      "subtitle": "string",
+      "title": "string (under 50 chars)",
+      "subtitle": "string (under 75 chars)",
+      "categoryTag": "string",
       "notes": "string"
     },
     {
       "slideNumber": 2,
       "layout": "agenda",
-      "title": "Agenda & Topics",
-      "subtitle": "Core topics covered in this presentation",
-      "bullets": ["topic 1", "topic 2"]
+      "title": "Agenda & Structural Roadmap",
+      "subtitle": "Core topics and analytical checkpoints",
+      "categoryTag": "AGENDA",
+      "bullets": ["topic 1", "topic 2", "topic 3"]
     },
-    ... (intermediate slides with layout 'content', 'two-column', or 'metrics')
+    ... (intermediate slides using varied layouts: "two-column", "three-card", "metrics", "timeline", "process", "quote", "text-visual", or "image-led")
     {
       "slideNumber": ${slideCount},
       "layout": "conclusion",
       "title": "Key Takeaways & Conclusion",
-      "subtitle": "Summary of insights and forward actions",
-      "bullets": ["conclusion 1", "conclusion 2"]
+      "subtitle": "Synthesis and forward actions",
+      "categoryTag": "CONCLUSION",
+      "bullets": ["takeaway 1", "takeaway 2", "takeaway 3", "action item"]
     }
   ]
 }
 
-STRICT REQUIREMENTS:
-1. Every slide title, bullet point, metric, and comparison MUST be derived directly from the source text.
-2. DO NOT use generic corporate filler or placeholder text.
-3. Slide 2 Agenda bullets MUST list the actual topics covered in the subsequent slides.
-4. Return exactly ${slideCount} slides.`;
+STRICT REQUIREMENTS FOR MODERN SLIDE DECKS:
+1. Every slide title, bullet point, metric, comparison, and pillar MUST be derived directly from the source text.
+2. DO NOT use generic corporate filler or repeated "Core Analysis" bullet points.
+3. Modern Layout Variety: Never repeat the same layout consecutively.
+4. For visual concepts, creative directions, brand identities, or scientific processes:
+   - Use layout "text-visual" or "image-led".
+   - Include a "visual" object: { "type": "picture"|"graph"|"diagram"|"chart", "concept": "short title", "caption": "brief explanation", "imagePrompt": "vivid detailed prompt describing the picture or vector graph to generate" }.
+5. For scope, boundaries, frontend-only rules, or comparisons: Use layout "two-column" with "leftColumn" (In-Scope) and "rightColumn" (Out-of-Scope / Constraints).
+6. For multi-concept choices or 3 pillars: Use layout "three-card" with "cards" array.
+7. For metrics or numbers: Use layout "metrics" with "metrics" array.
+8. For workflows or milestones: Use layout "timeline" or "process".
+9. Keep slide titles punchy and under 48 characters to prevent text overflow and overlapping.
+10. Return exactly ${slideCount} slides with slide numbers from 1 to ${slideCount}.`;
 
-    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : 8000;
+    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : 14000;
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -493,10 +234,16 @@ STRICT REQUIREMENTS:
       layout?: SlideLayoutType;
       title?: string;
       subtitle?: string;
+      categoryTag?: string;
       bullets?: string[];
       leftColumn?: { title: string; bullets: string[] };
       rightColumn?: { title: string; bullets: string[] };
+      cards?: Array<{ title: string; description: string; tag?: string }>;
       metrics?: Array<{ label: string; value: string; description?: string }>;
+      timeline?: Array<{ phase: string; title: string; description: string }>;
+      processSteps?: Array<{ stepNumber: number; title: string; description: string }>;
+      quote?: { text: string; author?: string; role?: string };
+      visual?: SlidePreviewItem["visual"];
       notes?: string;
     }
 
@@ -523,15 +270,21 @@ STRICT REQUIREMENTS:
                 ? "title"
                 : idx === 1
                   ? "agenda"
-                  : idx === parsed.slides.length - 1
+                  : idx === parsed.slides!.length - 1
                     ? "conclusion"
                     : "content"),
             title: s.title || `Slide ${idx + 1}`,
             subtitle: s.subtitle,
+            categoryTag: s.categoryTag || purpose,
             bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
             leftColumn: s.leftColumn,
             rightColumn: s.rightColumn,
+            cards: s.cards,
             metrics: Array.isArray(s.metrics) ? s.metrics : undefined,
+            timeline: s.timeline,
+            processSteps: s.processSteps,
+            quote: s.quote,
+            visual: s.visual,
             notes: s.notes,
           }));
         }
@@ -539,11 +292,90 @@ STRICT REQUIREMENTS:
     }
   } catch (err) {
     console.warn(
-      "Gemini slide synthesis unavailable or timed out, falling back to local semantic parser:",
+      "Gemini slide synthesis unavailable, timed out, or unconfigured, utilizing local semantic parser:",
       err,
     );
   }
   return null;
+}
+
+/**
+ * Alternative AI Synthesis via OpenAI / Compatible Endpoints
+ */
+async function generateSlidesWithOpenAI(
+  title: string,
+  content: string,
+  slideCount: number,
+  density: "concise" | "balanced" | "detailed",
+  purpose: string,
+  apiKey: string,
+): Promise<SlideData[] | null> {
+  if (!apiKey || apiKey.length < 8) return null;
+  try {
+    const brief = prepareDocumentBrief(content);
+    const prompt = `You are a world-class presentation architect for DocuMind.
+Convert the source text into a structured presentation deck of exactly ${slideCount} slides.
+Output must strictly be valid JSON format:
+{
+  "title": "string",
+  "slides": [
+    {
+      "slideNumber": 1,
+      "layout": "title",
+      "title": "string",
+      "subtitle": "string",
+      "categoryTag": "string"
+    },
+    ...
+  ]
+}
+SOURCE TITLE: ${title}
+SOURCE TEXT:
+${brief}`;
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) return null;
+    const json = (await res.json()) as any;
+    const rawText = json.choices?.[0]?.message?.content;
+    if (!rawText) return null;
+
+    const parsed = JSON.parse(rawText);
+    if (!Array.isArray(parsed.slides) || parsed.slides.length !== slideCount) return null;
+
+    return parsed.slides.map((s: any, idx: number) => ({
+      id: `slide-${idx + 1}`,
+      slideNumber: idx + 1,
+      layout: s.layout || (idx === 0 ? "title" : "content"),
+      title: s.title || `Slide ${idx + 1}`,
+      subtitle: s.subtitle,
+      categoryTag: s.categoryTag || purpose,
+      bullets: Array.isArray(s.bullets) ? s.bullets : [],
+      leftColumn: s.leftColumn,
+      rightColumn: s.rightColumn,
+      cards: s.cards,
+      metrics: s.metrics,
+      timeline: s.timeline,
+      processSteps: s.processSteps,
+      quote: s.quote,
+      visual: s.visual,
+      notes: s.notes,
+    }));
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -563,23 +395,53 @@ export async function createPresentationSession(
   const fontFamily = input.typography?.fontFamily || "Inter";
   const fontSizePreset = input.typography?.fontSizePreset || "standard";
 
-  // First attempt AI synthesis with Gemini 2.5 Flash if available, otherwise use deterministic semantic parser
+  const activeProvider = getActiveProvider();
+  const effectiveApiKey = input.geminiApiKey || getEffectiveGeminiApiKey() || ENV.GEMINI_API_KEY;
+  const effectiveOpenAiKey = getEffectiveOpenAIApiKey();
+
   let slides: SlideData[] = [];
-  const aiSlides = await generateSlidesWithGemini(
-    input.title,
-    input.content,
-    slideCount,
-    density,
-    purpose,
-  );
-  if (aiSlides && aiSlides.length === slideCount) {
-    slides = aiSlides;
-  } else {
+
+  // 1. If provider is set to offline or zero external APIs
+  if (activeProvider === "offline") {
     slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
   }
+  // 2. If provider is set to OpenAI
+  else if (activeProvider === "openai" && effectiveOpenAiKey) {
+    const oSlides = await generateSlidesWithOpenAI(
+      input.title,
+      input.content,
+      slideCount,
+      density,
+      purpose,
+      effectiveOpenAiKey,
+    );
+    if (oSlides && oSlides.length === slideCount) {
+      slides = oSlides;
+    } else {
+      slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+    }
+  }
+  // 3. Default: Gemini provider with automatic deterministic fallback
+  else {
+    if (effectiveApiKey) {
+      const aiSlides = await generateSlidesWithGemini(
+        input.title,
+        input.content,
+        slideCount,
+        density,
+        purpose,
+        effectiveApiKey,
+      );
+      if (aiSlides && aiSlides.length === slideCount) {
+        slides = aiSlides;
+      }
+    }
+    if (slides.length === 0) {
+      slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+    }
+  }
 
-  const pptxFilePath = path.join(sessionDir, "presentation.pptx");
-
+  // Generate contextual visuals (pictures, graphs, diagrams) for visual-led slides
   const defaultTheme: CreatePresentationSessionInput["theme"] = {
     id: "executive-brief",
     name: "Executive Brief",
@@ -590,8 +452,44 @@ export async function createPresentationSession(
     tier: "free",
   };
   const theme = input.theme || defaultTheme;
+  const themeTokens = computeThemeTokens(theme, input.typography);
+
+  for (const s of slides) {
+    if (
+      s.layout === "text-visual" ||
+      s.layout === "image-led" ||
+      s.visual?.concept ||
+      s.visual?.imagePrompt
+    ) {
+      if (!s.visual?.imageUrl) {
+        try {
+          const vis = await generateSlideVisual({
+            title: s.title,
+            subtitle: s.subtitle,
+            bullets: s.bullets,
+            visualPrompt: s.visual?.imagePrompt || s.visual?.concept,
+            visualType: (s.visual?.type as any) || "diagram",
+            concept: s.visual?.concept || s.title,
+            apiKey: effectiveApiKey,
+            accentColor: theme.colors.accent,
+            isDark: themeTokens.isDark,
+          });
+          s.visual = {
+            type: vis.type,
+            concept: vis.concept,
+            caption: vis.caption,
+            imageUrl: vis.imageUrl,
+            svgContent: vis.svgContent,
+          };
+        } catch (visErr) {
+          console.warn("Visual generation fallback for slide:", s.title, visErr);
+        }
+      }
+    }
+  }
 
   const derivedTitle = input.title.trim() || slides[0]?.title || "Presentation";
+  const pptxFilePath = path.join(sessionDir, "presentation.pptx");
 
   const session: PresentationSession = {
     id: sessionId,
@@ -627,7 +525,6 @@ export function getPresentationSession(sessionId: string): PresentationSession |
   if (!session) return null;
 
   if (Date.now() >= session.expiresAt) {
-    // Purge expired session immediately
     deletePresentationSession(sessionId);
     return null;
   }
@@ -668,7 +565,6 @@ export function cleanupExpiredSessions(): number {
     }
   }
 
-  // Also check disk for orphaned session directories older than 10 minutes
   try {
     if (fs.existsSync(BASE_TEMP_DIR)) {
       const dirs = fs.readdirSync(BASE_TEMP_DIR);
@@ -683,12 +579,11 @@ export function cleanupExpiredSessions(): number {
         }
       }
     }
-  } catch (e) {
+  } catch {
     // Suppress disk scanning errors
   }
 
   return cleanedCount;
 }
 
-// Start recurring 30-second cleanup timer
 setInterval(cleanupExpiredSessions, 30_000);

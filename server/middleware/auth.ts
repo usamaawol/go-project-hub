@@ -53,9 +53,11 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 
 export function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   optionalAuth(req, res, () => {
-    // If request contains admin token, header, or query key, grant admin
+    // Admin and Super Admin are identical in privileges
     const isAdmin =
       req.user?.role === "admin" ||
+      req.user?.role === "super_admin" ||
+      req.user?.role === "superadmin" ||
       req.headers["x-admin-key"] === "documind-admin-secret" ||
       req.query.adminKey === "documind-admin-secret";
 

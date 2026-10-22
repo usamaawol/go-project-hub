@@ -6,6 +6,17 @@ import { FeedbackModel } from "../models/Feedback";
 import { isDbConnected } from "../config/db";
 import { TEMPLATES } from "../../src/data/templates";
 import { cleanupExpiredSessions } from "../services/presentationSession.service";
+import {
+  getAdminSettings,
+  updateAdminSettings,
+  testGeminiConnection,
+  testOpenAIConnection,
+  listStaffMembers,
+  addStaffMember,
+  removeStaffMember,
+  getStaffAuditLogs,
+  recordStaffAuditLog,
+} from "../services/adminSettings.service";
 
 // In-memory feedback store fallback when MongoDB is running in-memory/stateless
 const inMemoryFeedback = [
@@ -148,7 +159,8 @@ export async function getDashboardMetrics(
     }
 
     const freePlanUsers = Math.max(0, totalUsers - proPlanUsers);
-    const proConversionRate = totalUsers > 0 ? ((proPlanUsers / totalUsers) * 100).toFixed(1) + "%" : "18.5%";
+    const proConversionRate =
+      totalUsers > 0 ? ((proPlanUsers / totalUsers) * 100).toFixed(1) + "%" : "18.5%";
 
     res.json({
       success: true,
@@ -292,7 +304,11 @@ export async function listRecentJobs(req: AuthenticatedRequest, res: Response, n
   }
 }
 
-export async function listAllFeedback(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function listAllFeedback(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     if (isDbConnected()) {
       const list = await FeedbackModel.find().sort({ createdAt: -1 }).limit(100);
@@ -309,7 +325,11 @@ export async function listAllFeedback(req: AuthenticatedRequest, res: Response, 
   }
 }
 
-export async function updateFeedbackStatus(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function updateFeedbackStatus(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const { feedbackId } = req.params;
     const { status } = req.body;
@@ -358,7 +378,9 @@ export async function toggleUserPlan(req: AuthenticatedRequest, res: Response, n
     const { plan } = req.body;
 
     if (!plan || !["free", "pro"].includes(plan)) {
-      return res.status(400).json({ success: false, error: { message: "Plan must be 'free' or 'pro'." } });
+      return res
+        .status(400)
+        .json({ success: false, error: { message: "Plan must be 'free' or 'pro'." } });
     }
 
     if (isDbConnected()) {
@@ -382,7 +404,11 @@ export async function toggleUserPlan(req: AuthenticatedRequest, res: Response, n
   }
 }
 
-export async function purgeTemporaryFiles(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function purgeTemporaryFiles(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const cleaned = cleanupExpiredSessions();
     res.json({
@@ -395,3 +421,125 @@ export async function purgeTemporaryFiles(req: AuthenticatedRequest, res: Respon
     next(error);
   }
 }
+
+export async function getAdminSettingsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const settings = getAdminSettings(true);
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateAdminSettingsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userEmail = req.user?.email || "admin@documind.app";
+    const author = { name: "Lead Administrator", email: userEmail };
+    const updated = updateAdminSettings(req.body, author);
+    res.json({ success: true, data: getAdminSettings(true), message: "Settings saved successfully." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function testGeminiConnectionHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { apiKey } = req.body || {};
+    const result = await testGeminiConnection(apiKey);
+    res.json({ success: result.success, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function testOpenAIConnectionHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { apiKey } = req.body || {};
+    const result = await testOpenAIConnection(apiKey);
+    res.json({ success: result.success, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listStaffHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const staff = listStaffMembers();
+    res.json({ success: true, count: staff.length, data: staff });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createStaffHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { name, email, role, department } = req.body;
+    if (!name || !email) {
+      return res.status(400).json({ success: false, error: { message: "Name and email are required." } });
+    }
+    const newStaff = addStaffMember({
+      name,
+      email,
+      role: role || "staff",
+      department: department || "Operations",
+    });
+    res.status(201).json({ success: true, data: newStaff, message: "Staff member added." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteStaffHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { staffId } = req.params;
+    const deleted = removeStaffMember(staffId);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: { message: "Staff member not found." } });
+    }
+    res.json({ success: true, message: "Staff member removed." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listAuditLogsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const logs = getStaffAuditLogs();
+    res.json({ success: true, count: logs.length, data: logs });
+  } catch (error) {
+    next(error);
+  }
+}
+

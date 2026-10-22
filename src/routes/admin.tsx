@@ -34,6 +34,14 @@ import {
   Calendar,
   Sliders,
   Laptop,
+  Cpu,
+  Key,
+  Bot,
+  EyeOff,
+  Save,
+  UserPlus,
+  SlidersHorizontal,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -50,6 +58,14 @@ import {
   fetchAdminUsers,
   toggleAdminUserPlan,
   purgeAdminTempFiles,
+  fetchAdminSettings,
+  updateAdminSettings,
+  testAdminGeminiConnection,
+  testAdminOpenAIConnection,
+  fetchAdminStaff,
+  createAdminStaff,
+  deleteAdminStaff,
+  fetchAdminAuditLogs,
 } from "@/lib/api-client";
 
 export const Route = createFileRoute("/admin")({
@@ -58,7 +74,8 @@ export const Route = createFileRoute("/admin")({
       { title: "Admin Console & Analytics — DocuMind" },
       {
         name: "description",
-        content: "DocuMind administration, real-time analytics, user feedback, and template governance.",
+        content:
+          "DocuMind administration, real-time analytics, user feedback, and template governance.",
       },
     ],
   }),
@@ -151,6 +168,48 @@ interface AdminUserItem {
   providerId: string;
   createdAt: string;
   lastActive?: string;
+}
+
+interface StaffMemberItem {
+  id: string;
+  name: string;
+  email: string;
+  role: "super_admin" | "admin" | "staff" | "moderator";
+  department: string;
+  avatarColor: string;
+  status: "active" | "invited" | "suspended";
+  lastActive: string;
+  createdAt: string;
+}
+
+interface StaffAuditLogItem {
+  id: string;
+  staffName: string;
+  staffEmail: string;
+  action: string;
+  details: string;
+  timestamp: string;
+}
+
+interface AdminSystemSettingsState {
+  activeProvider?: "gemini" | "openai" | "offline";
+  geminiApiKey: string;
+  geminiModel: string;
+  imagenModel: string;
+  openaiApiKey?: string;
+  openaiModel?: string;
+  aiEngineMode: "full" | "balanced" | "local";
+  maxSlideCount: number;
+  aiTimeoutSeconds: number;
+  temperature: number;
+  maintenanceMode: boolean;
+  announcement: {
+    enabled: boolean;
+    text: string;
+    type: "info" | "warning" | "success";
+  };
+  hasKeyConfigured?: boolean;
+  hasOpenAiKeyConfigured?: boolean;
 }
 
 const DEFAULT_METRICS: AdminMetrics = {
@@ -323,7 +382,7 @@ function AdminPage() {
   const [adminKey, setAdminKey] = useState("documind-admin-secret");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "analytics" | "feedback" | "users" | "templates" | "jobs"
+    "analytics" | "ai-engine" | "staff" | "feedback" | "users" | "templates" | "jobs"
   >("analytics");
   const [timeRange, setTimeRange] = useState<"today" | "7d" | "30d" | "all">("7d");
   const [loading, setLoading] = useState(false);
@@ -333,6 +392,92 @@ function AdminPage() {
   const [jobs, setJobs] = useState<JobLog[]>([]);
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>(INITIAL_FEEDBACK);
   const [usersList, setUsersList] = useState<AdminUserItem[]>(INITIAL_USERS);
+
+  // AI Engine & System Settings State
+  const [adminSettings, setAdminSettings] = useState<AdminSystemSettingsState>({
+    activeProvider: "gemini",
+    geminiApiKey: "",
+    geminiModel: "gemini-2.5-flash",
+    imagenModel: "imagen-3.0-generate-002",
+    openaiApiKey: "",
+    openaiModel: "gpt-4o-mini",
+    aiEngineMode: "full",
+    maxSlideCount: 20,
+    aiTimeoutSeconds: 15,
+    temperature: 0.7,
+    maintenanceMode: false,
+    announcement: {
+      enabled: false,
+      text: "DocuMind System Update: Gemini 2.5 Flash and Imagen 3 vision models are now globally available.",
+      type: "info",
+    },
+    hasKeyConfigured: false,
+    hasOpenAiKeyConfigured: false,
+  });
+  const [editGeminiKey, setEditGeminiKey] = useState("");
+  const [editOpenAiKey, setEditOpenAiKey] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showOpenAiKey, setShowOpenAiKey] = useState(false);
+  const [testingGemini, setTestingGemini] = useState(false);
+  const [testingOpenAi, setTestingOpenAi] = useState(false);
+  const [testGeminiResult, setTestGeminiResult] = useState<{
+    success: boolean;
+    latencyMs: number;
+    message: string;
+    modelsFound?: string[];
+  } | null>(null);
+  const [testOpenAiResult, setTestOpenAiResult] = useState<{
+    success: boolean;
+    latencyMs: number;
+    message: string;
+    modelsFound?: string[];
+  } | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Staff & Team Directory State
+  const [staffList, setStaffList] = useState<StaffMemberItem[]>([
+    {
+      id: "staff-101",
+      name: "Lead Administrator",
+      email: "admin@documind.app",
+      role: "super_admin",
+      department: "Executive & System Infrastructure",
+      avatarColor: "#2563EB",
+      status: "active",
+      lastActive: "Just now",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "staff-102",
+      name: "Dr. Elena Rostova",
+      email: "elena.rostova@techcorp.io",
+      role: "admin",
+      department: "AI Research & Model Engineering",
+      avatarColor: "#7C3AED",
+      status: "active",
+      lastActive: "14m ago",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "staff-103",
+      name: "Sarah Jenkins",
+      email: "sarah.jenkins@designstudio.co",
+      role: "staff",
+      department: "Theme Design & Visual Systems",
+      avatarColor: "#EC4899",
+      status: "active",
+      lastActive: "1h ago",
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  const [auditLogs, setAuditLogs] = useState<StaffAuditLogItem[]>([]);
+  const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [newStaffName, setNewStaffName] = useState("");
+  const [newStaffEmail, setNewStaffEmail] = useState("");
+  const [newStaffRole, setNewStaffRole] = useState<"super_admin" | "admin" | "staff" | "moderator">("staff");
+  const [newStaffDepartment, setNewStaffDepartment] = useState("Operations");
+  const [staffSearch, setStaffSearch] = useState("");
+  const [staffRoleFilter, setStaffRoleFilter] = useState("All");
 
   // Filters & Search
   const [templateSearch, setTemplateSearch] = useState("");
@@ -420,6 +565,26 @@ function AdminPage() {
         );
         setUsersList(uniqueUsers.length > 0 ? uniqueUsers : INITIAL_USERS);
       }
+
+      // 6. AI Engine Settings
+      const s = await fetchAdminSettings(adminKey);
+      if (s?.data) {
+        setAdminSettings(s.data);
+        setEditGeminiKey((prev) => (!prev ? s.data.geminiApiKey || "" : prev));
+        setEditOpenAiKey((prev) => (!prev ? s.data.openaiApiKey || "" : prev));
+      }
+
+      // 7. Staff Directory
+      const staffRes = await fetchAdminStaff(adminKey);
+      if (staffRes?.data && Array.isArray(staffRes.data)) {
+        setStaffList(staffRes.data);
+      }
+
+      // 8. Audit Logs
+      const logsRes = await fetchAdminAuditLogs(adminKey);
+      if (logsRes?.data && Array.isArray(logsRes.data)) {
+        setAuditLogs(logsRes.data);
+      }
     } catch (e) {
       console.warn("Could not load backend telemetry, using synchronized local store:", e);
     } finally {
@@ -428,7 +593,12 @@ function AdminPage() {
   };
 
   useEffect(() => {
-    if (user?.role === "admin" || adminKey === "documind-admin-secret") {
+    if (
+      user?.role === "admin" ||
+      user?.role === "super_admin" ||
+      user?.role === "superadmin" ||
+      adminKey === "documind-admin-secret"
+    ) {
       setIsAuthenticated(true);
       void loadAdminData();
     }
@@ -476,7 +646,12 @@ function AdminPage() {
       ["Traffic & Viewers", "Total Unique Viewers", metrics.totalViewers, "Unique Visitors"],
       ["Traffic & Viewers", "Daily Active Viewers", metrics.uniqueDailyViewers, "Last 24 Hours"],
       ["Traffic & Viewers", "Total Page Views", metrics.pageViews, "All Routes"],
-      ["Traffic & Viewers", "Presentation Preview Views", metrics.presentationViews, "In-Browser Viewer"],
+      [
+        "Traffic & Viewers",
+        "Presentation Preview Views",
+        metrics.presentationViews,
+        "In-Browser Viewer",
+      ],
       ["Traffic & Viewers", "Active Live Viewers", metrics.activeViewersNow, "Current Concurrent"],
       ["Traffic & Viewers", "Average Session Duration", metrics.avgSessionDuration, "Time on site"],
       ["User Growth", "Total Registered Users", metrics.totalUsers, "Accounts"],
@@ -485,12 +660,37 @@ function AdminPage() {
       ["User Growth", "Pro Conversion Rate", metrics.proConversionRate, "Free-to-Pro"],
       ["User Growth", "Google Single Sign-On Users", metrics.googleOAuthUsers, "OAuth Verified"],
       ["User Growth", "Email/Password Users", metrics.emailUsers, "Direct Auth"],
-      ["Pro Plan Telemetry", "HD PPTX 4K Exports", metrics.proFeaturesUsage.hdPptxExports, "Exports"],
-      ["Pro Plan Telemetry", "Extended 20+ Slide Decks", metrics.proFeaturesUsage.extendedSlideDecks, "Decks"],
-      ["Pro Plan Telemetry", "Custom Branding Usage", metrics.proFeaturesUsage.customWorkspaceBranding, "Workspaces"],
-      ["Pro Plan Telemetry", "Batch Document Processing", metrics.proFeaturesUsage.batchProcessing, "Batch Jobs"],
+      [
+        "Pro Plan Telemetry",
+        "HD PPTX 4K Exports",
+        metrics.proFeaturesUsage.hdPptxExports,
+        "Exports",
+      ],
+      [
+        "Pro Plan Telemetry",
+        "Extended 20+ Slide Decks",
+        metrics.proFeaturesUsage.extendedSlideDecks,
+        "Decks",
+      ],
+      [
+        "Pro Plan Telemetry",
+        "Custom Branding Usage",
+        metrics.proFeaturesUsage.customWorkspaceBranding,
+        "Workspaces",
+      ],
+      [
+        "Pro Plan Telemetry",
+        "Batch Document Processing",
+        metrics.proFeaturesUsage.batchProcessing,
+        "Batch Jobs",
+      ],
       ["Customer Feedback", "Total Feedback Logged", metrics.totalFeedback, "Reviews"],
-      ["Customer Feedback", "Average Satisfaction Rating", `${metrics.averageFeedbackRating} / 5.0`, "Score"],
+      [
+        "Customer Feedback",
+        "Average Satisfaction Rating",
+        `${metrics.averageFeedbackRating} / 5.0`,
+        "Score",
+      ],
       ["System Health", "Total Document Jobs", metrics.totalJobs, "Files Processed"],
       ["System Health", "Job Success Rate", metrics.successRate, "Successful"],
       ["System Health", "API Server Heap Memory", `${metrics.memoryUsageMb} MB`, "RAM"],
@@ -498,11 +698,16 @@ function AdminPage() {
 
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+      rows
+        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+        .join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `documind-admin-telemetry-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute(
+      "download",
+      `documind-admin-telemetry-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -513,10 +718,14 @@ function AdminPage() {
 
   // Export Feedback JSON
   const handleExportFeedbackJSON = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(feedbackList, null, 2));
+    const dataStr =
+      "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(feedbackList, null, 2));
     const link = document.createElement("a");
     link.setAttribute("href", dataStr);
-    link.setAttribute("download", `documind-user-feedback-${new Date().toISOString().slice(0, 10)}.json`);
+    link.setAttribute(
+      "download",
+      `documind-user-feedback-${new Date().toISOString().slice(0, 10)}.json`,
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -534,13 +743,15 @@ function AdminPage() {
 
     // Update Pro metrics count
     setMetrics((prev) => {
-      const nextPro = nextPlan === "pro" ? prev.proPlanUsers + 1 : Math.max(0, prev.proPlanUsers - 1);
+      const nextPro =
+        nextPlan === "pro" ? prev.proPlanUsers + 1 : Math.max(0, prev.proPlanUsers - 1);
       const nextFree = Math.max(0, prev.totalUsers - nextPro);
       return {
         ...prev,
         proPlanUsers: nextPro,
         freePlanUsers: nextFree,
-        proConversionRate: prev.totalUsers > 0 ? ((nextPro / prev.totalUsers) * 100).toFixed(1) + "%" : "0%",
+        proConversionRate:
+          prev.totalUsers > 0 ? ((nextPro / prev.totalUsers) * 100).toFixed(1) + "%" : "0%",
       };
     });
 
@@ -614,6 +825,166 @@ function AdminPage() {
     setNewFeedbackEmail("");
   };
 
+  // Save AI Engine & System Settings
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const payload: Record<string, unknown> = {
+        activeProvider: adminSettings.activeProvider || "gemini",
+        aiEngineMode: adminSettings.aiEngineMode,
+        geminiModel: adminSettings.geminiModel,
+        imagenModel: adminSettings.imagenModel,
+        openaiModel: adminSettings.openaiModel || "gpt-4o-mini",
+        maxSlideCount: Number(adminSettings.maxSlideCount) || 20,
+        aiTimeoutSeconds: Number(adminSettings.aiTimeoutSeconds) || 15,
+        temperature: Number(adminSettings.temperature) || 0.7,
+        maintenanceMode: adminSettings.maintenanceMode,
+        announcement: adminSettings.announcement,
+      };
+
+      if (editGeminiKey.trim() && !editGeminiKey.includes("••••")) {
+        payload.geminiApiKey = editGeminiKey.trim();
+      }
+      if (editOpenAiKey.trim() && !editOpenAiKey.includes("••••")) {
+        payload.openaiApiKey = editOpenAiKey.trim();
+      }
+
+      const res = await updateAdminSettings(payload, adminKey);
+      if (res?.data) {
+        setAdminSettings(res.data);
+        setEditGeminiKey(res.data.geminiApiKey || "");
+        setEditOpenAiKey(res.data.openaiApiKey || "");
+      }
+      toast.success("AI Engine & System Settings Saved", {
+        description: "Credentials and parameters updated globally for all staff and presentation sessions.",
+      });
+      void loadAdminData();
+    } catch (err: any) {
+      toast.error("Failed to save settings: " + (err?.message || "Unknown error"));
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Test OpenAI Connection
+  const handleTestOpenAiKey = async () => {
+    setTestingOpenAi(true);
+    setTestOpenAiResult(null);
+    try {
+      const keyToTest = editOpenAiKey.includes("••••") ? undefined : editOpenAiKey.trim() || undefined;
+      const res = await testAdminOpenAIConnection(keyToTest, adminKey);
+      if (res?.data) {
+        setTestOpenAiResult(res.data);
+        if (res.data.success) {
+          toast.success("OpenAI Connection Operational", { description: res.data.message });
+        } else {
+          toast.error("OpenAI Connection Failed", { description: res.data.message });
+        }
+      }
+    } catch (err: any) {
+      setTestOpenAiResult({
+        success: false,
+        latencyMs: 0,
+        message: err?.message || "Failed to reach OpenAI test endpoint.",
+      });
+    } finally {
+      setTestingOpenAi(false);
+    }
+  };
+
+  // Test Gemini & Imagen Connection
+  const handleTestGeminiKey = async () => {
+    setTestingGemini(true);
+    setTestGeminiResult(null);
+    try {
+      const keyToTest = editGeminiKey.includes("••••") ? undefined : editGeminiKey.trim() || undefined;
+      const res = await testAdminGeminiConnection(keyToTest, adminKey);
+      if (res?.data) {
+        setTestGeminiResult(res.data);
+        if (res.data.success) {
+          toast.success("Gemini API Connection Operational", {
+            description: res.data.message,
+          });
+        } else {
+          toast.error("Gemini API Connection Failed", {
+            description: res.data.message,
+          });
+        }
+      }
+    } catch (err: any) {
+      setTestGeminiResult({
+        success: false,
+        latencyMs: 0,
+        message: err?.message || "Network error connecting to Gemini test endpoint.",
+      });
+      toast.error("Test Request Failed");
+    } finally {
+      setTestingGemini(false);
+    }
+  };
+
+  // Add Staff Member
+  const handleAddStaffMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStaffName.trim() || !newStaffEmail.trim()) {
+      toast.error("Staff name and email are required.");
+      return;
+    }
+    try {
+      const res = await createAdminStaff(
+        {
+          name: newStaffName.trim(),
+          email: newStaffEmail.trim(),
+          role: newStaffRole,
+          department: newStaffDepartment,
+        },
+        adminKey,
+      );
+      if (res?.data) {
+        setStaffList((prev) => [res.data, ...prev]);
+        toast.success(`Staff Member Added: ${res.data.name}`, {
+          description: `Assigned role ${res.data.role.toUpperCase()} in ${res.data.department}.`,
+        });
+      }
+      setShowAddStaffModal(false);
+      setNewStaffName("");
+      setNewStaffEmail("");
+      void loadAdminData();
+    } catch (err: any) {
+      toast.error("Failed to add staff: " + err?.message);
+    }
+  };
+
+  // Delete Staff Member
+  const handleDeleteStaffMember = async (staffId: string, name: string) => {
+    try {
+      await deleteAdminStaff(staffId, adminKey);
+      setStaffList((prev) => prev.filter((s) => s.id !== staffId));
+      toast.info(`Staff Member Removed: ${name}`);
+      void loadAdminData();
+    } catch (err: any) {
+      toast.error("Failed to remove staff: " + err?.message);
+    }
+  };
+
+  // Export Audit Logs JSON
+  const handleExportAuditLogsJSON = () => {
+    const dataStr =
+      "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(auditLogs, null, 2));
+    const link = document.createElement("a");
+    link.setAttribute("href", dataStr);
+    link.setAttribute(
+      "download",
+      `documind-staff-audit-trail-${new Date().toISOString().slice(0, 10)}.json`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Staff Audit Trail Downloaded", {
+      description: `Saved ${auditLogs.length} audit records.`,
+    });
+  };
+
   // Toggle template publish status
   const togglePublish = (id: string) => {
     setTemplatesState((prev) =>
@@ -638,10 +1009,7 @@ function AdminPage() {
   };
 
   // Filter templates
-  const templateCategories = [
-    "All",
-    ...Array.from(new Set(templatesState.map((t) => t.category))),
-  ];
+  const templateCategories = ["All", ...Array.from(new Set(templatesState.map((t) => t.category)))];
 
   const filteredTemplates = templatesState.filter((t) => {
     const matchesSearch =
@@ -757,7 +1125,8 @@ function AdminPage() {
                 Administrative Command & Analytics
               </h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Live monitoring for site viewers, registered users, Pro plan usage, and user reviews.
+                Live monitoring for site viewers, registered users, Pro plan usage, and user
+                reviews.
               </p>
             </div>
 
@@ -809,6 +1178,17 @@ function AdminPage() {
               </Button>
 
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveTab("ai-engine")}
+                className="text-xs h-8 px-3 border-primary/30 text-primary bg-primary/10 hover:bg-primary/20 font-semibold shadow-xs"
+                title="Enter or update the Google Gemini API Key and AI Providers"
+              >
+                <Key className="h-3.5 w-3.5 mr-1 text-primary" />
+                Enter Gemini Key
+              </Button>
+
+              <Button
                 variant="hero"
                 size="sm"
                 onClick={loadAdminData}
@@ -832,7 +1212,9 @@ function AdminPage() {
               <span className="font-mono text-muted-foreground">
                 Database:{" "}
                 <span className="text-foreground font-semibold">
-                  {healthData?.database === "connected" ? "MongoDB Atlas" : "Stateless Memory Shield"}
+                  {healthData?.database === "connected"
+                    ? "MongoDB Atlas"
+                    : "Stateless Memory Shield"}
                 </span>
               </span>
               <span className="text-muted-foreground">|</span>
@@ -885,6 +1267,42 @@ function AdminPage() {
             >
               <TrendingUp className="h-4 w-4" />
               <span>Viewers & Analytics</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("ai-engine")}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold whitespace-nowrap transition-all ${
+                activeTab === "ai-engine"
+                  ? "bg-card text-primary shadow-xs border border-border font-bold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Cpu className="h-4 w-4" />
+              <span>AI Engine & Gemini</span>
+              <span
+                className={`ml-1 rounded-full px-1.5 py-0.2 font-mono text-[10px] ${
+                  adminSettings.hasKeyConfigured
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold"
+                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                {adminSettings.hasKeyConfigured ? "Connected" : "Offline Fallback"}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("staff")}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold whitespace-nowrap transition-all ${
+                activeTab === "staff"
+                  ? "bg-card text-primary shadow-xs border border-border font-bold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              <span>Staff & Team</span>
+              <span className="ml-1 rounded-full bg-blue-500/10 px-1.5 py-0.2 font-mono text-[10px] text-blue-600 dark:text-blue-400 font-bold">
+                {staffList.length} Staff
+              </span>
             </button>
 
             <button
@@ -991,7 +1409,9 @@ function AdminPage() {
                     <span className="font-serif text-3xl font-bold text-foreground">
                       {displayPageViews.toLocaleString()}
                     </span>
-                    <span className="text-xs text-primary font-sans font-semibold">Total Views</span>
+                    <span className="text-xs text-primary font-sans font-semibold">
+                      Total Views
+                    </span>
                   </div>
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     Avg session time: {metrics.avgSessionDuration}
@@ -1054,7 +1474,8 @@ function AdminPage() {
                       Weekly Traffic & Viewer Engagement Trend
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Comparative breakdown of daily unique visitors, page views, and Pro plan usage.
+                      Comparative breakdown of daily unique visitors, page views, and Pro plan
+                      usage.
                     </p>
                   </div>
 
@@ -1079,11 +1500,20 @@ function AdminPage() {
                   {metrics.dailyTrend.map((item, idx) => {
                     const maxVal = 600;
                     const viewerHeight = Math.min(100, Math.round((item.viewers / maxVal) * 100));
-                    const proHeight = Math.min(100, Math.round(((item.proUses * 4) / maxVal) * 100));
-                    const pageHeight = Math.min(100, Math.round(((item.pageViews / 5) / maxVal) * 100));
+                    const proHeight = Math.min(
+                      100,
+                      Math.round(((item.proUses * 4) / maxVal) * 100),
+                    );
+                    const pageHeight = Math.min(
+                      100,
+                      Math.round((item.pageViews / 5 / maxVal) * 100),
+                    );
 
                     return (
-                      <div key={idx} className="flex flex-col items-center h-full justify-end group">
+                      <div
+                        key={idx}
+                        className="flex flex-col items-center h-full justify-end group"
+                      >
                         {/* Bar cluster */}
                         <div className="flex items-end justify-center gap-1 w-full max-w-[48px] h-full">
                           {/* Page Views bar */}
@@ -1183,7 +1613,9 @@ function AdminPage() {
                       <p className="mt-1 font-serif text-xl font-bold text-foreground">
                         {metrics.proFeaturesUsage.hdPptxExports}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">High-definition decks</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        High-definition decks
+                      </p>
                     </div>
 
                     <div className="rounded-xl border border-border bg-surface-2 p-3.5">
@@ -1193,7 +1625,9 @@ function AdminPage() {
                       <p className="mt-1 font-serif text-xl font-bold text-foreground">
                         {metrics.proFeaturesUsage.extendedSlideDecks}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">Long-form presentations</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Long-form presentations
+                      </p>
                     </div>
 
                     <div className="rounded-xl border border-border bg-surface-2 p-3.5">
@@ -1203,7 +1637,9 @@ function AdminPage() {
                       <p className="mt-1 font-serif text-xl font-bold text-foreground">
                         {metrics.proFeaturesUsage.customWorkspaceBranding}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">Custom fonts & colors</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Custom fonts & colors
+                      </p>
                     </div>
 
                     <div className="rounded-xl border border-border bg-surface-2 p-3.5">
@@ -1213,9 +1649,694 @@ function AdminPage() {
                       <p className="mt-1 font-serif text-xl font-bold text-foreground">
                         {metrics.proFeaturesUsage.batchProcessing}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">Parallel multi-file runs</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Parallel multi-file runs
+                      </p>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: AI VISION & GEMINI ENGINE SETTINGS */}
+          {activeTab === "ai-engine" && (
+            <div className="mt-8 space-y-6">
+              {/* Global Status Banner */}
+              <div className="rounded-2xl border border-border bg-gradient-to-r from-blue-600/10 via-indigo-500/10 to-purple-600/10 p-6 shadow-paper">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold uppercase tracking-wider text-primary">
+                        Global Platform AI Governance
+                      </span>
+                      <span
+                        className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
+                          adminSettings.hasKeyConfigured
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                            : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            adminSettings.hasKeyConfigured ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+                          }`}
+                        />
+                        {adminSettings.hasKeyConfigured
+                          ? "Active: Gemini 2.5 Flash + Imagen 3 Ready"
+                          : "Active: High-Fidelity Vector Synthesizer (Fallback Mode)"}
+                      </span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-serif font-bold text-foreground">
+                      Server-Managed AI Vision & Image Synthesis
+                    </h2>
+                    <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed">
+                      The API key and model parameters configured below apply globally to every visitor, user, and presentation generated on DocuMind. Regular users never need to enter or configure their own API keys.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleTestGeminiKey}
+                      disabled={testingGemini}
+                      className="text-xs h-9 px-3 border-border bg-card hover:bg-surface-2"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${testingGemini ? "animate-spin" : ""}`} />
+                      {testingGemini ? "Testing API..." : "Test Connection"}
+                    </Button>
+                    <Button
+                      variant="hero"
+                      size="sm"
+                      onClick={handleSaveSettings}
+                      disabled={savingSettings}
+                      className="text-xs h-9 px-4"
+                    >
+                      <Save className="h-3.5 w-3.5 mr-1.5" />
+                      {savingSettings ? "Saving..." : "Save Configuration"}
+                    </Button>
+                  </div>
+                </div>
+
+                {testGeminiResult && (
+                  <div
+                    className={`mt-4 rounded-xl border p-3.5 text-xs font-mono flex items-start gap-3 ${
+                      testGeminiResult.success
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                        : "bg-destructive/10 border-destructive/30 text-destructive"
+                    }`}
+                  >
+                    {testGeminiResult.success ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
+                    )}
+                    <div className="space-y-1">
+                      <p className="font-semibold">{testGeminiResult.message}</p>
+                      {testGeminiResult.modelsFound && (
+                        <p className="text-[11px] opacity-80">
+                          Verified Models: {testGeminiResult.modelsFound.join(", ")}
+                        </p>
+                      )}
+                      <p className="text-[10px] opacity-70">Round-trip latency: {testGeminiResult.latencyMs}ms</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Configuration Grid */}
+              <div className="grid gap-6 lg:grid-cols-3">
+                {/* Col 1 & 2: Primary Credentials & Engine Tuning */}
+                <div className="lg:col-span-2 space-y-6">
+                  {/* Synthesis Engine Provider Selection */}
+                  <div className="rounded-2xl border border-border bg-card p-6 shadow-paper space-y-4">
+                    <div className="flex items-center justify-between border-b border-border pb-3">
+                      <div className="flex items-center gap-2">
+                        <Cpu className="h-4 w-4 text-primary" />
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Active Presentation Engine Provider
+                        </h3>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-surface-2 text-muted-foreground border border-border">
+                        Zero-Restriction Architecture
+                      </span>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {[
+                        {
+                          id: "gemini",
+                          title: "Google Gemini",
+                          badge: "Primary Engine",
+                          desc: "Gemini 2.5 Flash outline + Imagen 3 contextual pictures + SVG vector diagrams.",
+                        },
+                        {
+                          id: "openai",
+                          title: "OpenAI Compatible",
+                          badge: "Alternative",
+                          desc: "GPT-4o-mini structured JSON generation. Resilient corporate alternative.",
+                        },
+                        {
+                          id: "offline",
+                          title: "Native Offline Engine",
+                          badge: "Zero-API",
+                          desc: "Deterministic semantic outline + adaptive SVG vector synthesizer. 100% private.",
+                        },
+                      ].map((prov) => {
+                        const isSelected = (adminSettings.activeProvider || "gemini") === prov.id;
+                        return (
+                          <div
+                            key={prov.id}
+                            onClick={() =>
+                              setAdminSettings((prev) => ({
+                                ...prev,
+                                activeProvider: prov.id as any,
+                              }))
+                            }
+                            className={`cursor-pointer rounded-xl border p-4 transition-all relative ${
+                              isSelected
+                                ? "border-primary bg-primary/5 shadow-xs"
+                                : "border-border bg-surface-2 hover:border-border/80"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-semibold text-foreground">{prov.title}</span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                                {prov.badge}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">{prov.desc}</p>
+                            {isSelected && (
+                              <div className="mt-3 flex items-center gap-1.5 text-[10px] font-mono font-bold text-primary">
+                                <Check className="h-3 w-3" /> Selected Provider
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* API Key Box */}
+                  <div className="rounded-2xl border border-border bg-card p-6 shadow-paper space-y-4">
+                    <div className="flex items-center justify-between border-b border-border pb-3">
+                      <div className="flex items-center gap-2">
+                        <Key className="h-4 w-4 text-primary" />
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Google Gemini API Key (Global Server Key)
+                        </h3>
+                      </div>
+                      <a
+                        href="https://aistudio.google.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+                      >
+                        Get Free Key from Google AI Studio ↗
+                      </a>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-mono text-muted-foreground uppercase font-bold block">
+                        Global Gemini API Key String
+                      </label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type={showGeminiKey ? "text" : "password"}
+                            value={editGeminiKey}
+                            onChange={(e) => setEditGeminiKey(e.target.value)}
+                            placeholder="AIzaSy... (Paste Google Gemini API Key)"
+                            className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowGeminiKey(!showGeminiKey)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showGeminiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                        {editGeminiKey && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditGeminiKey("");
+                              toast.info("Key field cleared. Click 'Save' to commit.");
+                            }}
+                            className="text-xs border-border"
+                          >
+                            Clear
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Stored securely on the server and never exposed to regular users. Used by Gemini 2.5 Flash for slide structuring and Google Imagen 3 for 16:9 images.
+                      </p>
+                    </div>
+
+                    {/* Secondary OpenAI API Key Input (For multi-provider flexibility) */}
+                    <div className="pt-3 border-t border-border space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-mono text-muted-foreground uppercase font-bold block">
+                          Optional OpenAI API Key (Alternative Engine)
+                        </label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleTestOpenAiKey}
+                          disabled={testingOpenAi || !editOpenAiKey}
+                          className="h-6 text-[10px] px-2"
+                        >
+                          {testingOpenAi ? "Testing..." : "Test OpenAI"}
+                        </Button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showOpenAiKey ? "text" : "password"}
+                          value={editOpenAiKey}
+                          onChange={(e) => setEditOpenAiKey(e.target.value)}
+                          placeholder="sk-proj-... (Optional OpenAI API Key)"
+                          className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowOpenAiKey(!showOpenAiKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showOpenAiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      {testOpenAiResult && (
+                        <p className={`text-[11px] font-mono ${testOpenAiResult.success ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
+                          {testOpenAiResult.message}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Multi-Engine Guarantee Notice */}
+                    <div className="rounded-xl border border-border bg-surface-2 p-3 text-[11px] text-muted-foreground space-y-1">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                        Zero-Restriction Architecture
+                      </span>
+                      <p className="leading-relaxed">
+                        The platform is never restricted to Gemini alone. If third-party keys expire or are empty, DocuMind automatically executes its native deterministic parser and vector graphics synthesizer with zero downtime.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* AI Engine Mode Selection */}
+                  <div className="rounded-2xl border border-border bg-card p-6 shadow-paper space-y-4">
+                    <div className="flex items-center gap-2 border-b border-border pb-3">
+                      <Bot className="h-4 w-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-foreground">AI Generation Mode</h3>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {[
+                        {
+                          id: "full",
+                          title: "Full Vision Suite",
+                          badge: "Recommended",
+                          desc: "Gemini 2.5 Flash outline + Imagen 3 16:9 contextual pictures + SVG vector diagrams.",
+                        },
+                        {
+                          id: "balanced",
+                          title: "Balanced Fast",
+                          badge: "Fast & Clean",
+                          desc: "Gemini Flash outline + contextual adaptive SVG vector synthesizer. Low latency.",
+                        },
+                        {
+                          id: "local",
+                          title: "Offline Privacy",
+                          badge: "Zero-API",
+                          desc: "Deterministic semantic outline + contextual SVG vector synthesizer. 100% offline.",
+                        },
+                      ].map((mode) => (
+                        <div
+                          key={mode.id}
+                          onClick={() =>
+                            setAdminSettings((prev) => ({
+                              ...prev,
+                              aiEngineMode: mode.id as "full" | "balanced" | "local",
+                            }))
+                          }
+                          className={`cursor-pointer rounded-xl border p-4 transition-all relative ${
+                            adminSettings.aiEngineMode === mode.id
+                              ? "border-primary bg-primary/5 shadow-xs"
+                              : "border-border bg-surface-2 hover:border-border/80"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-semibold text-foreground">{mode.title}</span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                              {mode.badge}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">{mode.desc}</p>
+                          {adminSettings.aiEngineMode === mode.id && (
+                            <div className="mt-3 flex items-center gap-1.5 text-[10px] font-mono font-bold text-primary">
+                              <Check className="h-3 w-3" /> Selected Mode
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Model Hyperparameters & Slide Safeguards */}
+                  <div className="rounded-2xl border border-border bg-card p-6 shadow-paper space-y-4">
+                    <div className="flex items-center gap-2 border-b border-border pb-3">
+                      <SlidersHorizontal className="h-4 w-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-foreground">Generation Limits & Hyperparameters</h3>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-mono text-muted-foreground uppercase block font-bold">
+                          Max Slide Cap ({adminSettings.maxSlideCount} slides)
+                        </label>
+                        <input
+                          type="range"
+                          min="4"
+                          max="25"
+                          value={adminSettings.maxSlideCount}
+                          onChange={(e) =>
+                            setAdminSettings((prev) => ({ ...prev, maxSlideCount: Number(e.target.value) }))
+                          }
+                          className="w-full accent-primary"
+                        />
+                        <span className="text-[10px] text-muted-foreground">Caps maximum requested slide count</span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-mono text-muted-foreground uppercase block font-bold">
+                          AI Timeout ({adminSettings.aiTimeoutSeconds}s)
+                        </label>
+                        <input
+                          type="range"
+                          min="5"
+                          max="45"
+                          value={adminSettings.aiTimeoutSeconds}
+                          onChange={(e) =>
+                            setAdminSettings((prev) => ({ ...prev, aiTimeoutSeconds: Number(e.target.value) }))
+                          }
+                          className="w-full accent-primary"
+                        />
+                        <span className="text-[10px] text-muted-foreground">Falls back cleanly if Gemini takes longer</span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-mono text-muted-foreground uppercase block font-bold">
+                          Temperature ({adminSettings.temperature})
+                        </label>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="1.0"
+                          step="0.05"
+                          value={adminSettings.temperature}
+                          onChange={(e) =>
+                            setAdminSettings((prev) => ({ ...prev, temperature: Number(e.target.value) }))
+                          }
+                          className="w-full accent-primary"
+                        />
+                        <span className="text-[10px] text-muted-foreground">0.7 is balanced; 0.2 is factual</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Col 3: Side Controls & Announcement Broadcast */}
+                <div className="space-y-6">
+                  {/* Model Identifier Cards */}
+                  <div className="rounded-2xl border border-border bg-card p-5 shadow-paper space-y-3">
+                    <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold">
+                      Active Vision Models
+                    </h4>
+                    <div className="space-y-2 text-xs font-mono">
+                      <div className="rounded-xl border border-border bg-surface-2 p-3">
+                        <span className="text-[10px] text-muted-foreground uppercase block">Text & Slide Structure</span>
+                        <span className="text-foreground font-semibold">gemini-2.5-flash</span>
+                      </div>
+                      <div className="rounded-xl border border-border bg-surface-2 p-3">
+                        <span className="text-[10px] text-muted-foreground uppercase block">16:9 Image Generation</span>
+                        <span className="text-foreground font-semibold">imagen-3.0-generate-002</span>
+                      </div>
+                      <div className="rounded-xl border border-border bg-surface-2 p-3">
+                        <span className="text-[10px] text-muted-foreground uppercase block">Vector Graphs & Synthesizer</span>
+                        <span className="text-foreground font-semibold">Contextual SVG Synthesizer</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Global Announcement Banner */}
+                  <div className="rounded-2xl border border-border bg-card p-5 shadow-paper space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold">
+                        Site Announcement Banner
+                      </h4>
+                      <input
+                        type="checkbox"
+                        checked={adminSettings.announcement?.enabled}
+                        onChange={(e) =>
+                          setAdminSettings((prev) => ({
+                            ...prev,
+                            announcement: {
+                              ...prev.announcement,
+                              enabled: e.target.checked,
+                            },
+                          }))
+                        }
+                        className="h-4 w-4 rounded border-border accent-primary"
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Display a global broadcast alert across the website for maintenance or new feature announcements.
+                    </p>
+                    <textarea
+                      rows={3}
+                      value={adminSettings.announcement?.text || ""}
+                      onChange={(e) =>
+                        setAdminSettings((prev) => ({
+                          ...prev,
+                          announcement: {
+                            ...prev.announcement,
+                            text: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Type broadcast text..."
+                      className="w-full rounded-xl border border-border bg-surface-2 p-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: STAFF DIRECTORY & TEAM */}
+          {activeTab === "staff" && (
+            <div className="mt-8 space-y-6">
+              {/* Staff Header with KPI cards & Invite Button */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-serif font-bold text-foreground flex items-center gap-2">
+                    <ShieldCheck className="h-6 w-6 text-primary" />
+                    DocuMind Staff & Operational Directory
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Manage platform administrators, system engineers, theme designers, and content review staff.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportAuditLogsJSON}
+                    className="text-xs h-9 border-border bg-card hover:bg-surface-2"
+                  >
+                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                    Export Audit Trail
+                  </Button>
+                  <Button
+                    variant="hero"
+                    size="sm"
+                    onClick={() => setShowAddStaffModal(true)}
+                    className="text-xs h-9"
+                  >
+                    <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                    Add Staff Member
+                  </Button>
+                </div>
+              </div>
+
+              {/* Staff Statistics Cards */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
+                  <span className="text-[10px] font-mono text-muted-foreground uppercase">Total Staff</span>
+                  <p className="text-2xl font-bold font-mono text-foreground mt-1">{staffList.length}</p>
+                  <span className="text-[10px] text-muted-foreground">Active website operators</span>
+                </div>
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
+                  <span className="text-[10px] font-mono text-muted-foreground uppercase">Administrators</span>
+                  <p className="text-2xl font-bold font-mono text-primary mt-1">
+                    {staffList.filter((s) => s.role === "admin" || s.role === "super_admin").length}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground">Full system & AI access</span>
+                </div>
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
+                  <span className="text-[10px] font-mono text-muted-foreground uppercase">Operations Staff</span>
+                  <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                    {staffList.filter((s) => s.role === "staff").length}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground">Support & theme QA</span>
+                </div>
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
+                  <span className="text-[10px] font-mono text-muted-foreground uppercase">Academic Reviewers</span>
+                  <p className="text-2xl font-bold font-mono text-amber-500 mt-1">
+                    {staffList.filter((s) => s.role === "moderator").length}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground">Content verification</span>
+                </div>
+              </div>
+
+              {/* Filter bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={staffSearch}
+                    onChange={(e) => setStaffSearch(e.target.value)}
+                    placeholder="Search staff by name or email..."
+                    className="w-full rounded-xl border border-border bg-card pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+                  {["All", "super_admin", "admin", "staff", "moderator"].map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => setStaffRoleFilter(role)}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-mono transition-all ${
+                        staffRoleFilter === role
+                          ? "bg-card text-primary border border-border font-bold shadow-xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {role === "All" ? "All Roles" : role.replace("_", " ").toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Staff Table */}
+              <div className="rounded-2xl border border-border bg-card shadow-paper overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-border bg-surface-2 text-[10px] font-mono uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-5 py-3.5">Staff Member</th>
+                        <th className="px-5 py-3.5">Role</th>
+                        <th className="px-5 py-3.5">Department</th>
+                        <th className="px-5 py-3.5">Last Active</th>
+                        <th className="px-5 py-3.5">Status</th>
+                        <th className="px-5 py-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-sans">
+                      {staffList
+                        .filter((s) => {
+                          const matchSearch =
+                            s.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
+                            s.email.toLowerCase().includes(staffSearch.toLowerCase()) ||
+                            s.department.toLowerCase().includes(staffSearch.toLowerCase());
+                          const matchRole = staffRoleFilter === "All" || s.role === staffRoleFilter;
+                          return matchSearch && matchRole;
+                        })
+                        .map((staff) => (
+                          <tr key={staff.id} className="hover:bg-surface-2/60 transition-colors">
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className="h-8 w-8 rounded-full flex items-center justify-center font-bold text-white text-xs shadow-xs"
+                                  style={{ backgroundColor: staff.avatarColor }}
+                                >
+                                  {staff.name
+                                    .split(" ")
+                                    .map((n) => n[0])
+                                    .slice(0, 2)
+                                    .join("")
+                                    .toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-foreground">{staff.name}</p>
+                                  <p className="text-[11px] font-mono text-muted-foreground">{staff.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-bold border ${
+                                  staff.role === "super_admin" || staff.role === "admin"
+                                    ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30"
+                                    : staff.role === "staff"
+                                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                }`}
+                              >
+                                {(staff.role === "super_admin" || staff.role === "admin") && <Shield className="h-3 w-3" />}
+                                {staff.role === "staff" && <UserCheck className="h-3 w-3" />}
+                                {staff.role === "moderator" && <Star className="h-3 w-3" />}
+                                {staff.role === "super_admin" || staff.role === "admin"
+                                  ? "ADMINISTRATOR"
+                                  : staff.role.replace("_", " ").toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 font-medium text-foreground">{staff.department}</td>
+                            <td className="px-5 py-3.5 text-muted-foreground font-mono text-[11px]">{staff.lastActive}</td>
+                            <td className="px-5 py-3.5">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                {staff.status}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-right">
+                              {staff.id !== "staff-101" ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteStaffMember(staff.id, staff.name)}
+                                  className="text-xs h-7 px-2 text-destructive hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove
+                                </Button>
+                              ) : (
+                                <span className="text-[10px] font-mono text-muted-foreground uppercase">Root Staff</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Staff Operational Audit Log Trail */}
+              <div className="rounded-2xl border border-border bg-card p-6 shadow-paper space-y-4">
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">Operational Audit Trail & Staff Logs</h3>
+                  </div>
+                  <span className="text-[11px] font-mono text-muted-foreground">{auditLogs.length} Logged Events</span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {auditLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-border bg-surface-2/60 p-3 text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">{log.action}</span>
+                          <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-primary/10 text-primary">
+                            {log.staffName}
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground text-[11px]">{log.details}</p>
+                      </div>
+                      <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1233,7 +2354,9 @@ function AdminPage() {
                   <p className="mt-1 font-serif text-2xl font-bold text-foreground">
                     {feedbackList.length}
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">User reviews & bug reports</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    User reviews & bug reports
+                  </p>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
@@ -1250,7 +2373,9 @@ function AdminPage() {
                       ))}
                     </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">100% genuine user sentiment</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    100% genuine user sentiment
+                  </p>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
@@ -1260,7 +2385,9 @@ function AdminPage() {
                   <p className="mt-1 font-serif text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                     {feedbackList.filter((f) => f.status === "resolved").length}
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Actions delivered & shipped</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Actions delivered & shipped
+                  </p>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-card p-4 shadow-paper flex flex-col justify-between">
@@ -1273,8 +2400,7 @@ function AdminPage() {
                     onClick={() => setShowAddFeedbackModal(true)}
                     className="text-xs h-8 w-full mt-2"
                   >
-                    <Sparkles className="h-3.5 w-3.5 mr-1" />
-                    + Add Test Feedback
+                    <Sparkles className="h-3.5 w-3.5 mr-1" />+ Add Test Feedback
                   </Button>
                 </div>
               </div>
@@ -1333,7 +2459,9 @@ function AdminPage() {
                 {filteredFeedback.length === 0 ? (
                   <div className="rounded-2xl border border-border bg-card p-8 text-center">
                     <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                    <p className="text-sm font-semibold text-foreground">No feedback matching filters</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      No feedback matching filters
+                    </p>
                     <p className="text-xs text-muted-foreground mt-1">
                       Try adjusting your search criteria or category filter.
                     </p>
@@ -1397,7 +2525,9 @@ function AdminPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleUpdateFeedbackStatus(fb._id || fb.id || "", "resolved")}
+                                onClick={() =>
+                                  handleUpdateFeedbackStatus(fb._id || fb.id || "", "resolved")
+                                }
                                 className="h-6 text-[10px] px-2 text-emerald-600 dark:text-emerald-400"
                               >
                                 Mark Resolved
@@ -1408,7 +2538,9 @@ function AdminPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleUpdateFeedbackStatus(fb._id || fb.id || "", "reviewed")}
+                                onClick={() =>
+                                  handleUpdateFeedbackStatus(fb._id || fb.id || "", "reviewed")
+                                }
                                 className="h-6 text-[10px] px-2"
                               >
                                 Review
@@ -1451,7 +2583,9 @@ function AdminPage() {
                     <Crown className="h-5 w-5" />
                     {usersList.filter((u) => u.plan === "pro").length} Users
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Full pro benefits unlocked</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Full pro benefits unlocked
+                  </p>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
@@ -1461,7 +2595,9 @@ function AdminPage() {
                   <p className="mt-1 font-serif text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                     {usersList.filter((u) => u.plan === "free").length} Users
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">100% Free templates active</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    100% Free templates active
+                  </p>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-card p-4 shadow-paper">
@@ -1471,7 +2607,9 @@ function AdminPage() {
                   <p className="mt-1 font-serif text-2xl font-bold text-primary">
                     {usersList.filter((u) => u.providerId === "google.com").length} Google SSO
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Passwordless Google auth</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Passwordless Google auth
+                  </p>
                 </div>
               </div>
 
@@ -1578,7 +2716,6 @@ function AdminPage() {
               </div>
             </div>
           )}
-
           {/* TAB 4: TEMPLATE GOVERNANCE */}
           {activeTab === "templates" && (
             <div className="mt-8 space-y-4">
@@ -1672,7 +2809,6 @@ function AdminPage() {
               </div>
             </div>
           )}
-
           {/* TAB 5: DOCUMENT JOBS & LOGS */}
           {activeTab === "jobs" && (
             <div className="mt-8 space-y-4">
@@ -1765,7 +2901,105 @@ function AdminPage() {
         <Footer />
       </div>
 
-      {/* MODAL: SUBMIT TEST FEEDBACK */}
+      
+      {/* MODAL: ADD STAFF MEMBER */}
+      {showAddStaffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                <UserPlus className="h-4 w-4 text-primary" />
+                Add Staff Member
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddStaffModal(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-surface-2"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddStaffMember} className="space-y-4">
+              <div>
+                <label className="text-xs font-mono text-muted-foreground uppercase block mb-1 font-bold">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newStaffName}
+                  onChange={(e) => setNewStaffName(e.target.value)}
+                  placeholder="e.g. Dr. Jane Doe"
+                  className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-mono text-muted-foreground uppercase block mb-1 font-bold">
+                  Staff Work Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={newStaffEmail}
+                  onChange={(e) => setNewStaffEmail(e.target.value)}
+                  placeholder="e.g. jane@documind.app"
+                  className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-hidden"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground uppercase block mb-1 font-bold">
+                    Role
+                  </label>
+                  <select
+                    value={newStaffRole}
+                    onChange={(e) => setNewStaffRole(e.target.value as any)}
+                    className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-hidden"
+                  >
+                    <option value="staff">Staff</option>
+                    <option value="admin">Administrator</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="super_admin">Super Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground uppercase block mb-1 font-bold">
+                    Department
+                  </label>
+                  <input
+                    type="text"
+                    value={newStaffDepartment}
+                    onChange={(e) => setNewStaffDepartment(e.target.value)}
+                    placeholder="e.g. AI Research"
+                    className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAddStaffModal(false)}
+                  className="text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" variant="hero" size="sm" className="text-xs">
+                  Add Staff Member
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+{/* MODAL: SUBMIT TEST FEEDBACK */}
       {showAddFeedbackModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-lift">

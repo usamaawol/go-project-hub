@@ -28,12 +28,7 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ open, onOpenChange, defaultMode = "signup" }: AuthModalProps) {
-  const {
-    signInWithEmail,
-    signUpWithEmail,
-    signInWithGoogle,
-    resetPassword,
-  } = useAuth();
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, resetPassword } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup" | "reset" | "google_connect">(defaultMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
