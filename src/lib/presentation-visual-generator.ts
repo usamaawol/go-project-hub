@@ -1,3 +1,13 @@
+function escapeXml(unsafe: string): string {
+  if (!unsafe) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 /**
  * Client-compatible Contextual Visual Synthesizer
  * Generates custom SVG vector illustrations and graphs for slides
@@ -27,10 +37,96 @@ export function buildContextualVisual(params: {
     params.concept || params.title.replace(/^(slide|section|\d+)[—:.\s]+/i, "").slice(0, 40);
   const caption = params.subtitle || `Visual topology and design structure for ${conceptName}`;
 
+  const safeConcept = escapeXml(conceptName.toUpperCase());
+  const safeCaption = escapeXml(caption);
+
   let svg: string;
   let type: "picture" | "graph" | "diagram" | "chart" = "diagram";
 
+  // CASE 0: AI / Machine Learning / Data & Model Architecture
   if (
+    combined.includes("artificial intelligence") ||
+    combined.includes(" ai ") ||
+    combined.includes("ai system") ||
+    combined.includes("machine learning") ||
+    combined.includes("deep learning") ||
+    combined.includes("neural") ||
+    combined.includes("model or ai") ||
+    combined.includes("data or input") ||
+    combined.includes("input or data") ||
+    combined.includes("algorithm") ||
+    combined.includes("inference")
+  ) {
+    type = "diagram";
+    svg = `<svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="c_ai_bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${bg}" />
+      <stop offset="100%" stop-color="${cardBg}" />
+    </linearGradient>
+    <linearGradient id="c_ai_flow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="50%" stop-color="${accent}" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="c_ai_glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${accent}" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.1" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="480" rx="20" fill="url(#c_ai_bg)" stroke="${accent}" stroke-opacity="0.3" stroke-width="2"/>
+  
+  <text x="60" y="65" font-family="system-ui, sans-serif" font-size="15" font-weight="800" fill="${textPrimary}" letter-spacing="1">
+    ${safeConcept} // AI SYSTEM ARCHITECTURE
+  </text>
+  <text x="60" y="90" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">
+    ${safeCaption}
+  </text>
+
+  <!-- 01: Ingestion -->
+  <rect x="60" y="150" width="200" height="230" rx="16" fill="${cardBg}" stroke="#3B82F6" stroke-width="2" />
+  <rect x="80" y="170" width="160" height="34" rx="8" fill="#3B82F6" fill-opacity="0.15" />
+  <circle cx="100" cy="187" r="6" fill="#3B82F6" />
+  <text x="115" y="192" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#2563EB">01. INGESTION</text>
+  <text x="80" y="230" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Data &amp; Inputs</text>
+  <text x="80" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Text &amp; Documents</text>
+  <text x="80" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Images &amp; Sensor Feeds</text>
+  <text x="80" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• User Queries &amp; Prompts</text>
+  <text x="80" y="345" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#3B82F6">TOKENIZATION / EMBED</text>
+
+  <!-- Flow 1 -> 2 -->
+  <path d="M 260 265 L 305 265" stroke="url(#c_ai_flow)" stroke-width="4" stroke-dasharray="6,4" />
+  <polygon points="315,265 303,259 303,271" fill="${accent}" />
+
+  <!-- 02: Processing Core -->
+  <rect x="315" y="140" width="210" height="250" rx="20" fill="url(#c_ai_glow)" stroke="${accent}" stroke-width="2.5" />
+  <rect x="335" y="160" width="170" height="34" rx="8" fill="${accent}" fill-opacity="0.2" />
+  <circle cx="355" cy="177" r="6" fill="${accent}" />
+  <text x="370" y="182" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="${accent}">02. PROCESSING</text>
+  <text x="335" y="220" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="${textPrimary}">Model / AI Core</text>
+  <text x="335" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Deep Neural Weights</text>
+  <text x="335" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Multi-Head Attention</text>
+  <text x="335" y="300" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Latent Feature Matrix</text>
+  <rect x="335" y="330" width="170" height="34" rx="8" fill="${cardBg}" stroke="${accent}" stroke-width="1" />
+  <text x="420" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="${accent}">TRANSFORMER CORE</text>
+
+  <!-- Flow 2 -> 3 -->
+  <path d="M 525 265 L 570 265" stroke="url(#c_ai_flow)" stroke-width="4" stroke-dasharray="6,4" />
+  <polygon points="580,265 568,259 568,271" fill="#10B981" />
+
+  <!-- 03: Output Generation -->
+  <rect x="580" y="150" width="200" height="230" rx="16" fill="${cardBg}" stroke="#10B981" stroke-width="2" />
+  <rect x="600" y="170" width="160" height="34" rx="8" fill="#10B981" fill-opacity="0.15" />
+  <circle cx="620" cy="187" r="6" fill="#10B981" />
+  <text x="635" y="192" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#059669">03. GENERATION</text>
+  <text x="600" y="230" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Output &amp; Action</text>
+  <text x="600" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Synthesized Insights</text>
+  <text x="600" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Structured Answers</text>
+  <text x="600" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Executable Workflows</text>
+  <text x="600" y="345" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#10B981">DECISION SYNTHESIS</text>
+</svg>`;
+  }
+  else if (
     combined.includes("fox") ||
     combined.includes("futuristic") ||
     combined.includes("editorial") ||
@@ -162,9 +258,9 @@ export function buildContextualVisual(params: {
     svg = `<svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
   <rect width="800" height="480" rx="20" fill="${bg}" stroke="${accent}" stroke-opacity="0.3" stroke-width="2"/>
   <text x="60" y="65" font-family="system-ui, sans-serif" font-size="15" font-weight="800" fill="${textPrimary}" letter-spacing="1">
-    ${conceptName.toUpperCase()} // TOPOLOGY &amp; WORKFLOW
+    ${safeConcept} // TOPOLOGY &amp; WORKFLOW
   </text>
-  <text x="60" y="90" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">${caption}</text>
+  <text x="60" y="90" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">${safeCaption}</text>
   <rect x="60" y="170" width="180" height="150" rx="16" fill="${cardBg}" stroke="${accent}" stroke-width="1.5" />
   <circle cx="95" cy="205" r="14" fill="${accent}" />
   <text x="95" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">01</text>

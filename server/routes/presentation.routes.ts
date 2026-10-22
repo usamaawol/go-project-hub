@@ -3,6 +3,7 @@ import fs from "fs";
 import {
   createPresentationSession,
   getPresentationSession,
+  updateSessionSlide,
   deletePresentationSession,
   type CreatePresentationSessionInput,
 } from "../services/presentationSession.service";
@@ -104,6 +105,40 @@ router.get("/presentations/:id/preview", (req: Request, res: Response) => {
 
   // Exclude physical server file path from public response for security
   const { filePath, ...safeSession } = session;
+
+  return res.json({
+    success: true,
+    data: {
+      ...safeSession,
+      secondsRemaining,
+    },
+  });
+});
+
+/**
+ * PATCH /api/presentations/session/:id/slide/:index
+ * Updates a slide's content, title, bullets, or layout, and regenerates the PPTX file on disk.
+ */
+router.patch("/presentations/session/:id/slide/:index", async (req: Request, res: Response) => {
+  const sessionId = req.params["id"];
+  const slideIndex = parseInt(req.params["index"] || "-1", 10);
+  if (!sessionId || isNaN(slideIndex) || slideIndex < 0) {
+    return res.status(400).json({
+      success: false,
+      error: { message: "Valid Session ID and slide index are required." },
+    });
+  }
+
+  const updatedSession = await updateSessionSlide(sessionId, slideIndex, req.body);
+  if (!updatedSession) {
+    return res.status(404).json({
+      success: false,
+      error: { message: "Session not found, expired, or invalid slide index." },
+    });
+  }
+
+  const secondsRemaining = Math.max(0, Math.floor((updatedSession.expiresAt - Date.now()) / 1000));
+  const { filePath, ...safeSession } = updatedSession;
 
   return res.json({
     success: true,

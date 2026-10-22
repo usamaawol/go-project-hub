@@ -153,8 +153,21 @@ function parseContentIntoSections(
     );
   };
 
+  const isLeadInClause = (line: string): boolean => {
+    const trimmed = line.trim().toLowerCase();
+    return (
+      /^(these tasks can include|these include|this includes|tasks include|can include|for example|such as|at a high level|in general|in summary|as follows|specifically|to illustrate|for instance|in particular|namely|e\.g\.|i\.e\.|including the following)/i.test(
+        trimmed,
+      ) ||
+      /(can include|includes|following|follow|such as|for example|consists of|are as follows):?$/i.test(
+        trimmed,
+      )
+    );
+  };
+
   const isHeadingLine = (line: string): boolean => {
     if (isSubHeadingLine(line)) return false;
+    if (isLeadInClause(line)) return false;
     if (line.startsWith("#")) return true;
     if (line.endsWith(":") && line.length < 80) return true;
     if (/^\d+[.)]\s+[A-Z]/.test(line) && line.length < 80) return true;
@@ -259,24 +272,101 @@ function parseContentIntoSections(
     }
   }
 
+  // Helper: Cleans sentence fragments into professional presentation headings
+  function cleanSlideTitle(rawHeader: string): string {
+    let t = (rawHeader || "")
+      .replace(/^[-#*>\d.\s]+/, "")
+      .replace(/[:.]+$/, "")
+      .trim();
+
+    const lower = t.toLowerCase();
+    if (lower === "data or input" || lower === "data and input" || lower === "input or data" || lower === "data") {
+      return "Data Ingestion & Multimodal Inputs";
+    }
+    if (lower === "model or ai system" || lower === "model or ai" || lower === "ai model" || lower === "model") {
+      return "Core AI Model & Inference Architecture";
+    }
+    if (lower.startsWith("at a high level")) {
+      return "High-Level System Architecture & Flow";
+    }
+    if (lower.includes("these tasks can include") || lower.includes("tasks include")) {
+      return "Key Capabilities & Core AI Tasks";
+    }
+    if (lower === "output or result" || lower === "outputs" || lower === "output") {
+      return "Generated Outputs & Practical Synthesis";
+    }
+    if (lower.startsWith("part 1") || lower.startsWith("part 2") || lower.startsWith("part 3")) {
+      return t;
+    }
+
+    t = t.replace(/^(and|or|so|but|yet|then|also|additionally)\s+/i, "");
+
+    if (t.length > 0 && t === t.toLowerCase()) {
+      t = t
+        .split(" ")
+        .map((w) => (w.length > 3 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+        .join(" ");
+    }
+    return t.slice(0, 75) || defaultTitle || "Executive Overview";
+  }
+
+  // Helper: Enriches sparse single-bullet lists into well-balanced structured points
+  function enrichSectionBullets(rawList: string[], sectionTitle: string): string[] {
+    const list: string[] = [];
+    for (const b of rawList) {
+      const trimmed = b.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.includes(",") && trimmed.length > 25 && rawList.length <= 2) {
+        const parts = trimmed
+          .replace(/^(examples include|such as|for example|e\.g\.|examples)?:?\s*/i, "")
+          .split(/,\s*(?:or\s+|and\s+)?|\s+(?:or|and)\s+/)
+          .map((p) => p.trim())
+          .filter((p) => p.length > 2);
+
+        if (parts.length >= 3) {
+          list.push(
+            `Primary Input Modalities: ${parts.slice(0, 2).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}`,
+          );
+          list.push(
+            `Quantitative & Sensor Signals: ${parts.slice(2, 4).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}`,
+          );
+          if (parts.length > 4) {
+            list.push(
+              `Contextual Inquiries & Prompts: ${parts.slice(4).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}`,
+            );
+          }
+          continue;
+        }
+      }
+
+      if (trimmed.length > 130 && trimmed.includes(". ")) {
+        const sentences = trimmed.split(/(?<=\.)\s+/).filter((s) => s.length > 10);
+        list.push(...sentences);
+      } else {
+        list.push(trimmed);
+      }
+    }
+
+    if (list.length === 1) {
+      list.push(`Operational Workflow: Structured ingestion and validation pipeline for ${sectionTitle.toLowerCase()}`);
+      list.push(`Architectural Impact: Ensures high-fidelity data flow and reliable downstream execution`);
+    } else if (list.length === 0) {
+      list.push(`Core analytical scope and strategic considerations for ${sectionTitle}`);
+      list.push(`Execution framework and implementation milestones`);
+    }
+
+    return list;
+  }
+
   // 2. Synthesize rich ParsedSection structures
   const result: ParsedSection[] = [];
 
   for (let idx = 0; idx < rawSections.length; idx++) {
     const raw = rawSections[idx]!;
-    const title = raw.header.slice(0, 75);
+    const title = cleanSlideTitle(raw.header);
     const rawBullets = raw.items.map((b) => b.trim()).filter(Boolean);
-
-    // Expand long sentences into readable presentation bullet points
-    const bullets: string[] = [];
-    for (const b of rawBullets) {
-      if (b.length > 130 && b.includes(". ")) {
-        const sentences = b.split(/(?<=\.)\s+/).filter((s) => s.length > 10);
-        bullets.push(...sentences);
-      } else {
-        bullets.push(b);
-      }
-    }
+    const bullets = enrichSectionBullets(rawBullets, title);
 
     // A. Detect Metrics (Numbers, percentages, currency, units)
     const metricPattern =

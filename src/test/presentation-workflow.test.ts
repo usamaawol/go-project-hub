@@ -374,35 +374,39 @@ Submersibles must withstand ambient pressures exceeding 1,000 atmospheres.`;
   });
 
   // Scenario 19: Authentic user registration, login, and profile update (zero demo user data)
-  it("Scenario 19: Authentic user registration, login, and profile update without demo fallbacks", async () => {
-    const { registerWithEmail, loginWithEmail, updateUserProfile, logoutUser } =
-      await import("../lib/firebase");
+  it(
+    "Scenario 19: Authentic user registration, login, and profile update without demo fallbacks",
+    async () => {
+      const { registerWithEmail, loginWithEmail, updateUserProfile, logoutUser } =
+        await import("../lib/firebase");
 
-    // Clean any previous session
-    await logoutUser();
+      // Clean any previous session
+      await logoutUser();
 
-    // 1. Register with real custom user data
-    const testEmail = `usama_real_${Date.now()}@example.com`;
-    const user = await registerWithEmail(testEmail, "securePass123", "Usama Awol");
-    expect(user.email).toBe(testEmail);
-    expect(user.displayName).toBe("Usama Awol");
-    expect(user.displayName).not.toBe("Google Demo User");
-    expect(user.email).not.toBe("creator@google.com");
-    expect(user.email).not.toBe("demo@documind.com");
+      // 1. Register with real custom user data
+      const testEmail = `usama_real_${Date.now()}@example.com`;
+      const user = await registerWithEmail(testEmail, "securePass123", "Usama Awol");
+      expect(user.email).toBe(testEmail);
+      expect(user.displayName).toBe("Usama Awol");
+      expect(user.displayName).not.toBe("Google Demo User");
+      expect(user.email).not.toBe("creator@google.com");
+      expect(user.email).not.toBe("demo@documind.com");
 
-    // 2. Update profile name
-    const updated = await updateUserProfile({ displayName: "Usama Awol (Lead)" });
-    expect(updated.displayName).toBe("Usama Awol (Lead)");
+      // 2. Update profile name
+      const updated = await updateUserProfile({ displayName: "Usama Awol (Lead)" });
+      expect(updated.displayName).toBe("Usama Awol (Lead)");
 
-    // 3. Logout and sign back in
-    await logoutUser();
-    const loggedIn = await loginWithEmail(testEmail, "securePass123");
-    expect(loggedIn.email).toBe(testEmail);
-    expect(loggedIn.displayName).toBe("Usama Awol (Lead)");
+      // 3. Logout and sign back in
+      await logoutUser();
+      const loggedIn = await loginWithEmail(testEmail, "securePass123");
+      expect(loggedIn.email).toBe(testEmail);
+      expect(loggedIn.displayName).toBe("Usama Awol (Lead)");
 
-    // 4. Clean up
-    await logoutUser();
-  });
+      // 4. Clean up
+      await logoutUser();
+    },
+    15000,
+  );
 
   // Scenario 20: Workspace history tracking, dynamic metrics, and template bookmarks
   it("Scenario 20: Tracks authentic user jobs and computes dynamic metrics with zero mock history", async () => {

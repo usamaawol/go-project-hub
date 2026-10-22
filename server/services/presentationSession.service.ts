@@ -533,6 +533,73 @@ export function getPresentationSession(sessionId: string): PresentationSession |
 }
 
 /**
+ * Update a slide in an active session (for typos, modified bullets, title tweaks, layout change)
+ * Automatically updates memory session and re-generates the PPTX file on disk.
+ */
+export async function updateSessionSlide(
+  sessionId: string,
+  slideIndex: number,
+  updatedData: Partial<SlideItem>,
+): Promise<PresentationSession | null> {
+  const session = getPresentationSession(sessionId);
+  if (!session) return null;
+  if (slideIndex < 0 || slideIndex >= session.slides.length) return null;
+
+  const currentSlide = session.slides[slideIndex]!;
+  const mergedSlide: SlideItem = {
+    ...currentSlide,
+    ...updatedData,
+  };
+
+  // If slide 0 title changed, update presentation title
+  if (slideIndex === 0 && updatedData.title) {
+    session.title = updatedData.title.trim();
+  }
+
+  // If layout is text-visual or image-led, regenerate contextual visual if title/subtitle changed
+  if (
+    (mergedSlide.layout === "text-visual" || mergedSlide.layout === "image-led") &&
+    (updatedData.title || updatedData.subtitle)
+  ) {
+    const themeTokens = computeThemeTokens(session.theme, session.typography);
+    try {
+      const vis = await generateSlideVisual({
+        title: mergedSlide.title,
+        subtitle: mergedSlide.subtitle,
+        bullets: mergedSlide.bullets,
+        visualPrompt: mergedSlide.visual?.imagePrompt || mergedSlide.visual?.concept,
+        visualType: (mergedSlide.visual?.type as any) || "diagram",
+        concept: mergedSlide.visual?.concept || mergedSlide.title,
+        accentColor: session.theme.colors.accent,
+        isDark: themeTokens.isDark,
+      });
+      mergedSlide.visual = {
+        type: vis.type,
+        concept: vis.concept,
+        caption: vis.caption,
+        imageUrl: vis.imageUrl,
+        svgContent: vis.svgContent,
+      };
+    } catch {
+      // keep existing visual on error
+    }
+  }
+
+  session.slides[slideIndex] = mergedSlide;
+
+  // Re-generate PPTX file on disk with updated slide content
+  try {
+    const fileSize = await generatePptxFile(session, session.filePath);
+    session.fileSize = fileSize;
+  } catch (err) {
+    console.warn("Failed to re-render PPTX file for session:", sessionId, err);
+  }
+
+  activeSessions.set(sessionId, session);
+  return session;
+}
+
+/**
  * Securely deletes session and removes physical temporary files
  */
 export function deletePresentationSession(sessionId: string): boolean {

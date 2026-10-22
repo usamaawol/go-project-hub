@@ -20,13 +20,27 @@ import {
   Info,
   Loader2,
   FileText,
+  Pencil,
+  Trash2,
+  Plus,
+  ArrowUp,
+  ArrowDown,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   fetchPresentationPreviewApi,
+  updatePresentationSlideApi,
   type PresentationSessionData,
   type SlidePreviewItem,
 } from "@/lib/api-client";
@@ -64,6 +78,125 @@ export function PresentationPreviewPage() {
   const [showNotes, setShowNotes] = useState(false);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  // Interactive Slide Editor State
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingSlideIdx, setEditingSlideIdx] = useState(0);
+  const [editTitle, setEditTitle] = useState("");
+  const [editSubtitle, setEditSubtitle] = useState("");
+  const [editLayout, setEditLayout] = useState<string>("content");
+  const [editBullets, setEditBullets] = useState<string[]>([""]);
+  const [editNotes, setEditNotes] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const openEditSlideModal = (idx: number) => {
+    if (!session || !session.slides[idx]) return;
+    const target = session.slides[idx]!;
+    setEditingSlideIdx(idx);
+    setEditTitle(target.title || "");
+    setEditSubtitle(target.subtitle || "");
+    setEditLayout(target.layout || "content");
+    setEditBullets(target.bullets && target.bullets.length > 0 ? [...target.bullets] : [""]);
+    setEditNotes(target.notes || "");
+    setEditModalOpen(true);
+  };
+
+  const handleAddBullet = () => {
+    setEditBullets((prev) => [...prev, ""]);
+  };
+
+  const handleUpdateBullet = (bIdx: number, val: string) => {
+    setEditBullets((prev) => {
+      const next = [...prev];
+      next[bIdx] = val;
+      return next;
+    });
+  };
+
+  const handleRemoveBullet = (bIdx: number) => {
+    setEditBullets((prev) => {
+      const next = prev.filter((_, i) => i !== bIdx);
+      return next.length > 0 ? next : [""];
+    });
+  };
+
+  const handleMoveBullet = (bIdx: number, direction: "up" | "down") => {
+    setEditBullets((prev) => {
+      const targetIdx = direction === "up" ? bIdx - 1 : bIdx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[bIdx]!;
+      next[bIdx] = next[targetIdx]!;
+      next[targetIdx] = temp;
+      return next;
+    });
+  };
+
+  const handleSaveSlide = async () => {
+    if (!session || editingSlideIdx < 0 || !session.slides[editingSlideIdx]) return;
+    const target = session.slides[editingSlideIdx]!;
+
+    setSavingEdit(true);
+    try {
+      const cleanedBullets = editBullets.map((b) => b.trim()).filter(Boolean);
+      const updatedSlideData: Partial<SlidePreviewItem> = {
+        title: editTitle.trim() || target.title,
+        subtitle: editSubtitle.trim(),
+        layout: editLayout as any,
+        bullets: cleanedBullets.length > 0 ? cleanedBullets : [`Key analysis for ${editTitle.trim()}`],
+        notes: editNotes.trim(),
+      };
+
+      // If text-visual or image-led layout, regenerate contextual visual with clean safe XML
+      if (editLayout === "text-visual" || editLayout === "image-led") {
+        const tokens = computeThemeTokens(session.theme, session.typography);
+        const newVis = buildContextualVisual({
+          title: updatedSlideData.title!,
+          subtitle: updatedSlideData.subtitle,
+          bullets: updatedSlideData.bullets,
+          concept: updatedSlideData.title!,
+          accentColor: tokens.accent,
+          isDark: tokens.isDark,
+        });
+        updatedSlideData.visual = {
+          type: newVis.type,
+          concept: newVis.concept,
+          caption: newVis.caption,
+          imageUrl: newVis.imageUrl,
+          svgContent: newVis.svgContent,
+        };
+      }
+
+      // Update local state immediately for instant preview and client export
+      const updatedSlides = [...session.slides];
+      updatedSlides[editingSlideIdx] = {
+        ...updatedSlides[editingSlideIdx],
+        ...updatedSlideData,
+      };
+
+      setSession({
+        ...session,
+        slides: updatedSlides,
+        title:
+          editingSlideIdx === 0 && updatedSlideData.title ? updatedSlideData.title : session.title,
+      });
+
+      // Synchronize with backend API (updates file on disk for PPTX download)
+      await updatePresentationSlideApi(sessionId, editingSlideIdx, updatedSlideData);
+
+      toast.success(`Slide ${editingSlideIdx + 1} Updated!`, {
+        description: "Your edits are saved and applied to live preview and PPTX export.",
+      });
+      setEditModalOpen(false);
+    } catch (err) {
+      console.error("Failed to save slide edits:", err);
+      toast.error("Could not save slide edits", {
+        description: "Please check your inputs and try again.",
+      });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   // Load session from API
   useEffect(() => {
@@ -506,7 +639,7 @@ export function PresentationPreviewPage() {
                     style={{ backgroundColor: accentColor }}
                   />
 
-                  {/* Header / Layout Badge */}
+                  {/* Header / Layout Badge with Quick Edit Action */}
                   <div
                     className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase pb-3 border-b"
                     style={{ borderColor: tokens.dividerColor }}
@@ -520,7 +653,26 @@ export function PresentationPreviewPage() {
                         Slide 0{currentSlide.slideNumber} // {currentSlide.layout}
                       </span>
                     </div>
-                    <span style={{ color: tokens.textMuted }}>{session.purpose}</span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditSlideModal(currentSlideIdx)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-sans font-bold uppercase transition-all hover:scale-105 shadow-xs cursor-pointer"
+                        style={{
+                          backgroundColor: tokens.cardBg,
+                          borderColor: tokens.cardBorder,
+                          borderWidth: "1px",
+                          color: tokens.accent,
+                        }}
+                        title="Edit this slide (Fix typos, modify text, adjust layout)"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        <span>Edit Slide</span>
+                      </button>
+
+                      <span style={{ color: tokens.textMuted }}>{session.purpose}</span>
+                    </div>
                   </div>
 
                   {/* Dynamic Slide Body Layouts */}
@@ -983,7 +1135,8 @@ export function PresentationPreviewPage() {
                             const visualData = currentSlide.visual?.imageUrl
                               ? {
                                   imageUrl: currentSlide.visual.imageUrl,
-                                  type: currentSlide.visual.type || "picture",
+                                  svgContent: currentSlide.visual.svgContent,
+                                  type: currentSlide.visual.type || "diagram",
                                   concept: currentSlide.visual.concept || currentSlide.title,
                                   caption: currentSlide.visual.caption || currentSlide.subtitle,
                                 }
@@ -991,6 +1144,7 @@ export function PresentationPreviewPage() {
                                   title: currentSlide.title,
                                   subtitle: currentSlide.subtitle,
                                   bullets: currentSlide.bullets,
+                                  concept: currentSlide.title,
                                   accentColor: tokens.accent,
                                   isDark: tokens.isDark,
                                 });
@@ -1009,7 +1163,7 @@ export function PresentationPreviewPage() {
                                     style={{ color: tokens.accent }}
                                   >
                                     {(visualData.type || "VISUAL").toUpperCase()} //{" "}
-                                    {(visualData.concept || "CONCEPT MATRIX").slice(0, 24)}
+                                    {(visualData.concept || "SYSTEM MATRIX").slice(0, 24)}
                                   </span>
                                   <span
                                     className="text-[9px] font-mono px-2 py-0.5 rounded-full border"
@@ -1023,14 +1177,40 @@ export function PresentationPreviewPage() {
                                 </div>
 
                                 <div
-                                  className="w-full rounded-xl overflow-hidden border flex items-center justify-center bg-black/5 min-h-[190px] max-h-[250px]"
-                                  style={{ borderColor: tokens.cardBorder }}
+                                  className="w-full rounded-xl overflow-hidden border flex items-center justify-center p-2 min-h-[190px] max-h-[250px]"
+                                  style={{
+                                    borderColor: tokens.cardBorder,
+                                    backgroundColor: tokens.isDark ? "#0F172A" : "#F8FAFC",
+                                  }}
                                 >
-                                  <img
-                                    src={visualData.imageUrl}
-                                    alt={visualData.concept || "Slide visual asset"}
-                                    className="w-full h-auto max-h-[240px] object-contain rounded-lg"
-                                  />
+                                  {visualData.svgContent ? (
+                                    <div
+                                      className="w-full h-full flex items-center justify-center [&_svg]:max-h-[235px] [&_svg]:w-full [&_svg]:h-auto"
+                                      dangerouslySetInnerHTML={{ __html: visualData.svgContent }}
+                                    />
+                                  ) : (
+                                    <img
+                                      src={visualData.imageUrl}
+                                      alt={visualData.concept || "Slide visual asset"}
+                                      className="w-full h-auto max-h-[240px] object-contain rounded-lg"
+                                      onError={(e) => {
+                                        const clientVis = buildContextualVisual({
+                                          title: currentSlide.title,
+                                          subtitle: currentSlide.subtitle,
+                                          bullets: currentSlide.bullets,
+                                          concept: currentSlide.title,
+                                          accentColor: tokens.accent,
+                                          isDark: tokens.isDark,
+                                        });
+                                        if (clientVis.svgContent) {
+                                          const parent = e.currentTarget.parentElement;
+                                          if (parent) {
+                                            parent.innerHTML = `<div class="w-full h-full flex items-center justify-center [&_svg]:max-h-[235px] [&_svg]:w-full [&_svg]:h-auto">${clientVis.svgContent}</div>`;
+                                          }
+                                        }
+                                      }}
+                                    />
+                                  )}
                                 </div>
 
                                 <span
@@ -1169,8 +1349,19 @@ export function PresentationPreviewPage() {
                     </Button>
                   </div>
 
-                  {/* Right: Fullscreen & Speaker Notes Toggle */}
+                  {/* Right: Edit Slide, Fullscreen & Speaker Notes Toggle */}
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="hero"
+                      size="sm"
+                      onClick={() => openEditSlideModal(currentSlideIdx)}
+                      className="min-h-[44px] px-3.5 text-xs font-semibold rounded-xl"
+                      title="Edit slide text, bullets, or layout (Fix typos, customize message)"
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      Edit Slide
+                    </Button>
+
                     {currentSlide.notes && (
                       <Button
                         variant="glass"
@@ -1241,6 +1432,199 @@ export function PresentationPreviewPage() {
 
         <Footer />
       </div>
+
+      {/* Interactive Slide Editor Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-2xl border-border bg-card p-6 shadow-lift max-h-[90vh] overflow-y-auto rounded-3xl">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 font-mono text-xs font-bold uppercase tracking-wider">
+                Slide Editor
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">
+                Slide {editingSlideIdx + 1} of {slides.length}
+              </span>
+            </div>
+            <DialogTitle className="mt-1 font-serif text-2xl font-bold text-foreground">
+              Customize Slide Content &amp; Layout
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Modify the slide title, subtitle, layout style, bullet points, and speaker notes. Changes apply instantly to your live preview and downloaded PowerPoint deck.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4 text-xs">
+            {/* Title */}
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                Slide Title
+              </label>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="e.g. Data Ingestion &amp; Multimodal Inputs"
+                className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            {/* Subtitle */}
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                Subtitle / Main Message
+              </label>
+              <input
+                type="text"
+                value={editSubtitle}
+                onChange={(e) => setEditSubtitle(e.target.value)}
+                placeholder="e.g. High-throughput data preprocessing and normalization"
+                className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            {/* Layout Selection */}
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                Slide Layout Structure
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: "content", label: "Standard Bullets" },
+                  { id: "text-visual", label: "Text & Visual Diagram" },
+                  { id: "two-column", label: "Two Columns" },
+                  { id: "process", label: "Process Steps" },
+                  { id: "timeline", label: "Timeline / Roadmap" },
+                  { id: "metrics", label: "Metrics & KPIs" },
+                  { id: "conclusion", label: "Conclusion & Next Steps" },
+                  { id: "quote", label: "Standout Insight" },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setEditLayout(item.id)}
+                    className={`rounded-xl border px-3 py-2 text-[11px] font-medium transition-all text-left ${
+                      editLayout === item.id
+                        ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
+                        : "border-border bg-surface-2/60 text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bullet Points */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-foreground">
+                  Bullet Points ({editBullets.length})
+                </label>
+                <Button
+                  type="button"
+                  variant="glass"
+                  size="sm"
+                  onClick={handleAddBullet}
+                  className="h-7 text-[11px] px-2.5 rounded-lg"
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add Bullet
+                </Button>
+              </div>
+
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {editBullets.map((bullet, bIdx) => (
+                  <div key={bIdx} className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-muted-foreground w-4 shrink-0 text-center">
+                      {bIdx + 1}.
+                    </span>
+                    <input
+                      type="text"
+                      value={bullet}
+                      onChange={(e) => handleUpdateBullet(bIdx, e.target.value)}
+                      placeholder={`Bullet point ${bIdx + 1}`}
+                      className="flex-1 rounded-xl border border-border bg-surface-2 px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary"
+                    />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveBullet(bIdx, "up")}
+                        disabled={bIdx === 0}
+                        className="p-1 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
+                        title="Move Up"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveBullet(bIdx, "down")}
+                        disabled={bIdx === editBullets.length - 1}
+                        className="p-1 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
+                        title="Move Down"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBullet(bIdx)}
+                        disabled={editBullets.length <= 1}
+                        className="p-1 rounded-md text-red-500 hover:text-red-700 disabled:opacity-30 cursor-pointer"
+                        title="Delete Bullet"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Speaker Notes */}
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                Speaker Notes (Optional)
+              </label>
+              <textarea
+                rows={3}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Presenter talking points, background context, or spoken narrative..."
+                className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="mt-6 flex items-center justify-end gap-2.5 border-t border-border pt-4">
+            <Button
+              type="button"
+              variant="glass"
+              size="sm"
+              onClick={() => setEditModalOpen(false)}
+              className="rounded-xl text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="hero"
+              size="sm"
+              disabled={savingEdit}
+              onClick={handleSaveSlide}
+              className="rounded-xl text-xs font-semibold"
+            >
+              {savingEdit ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="h-3.5 w-3.5 mr-1.5" /> Apply Changes
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

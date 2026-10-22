@@ -3,6 +3,7 @@ import fs from "fs";
 import {
   createPresentationSession,
   getPresentationSession,
+  updateSessionSlide,
   deletePresentationSession,
 } from "../../server/services/presentationSession.service";
 import { extractTextFromBuffer } from "../../server/services/extractor.service";
@@ -10,6 +11,7 @@ import { TEMPLATES } from "../data/templates";
 import { computeThemeTokens } from "../lib/presentation-theme";
 import { renderSlideDeckToPptx } from "../lib/presentation-renderer";
 import { buildSlideDeckContent } from "../lib/presentation-session-client";
+import { buildContextualVisual } from "../lib/presentation-visual-generator";
 
 describe("DocuMind Presentation Maker Comprehensive 13-Case Verification", () => {
   // Case 1: Short text input
@@ -335,5 +337,68 @@ Preserving privacy while democratizing document intelligence.
 
     deletePresentationSession(session.id);
     expect(getPresentationSession(session.id)).toBeNull();
+  });
+
+  // Case 14: Contextual visual generates valid XML-safe SVG with ampersands and AI pipeline
+  it("Case 14: Contextual visual generates valid XML-safe SVG with ampersands & AI pipeline", () => {
+    const visual = buildContextualVisual({
+      title: "Data or input",
+      subtitle: "Data or input — Strategic Analysis & Core Dimensions",
+      bullets: ["Examples, text, images, numbers, or a user question"],
+      accentColor: "#F97316",
+    });
+
+    expect(visual.svgContent).toBeDefined();
+    // Verify XML escaping of & -> &amp;
+    expect(visual.svgContent).not.toContain(" & ");
+    expect(visual.svgContent).toContain("&amp;");
+    expect(visual.svgContent).toContain("AI SYSTEM ARCHITECTURE");
+    expect(visual.imageUrl.startsWith("data:image/svg+xml")).toBe(true);
+  });
+
+  // Case 15: Clean slide title synthesis, enriched bullets, and interactive slide editing
+  it("Case 15: Clean slide title synthesis, enriched bullets, and interactive slide editing", async () => {
+    const rawAiText = `
+Part 1 — Introduction to Artificial Intelligence
+These tasks can include:
+Learning from data, recognizing patterns, and making decisions.
+
+At a high level, many AI systems follow:
+Data or input:
+Examples, text, images, numbers, or a user question
+
+Model or AI system:
+Algorithms and mathematical techniques that process the data
+`;
+    const slides = buildSlideDeckContent("AI Intro", rawAiText, 6, "balanced", "Education");
+
+    // Titles should NOT be sentence fragments
+    const titles = slides.map((s) => s.title);
+    expect(titles).not.toContain("These tasks can include");
+    expect(titles).not.toContain("At a high level, many AI systems follow");
+
+    // "Data or input" should be normalized and have multiple bullets
+    const dataSlide = slides.find((s) => s.title.includes("Data") || s.title.includes("Input"));
+    expect(dataSlide).toBeDefined();
+    expect(dataSlide!.bullets.length).toBeGreaterThanOrEqual(2);
+
+    // Test live slide editing via updateSessionSlide
+    const session = await createPresentationSession({
+      title: "Interactive Editing Session",
+      content: rawAiText,
+      slideCount: 5,
+    });
+
+    const updated = await updateSessionSlide(session.id, 2, {
+      title: "Updated Title Without Typos",
+      subtitle: "Corrected message description",
+      bullets: ["Corrected point 1", "Corrected point 2"],
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.slides[2]!.title).toBe("Updated Title Without Typos");
+    expect(updated!.slides[2]!.bullets).toEqual(["Corrected point 1", "Corrected point 2"]);
+
+    deletePresentationSession(session.id);
   });
 });

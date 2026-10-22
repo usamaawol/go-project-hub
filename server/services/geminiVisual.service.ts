@@ -192,6 +192,16 @@ STRICT SPECIFICATIONS:
   return null;
 }
 
+function escapeXml(unsafe: string): string {
+  if (!unsafe) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 /**
  * High-fidelity contextual SVG synthesizer for instant, offline, and reliable visuals.
  * Generates custom vector art tailored to the topic (Tech/Fox, Science/Photosynthesis, Metrics, Architecture, Comparison).
@@ -212,11 +222,97 @@ export function synthesizeContextualVisual(params: {
   const textPrimary = params.isDark ? "#F8FAFC" : "#0F172A";
   const textMuted = params.isDark ? "#94A3B8" : "#64748B";
 
+  const safeConcept = escapeXml(params.concept.toUpperCase());
+  const safeCaption = escapeXml(params.caption);
+
   let svg: string;
   let type: "picture" | "graph" | "diagram" | "chart" = "diagram";
 
-  // CASE 1: Tech / Fox / Brand / Futuristic concepts (e.g. Red Fox Tech, Futuristic Fox, Digital Lab)
+  // CASE 0: AI / Data / Machine Learning / Workflow architecture
   if (
+    combined.includes("artificial intelligence") ||
+    combined.includes(" ai ") ||
+    combined.includes("ai system") ||
+    combined.includes("machine learning") ||
+    combined.includes("deep learning") ||
+    combined.includes("neural") ||
+    combined.includes("model or ai") ||
+    combined.includes("data or input") ||
+    combined.includes("input or data") ||
+    combined.includes("algorithm") ||
+    combined.includes("inference")
+  ) {
+    type = "diagram";
+    svg = `<svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ai_bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${bg}" />
+      <stop offset="100%" stop-color="${cardBg}" />
+    </linearGradient>
+    <linearGradient id="ai_flowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="50%" stop-color="${accent}" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="ai_glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${accent}" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.1" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="480" rx="20" fill="url(#ai_bgGrad)" stroke="${accent}" stroke-opacity="0.3" stroke-width="2"/>
+  
+  <text x="60" y="65" font-family="system-ui, sans-serif" font-size="15" font-weight="800" fill="${textPrimary}" letter-spacing="1">
+    ${safeConcept} // AI SYSTEM ARCHITECTURE
+  </text>
+  <text x="60" y="90" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">
+    ${safeCaption}
+  </text>
+
+  <!-- Block 1: Ingestion -->
+  <rect x="60" y="150" width="200" height="230" rx="16" fill="${cardBg}" stroke="#3B82F6" stroke-width="2" />
+  <rect x="80" y="170" width="160" height="34" rx="8" fill="#3B82F6" fill-opacity="0.15" />
+  <circle cx="100" cy="187" r="6" fill="#3B82F6" />
+  <text x="115" y="192" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#2563EB">01. INGESTION</text>
+  <text x="80" y="230" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Data &amp; Inputs</text>
+  <text x="80" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Text &amp; Documents</text>
+  <text x="80" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Images &amp; Sensor Feeds</text>
+  <text x="80" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• User Queries &amp; Signals</text>
+  <text x="80" y="345" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#3B82F6">TOKENIZATION / EMBED</text>
+
+  <!-- Flow 1 -> 2 -->
+  <path d="M 260 265 L 305 265" stroke="url(#ai_flowGrad)" stroke-width="4" stroke-dasharray="6,4" />
+  <polygon points="315,265 303,259 303,271" fill="${accent}" />
+
+  <!-- Block 2: Neural Core -->
+  <rect x="315" y="140" width="210" height="250" rx="20" fill="url(#ai_glowGrad)" stroke="${accent}" stroke-width="2.5" />
+  <rect x="335" y="160" width="170" height="34" rx="8" fill="${accent}" fill-opacity="0.2" />
+  <circle cx="355" cy="177" r="6" fill="${accent}" />
+  <text x="370" y="182" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="${accent}">02. PROCESSING</text>
+  <text x="335" y="220" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="${textPrimary}">Model / AI Core</text>
+  <text x="335" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Deep Neural Weights</text>
+  <text x="335" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Multi-Head Attention</text>
+  <text x="335" y="300" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Latent Feature Matrix</text>
+  <rect x="335" y="330" width="170" height="34" rx="8" fill="${cardBg}" stroke="${accent}" stroke-width="1" />
+  <text x="420" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="${accent}">TRANSFORMER CORE</text>
+
+  <!-- Flow 2 -> 3 -->
+  <path d="M 525 265 L 570 265" stroke="url(#ai_flowGrad)" stroke-width="4" stroke-dasharray="6,4" />
+  <polygon points="580,265 568,259 568,271" fill="#10B981" />
+
+  <!-- Block 3: Output & Action -->
+  <rect x="580" y="150" width="200" height="230" rx="16" fill="${cardBg}" stroke="#10B981" stroke-width="2" />
+  <rect x="600" y="170" width="160" height="34" rx="8" fill="#10B981" fill-opacity="0.15" />
+  <circle cx="620" cy="187" r="6" fill="#10B981" />
+  <text x="635" y="192" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#059669">03. GENERATION</text>
+  <text x="600" y="230" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Output &amp; Action</text>
+  <text x="600" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Structured Answers</text>
+  <text x="600" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Analytical Insights</text>
+  <text x="600" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Actionable Results</text>
+  <text x="600" y="345" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#10B981">DECISION SYNTHESIS</text>
+</svg>`;
+  }
+  // CASE 1: Tech / Fox / Brand / Futuristic concepts (e.g. Red Fox Tech, Futuristic Fox, Digital Lab)
+  else if (
     combined.includes("fox") ||
     combined.includes("futuristic") ||
     combined.includes("editorial") ||
@@ -417,10 +513,10 @@ export function synthesizeContextualVisual(params: {
 
   <!-- Header -->
   <text x="60" y="65" font-family="system-ui, sans-serif" font-size="15" font-weight="800" fill="${textPrimary}" letter-spacing="1">
-    ${params.concept.toUpperCase()} // SYSTEM TOPOLOGY
+    ${safeConcept} // SYSTEM TOPOLOGY
   </text>
   <text x="60" y="90" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">
-    ${params.caption}
+    ${safeCaption}
   </text>
 
   <!-- Node 1 -->

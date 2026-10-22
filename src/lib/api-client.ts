@@ -537,3 +537,39 @@ export async function deletePresentationSessionApi(sessionId: string): Promise<b
     return true;
   }
 }
+
+export async function updatePresentationSlideApi(
+  sessionId: string,
+  slideIndex: number,
+  slideData: Partial<SlidePreviewItem>,
+): Promise<{ success: boolean; data?: PresentationSessionData; error?: { message: string } }> {
+  // Update local client session if present
+  const local = getClientSession(sessionId);
+  if (local && local.slides[slideIndex]) {
+    local.slides[slideIndex] = {
+      ...local.slides[slideIndex],
+      ...slideData,
+    };
+    if (slideIndex === 0 && slideData.title) {
+      local.title = slideData.title;
+    }
+    saveClientSession(local);
+  }
+
+  // Attempt backend sync
+  try {
+    const res = await fetch(`${API_BASE}/presentations/session/${sessionId}/slide/${slideIndex}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(slideData),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return json;
+    }
+  } catch (err) {
+    console.warn("Backend updatePresentationSlideApi unreachable, local session preserved:", err);
+  }
+
+  return { success: true, data: local || undefined };
+}
