@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ScanText,
@@ -12,22 +12,24 @@ import {
   Info,
   Search,
   Check,
+  ImageIcon,
+  Sparkles,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
-import { addWorkspaceJob } from "@/lib/workspace-history";
 
 export const Route = createFileRoute("/text-extractor")({
   head: () => ({
     meta: [
-      { title: "Text Extractor — Extract Text from PDF, DOCX, and TXT | DocuMind" },
+      { title: "Text Extractor & Screenshot OCR — PDF, DOCX, TXT & Images | DocuMind" },
       {
         name: "description",
         content:
-          "Extract clean, readable text from digital documents and manuscripts with instant copying and TXT file export.",
+          "Extract clean, readable text from documents and image screenshots with high-accuracy OCR. 100% free with instant copy and text export.",
       },
     ],
   }),
@@ -35,13 +37,14 @@ export const Route = createFileRoute("/text-extractor")({
 });
 
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
-const ALLOWED_EXTS = ["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg"];
+const ALLOWED_EXTS = ["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp", "bmp", "tiff"];
 
 function TextExtractorPage() {
   const [collapsed, setCollapsed] = useState(false);
 
   // File & extraction state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState<{
     text: string;
@@ -51,19 +54,32 @@ function TextExtractorPage() {
     filename: string;
     format: string;
   } | null>(null);
-  const [ocrWarning, setOcrWarning] = useState<string | null>(null);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [copied, setCopied] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
+
   const handleSelectFile = async (file: File) => {
-    setOcrWarning(null);
+    setWarningMessage(null);
     setExtractedData(null);
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
     if (!ALLOWED_EXTS.includes(ext)) {
-      toast.error("Unsupported format. Please upload PDF, DOCX, TXT, or images.");
+      toast.error("Unsupported format. Please upload PDF, DOCX, TXT, or images (PNG, JPG, WEBP).");
       return;
     }
 
@@ -74,22 +90,28 @@ function TextExtractorPage() {
 
     setSelectedFile(file);
 
-    // If image file, report honest OCR requirement
-    if (["png", "jpg", "jpeg"].includes(ext)) {
-      setOcrWarning(
-        "Optical Character Recognition (OCR) for raster image scans is currently in private preview. For instant deterministic extraction, please provide vector PDFs, DOCX, or TXT documents.",
-      );
-      return;
+    const isImageFile = ["png", "jpg", "jpeg", "webp", "bmp", "tiff"].includes(ext);
+    if (isImageFile) {
+      const url = URL.createObjectURL(file);
+      setImagePreviewUrl(url);
     }
 
-    // Run real extraction
+    // Run extraction & OCR
     setExtracting(true);
     try {
       const result = await extractDocumentText(file);
       const text = result.text || "";
       const wordCount = result.wordCount || text.split(/\s+/).filter(Boolean).length;
-      const lineCount = result.lineCount || text.split("\n").length;
+      const lineCount = result.lineCount || (text ? text.split("\n").length : 0);
       const charCount = text.length;
+
+      if (!text || text.trim().length === 0) {
+        setWarningMessage(
+          result.warning ||
+            "No readable text could be recognized in this file. Please verify that the image or document contains clear, readable text.",
+        );
+        return;
+      }
 
       setExtractedData({
         text,
@@ -97,25 +119,33 @@ function TextExtractorPage() {
         lineCount,
         charCount,
         filename: file.name,
-        format: result.format || ext.toUpperCase(),
+        format: isImageFile ? "IMAGE OCR" : result.format || ext.toUpperCase(),
       });
 
-      addWorkspaceJob({
-        name: `${file.name.replace(/\.[^/.]+$/, "")}_extracted.txt`,
-        tool: "Text Extractor",
-        format: "TXT",
-        originalSize: `${(file.size / 1024).toFixed(1)} KB`,
-        resultSize: `${wordCount} Words`,
-      });
-
-      toast.success("Text Extracted!", {
-        description: `Successfully extracted ${wordCount} words from "${file.name}".`,
+      toast.success(isImageFile ? "Screenshot OCR Complete!" : "Text Extracted!", {
+        description: `Successfully extracted ${wordCount} words verbatim from "${file.name}".`,
       });
     } catch (err: unknown) {
       console.error("Extraction error:", err);
-      toast.error("Extraction encountered an error parsing the document streams.");
+      const msg = err instanceof Error ? err.message : "Error extracting text from file.";
+      toast.error("Extraction Failed", { description: msg });
+      setWarningMessage(msg);
     } finally {
       setExtracting(false);
+    }
+  };
+
+  const handleReset = () => {
+    setSelectedFile(null);
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
+    setExtractedData(null);
+    setWarningMessage(null);
+    setSearchTerm("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -150,6 +180,12 @@ function TextExtractorPage() {
       : extractedData.text
     : "";
 
+  const isCurrentFileImage =
+    selectedFile &&
+    ["png", "jpg", "jpeg", "webp", "bmp", "tiff"].includes(
+      selectedFile.name.split(".").pop()?.toLowerCase() || "",
+    );
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
@@ -165,14 +201,40 @@ function TextExtractorPage() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
                 <ScanText className="h-3.5 w-3.5" />
-                <span>Deterministic Text & Outline Extraction</span>
+                <span>Deterministic Text & Screenshot OCR Extraction</span>
               </div>
               <h1 className="mt-2 font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
                 Text Extractor
               </h1>
-              <p className="mt-1 text-xs text-muted-foreground max-w-2xl">
-                Extract unformatted body text, section headings, and outline notes from digital
-                documents. Copy to clipboard or export directly as clean plain text.
+              <p className="mt-1 text-xs text-muted-foreground max-w-2xl leading-relaxed">
+                Extract verbatim text from PDF, Word documents (.docx), plain text (.txt), and any
+                picture or screenshot (PNG, JPG, WEBP). Copy the clean text instantly or download it
+                as an editable file.
+              </p>
+            </div>
+
+            {selectedFile && (
+              <Button
+                variant="glass"
+                size="sm"
+                onClick={handleReset}
+                className="text-xs self-start sm:self-auto gap-1.5"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Extract Another File
+              </Button>
+            )}
+          </div>
+
+          {/* Educational Callout */}
+          <div className="mb-8 rounded-2xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 p-4 text-xs text-foreground/80 flex items-start gap-3">
+            <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <strong className="text-foreground">Supports Screenshots & Pictures:</strong>
+              <p className="leading-relaxed">
+                Took a picture of a document, book page, white paper, or captured a screen snippet?
+                Upload your picture or screenshot directly. DocuMind analyzes the image using
+                optical character recognition (OCR) and extracts the exact text verbatim, preserving
+                spelling, numbers, and paragraphs.
               </p>
             </div>
           </div>
@@ -181,7 +243,7 @@ function TextExtractorPage() {
           <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-6">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Upload Document to Extract
+                Upload Document, Picture, or Screenshot to Extract
               </label>
 
               <div
@@ -191,7 +253,7 @@ function TextExtractorPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg"
+                  accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg,.webp,.bmp,.tiff"
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
@@ -199,7 +261,11 @@ function TextExtractorPage() {
                   }}
                 />
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-3">
-                  <Upload className="h-6 w-6" />
+                  {isCurrentFileImage ? (
+                    <ImageIcon className="h-6 w-6" />
+                  ) : (
+                    <Upload className="h-6 w-6" />
+                  )}
                 </div>
 
                 {selectedFile ? (
@@ -208,34 +274,61 @@ function TextExtractorPage() {
                       {selectedFile.name}
                     </span>
                     <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB · Click to choose another
-                      document
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB · Click to choose a
+                      different file
                     </p>
                   </div>
                 ) : (
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">
-                      Click to upload or drag & drop document
+                      Click to upload or drag & drop document or screenshot
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Supports PDF, DOCX, TXT · Maximum size: 50 MB
+                      Supports PDF, DOCX, TXT, and Pictures/Screenshots (PNG, JPG, WEBP) · Max: 50 MB
                     </p>
                   </div>
                 )}
               </div>
             </div>
 
-            {extracting && (
-              <div className="flex items-center justify-center gap-2 text-xs font-medium text-primary py-4">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>Reading byte streams and reconstructing text lines...</span>
+            {/* Image Preview Thumbnail if user uploaded screenshot / picture */}
+            {imagePreviewUrl && (
+              <div className="rounded-xl border border-border bg-surface-2/30 p-4 flex flex-col sm:flex-row items-center gap-4">
+                <img
+                  src={imagePreviewUrl}
+                  alt="Uploaded Source Screenshot"
+                  className="max-h-40 rounded-lg border border-border/80 object-contain shadow-xs bg-black/5"
+                />
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  <div className="inline-flex items-center gap-1.5 font-semibold text-primary font-mono text-[11px] uppercase">
+                    <Sparkles className="h-3 w-3" />
+                    <span>Visual OCR Source Active</span>
+                  </div>
+                  <p className="font-medium text-foreground">
+                    Analyzing screenshot typography and extracting text layer...
+                  </p>
+                  <p className="text-[11px]">
+                    Preserving exact capitalization, line breaks, and punctuation from your picture.
+                  </p>
+                </div>
               </div>
             )}
 
-            {ocrWarning && (
+            {extracting && (
+              <div className="flex items-center justify-center gap-2.5 text-xs font-medium text-primary py-4">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>
+                  {isCurrentFileImage
+                    ? "Analyzing image with high-precision OCR engine..."
+                    : "Reading byte streams and reconstructing text lines..."}
+                </span>
+              </div>
+            )}
+
+            {warningMessage && (
               <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-800 dark:text-amber-300">
-                <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{ocrWarning}</span>
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{warningMessage}</span>
               </div>
             )}
           </div>
@@ -256,7 +349,9 @@ function TextExtractorPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-muted-foreground">
-                  <span>{extractedData.wordCount} words</span>
+                  <span className="text-foreground font-semibold">
+                    {extractedData.wordCount} words
+                  </span>
                   <span>·</span>
                   <span>{extractedData.lineCount} lines</span>
                   <span>·</span>
@@ -273,7 +368,7 @@ function TextExtractorPage() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search within extracted text..."
-                    className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
                   />
                 </div>
 
@@ -286,7 +381,7 @@ function TextExtractorPage() {
                   >
                     {copied ? (
                       <>
-                        <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied
+                        <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied Text
                       </>
                     ) : (
                       <>

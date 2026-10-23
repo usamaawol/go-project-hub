@@ -2,6 +2,7 @@ import type { Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth";
 import { extractTextFromBuffer } from "../services/extractor.service";
 import { compressPdfBuffer } from "../services/compressor.service";
+import { convertDocumentBuffer, type SupportedFormat } from "../services/converter.service";
 import { generatePresentationBuffer } from "../services/presentation.service";
 import { analyzeDocumentAndGuide } from "../services/ai.service";
 import { DocumentJobModel } from "../models/DocumentJob";
@@ -230,6 +231,85 @@ export async function handleAiGuidance(
     res.json({
       success: true,
       data: guidance,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function handleConvertDocument(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Please upload a document to convert." },
+      });
+    }
+
+    const targetFormat = ((req.body.targetFormat || req.query.targetFormat || "DOCX") as string).toUpperCase() as SupportedFormat;
+    if (!["PDF", "DOCX", "TXT"].includes(targetFormat)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Unsupported target format. Must be PDF, DOCX, or TXT." },
+      });
+    }
+
+    const startTime = Date.now();
+    const result = await convertDocumentBuffer(
+      file.buffer,
+      file.mimetype || file.originalname,
+      targetFormat,
+      file.originalname,
+    );
+    const duration = Date.now() - startTime;
+
+    const jobId = "job_" + Math.random().toString(36).substring(2, 10);
+    if (isDbConnected()) {
+      try {
+        await DocumentJobModel.create({
+          jobId,
+          userId: req.user?.uid || null,
+          toolType: "convert",
+          originalFilename: file.originalname,
+          fileSize: file.buffer.length,
+          mimeType: file.mimetype,
+          status: "completed",
+          metrics: {
+            processingTimeMs: duration,
+            outputSizeBytes: result.sizeBytes,
+            extractedWordCount: result.wordCount,
+          },
+        });
+      } catch (e) {
+        console.warn("Could not save convert job log to DB:", e);
+      }
+    }
+
+    // Direct download attachment
+    if (req.query.download === "true") {
+      res.setHeader("Content-Type", result.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+      return res.send(result.buffer);
+    }
+
+    // Return JSON with base64 data for client download / preview
+    return res.json({
+      success: true,
+      data: {
+        jobId,
+        filename: result.filename,
+        targetFormat,
+        mimeType: result.mimeType,
+        sizeBytes: result.sizeBytes,
+        wordCount: result.wordCount,
+        processingTimeMs: duration,
+        base64: result.buffer.toString("base64"),
+      },
     });
   } catch (error) {
     next(error);

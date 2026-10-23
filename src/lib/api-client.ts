@@ -86,7 +86,45 @@ export async function extractDocumentText(file: File): Promise<{
     };
   }
 
-  // Binary files (PDF, DOCX) require the backend extractor for accurate text extraction
+  // Client-side image OCR fallback
+  const isImage = ["png", "jpg", "jpeg", "webp", "bmp"].includes(ext || "");
+  if (isImage) {
+    try {
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("eng");
+      const ret = await worker.recognize(file);
+      await worker.terminate();
+      const text = (ret?.data?.text || "").trim();
+      return {
+        text,
+        wordCount: text.split(/\s+/).filter(Boolean).length,
+        lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
+        format: "image",
+      };
+    } catch (ocrErr) {
+      console.warn("Client-side OCR fallback error:", ocrErr);
+    }
+  }
+
+  // Client-side DOCX text extraction fallback
+  if (ext === "docx" || ext === "doc") {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      const text = (result.value || "").trim();
+      return {
+        text,
+        wordCount: text.split(/\s+/).filter(Boolean).length,
+        lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
+        format: "docx",
+      };
+    } catch (mErr) {
+      console.warn("Client-side Mammoth extraction error:", mErr);
+    }
+  }
+
+  // Binary files (PDF) require the backend extractor for accurate text extraction
   return {
     text: "",
     wordCount: 0,

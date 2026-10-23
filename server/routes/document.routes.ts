@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   handleExtractText,
   handleCompressDocument,
+  handleConvertDocument,
   handleGeneratePresentation,
   handleAiGuidance,
 } from "../controllers/document.controller";
@@ -20,6 +21,7 @@ const upload = multer({
 
 router.post("/documents/extract", optionalAuth, upload.single("file"), handleExtractText);
 router.post("/documents/compress", optionalAuth, upload.single("file"), handleCompressDocument);
+router.post("/documents/convert", optionalAuth, upload.single("file"), handleConvertDocument);
 router.post("/documents/presentation", optionalAuth, handleGeneratePresentation);
 router.post("/documents/guide", optionalAuth, handleAiGuidance);
 
