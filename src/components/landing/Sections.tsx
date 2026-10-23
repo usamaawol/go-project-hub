@@ -24,7 +24,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { AuthModal } from "./AuthModal";
-import { UpgradeModal } from "@/components/workspace/UpgradeModal";
 
 function Heading({
   eyebrow,
@@ -534,45 +533,44 @@ export function DesignedForPeople() {
 }
 
 // ----------------------------------------------------
-// Section 4.J: Transparent Pricing & Plans
+// Section 4.J: 100% Free Access Policy & Transparency
 // ----------------------------------------------------
 export function Pricing() {
   const [authOpen, setAuthOpen] = useState(false);
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const plans = [
     {
-      name: "Free Plan",
+      name: "100% Free Community Plan",
       price: "0 ETB",
       sub: "Free Forever",
-      cta: "Start Free Immediately",
-      hero: false,
-      desc: "Generous access for students, researchers, and creators with zero paywalls.",
+      cta: "Start Creating Free Immediately",
+      hero: true,
+      desc: "Complete access for students, researchers, and creators with zero paywalls.",
       features: [
-        "Exactly 50 free presentation themes across 10 categories",
+        "All 110 presentation and document themes 100% free",
         "Up to 20 slides per presentation deck",
         "Zero artificial watermarks on generated PPTX or DOCX",
+        "Editable vector PowerPoint (.pptx) download",
         "Deterministic PDF, DOCX, and PPTX conversion",
         "Lossless PDF compression with visual control (up to 50 MB)",
-        "Academic document formatting with cover page and headings",
+        "Academic document formatting with formal publication headers",
         "No credit card required, instant access",
       ],
     },
     {
-      name: "Pro Plan",
-      price: "100 ETB",
-      sub: "per month",
-      cta: "Upgrade to Pro",
-      hero: true,
-      desc: "For power creators, teams, and high-stakes presentation authors.",
+      name: "Pro Plan (Version 2 Roadmap)",
+      price: "v2 Feature",
+      sub: "Coming in Version 2",
+      cta: "Planned for Version 2",
+      hero: false,
+      desc: "Pro features will launch in v2 after growing our community of creators.",
       features: [
-        "All 100+ presentation themes (including 60 Pro-exclusive collections)",
-        "Generate presentations with more than 20 slides (up to 50 slides)",
-        "Higher monthly AI generation allowance",
-        "Advanced typography and custom color palette overrides",
-        "Priority document processing and queue throughput",
-        "Dedicated customer support with 24-hour SLA",
-        "Cancel anytime with one click",
+        "Expanded deck lengths (up to 50 slides)",
+        "Multi-member workspace collaboration",
+        "Custom enterprise typography and color kits",
+        "Priority batch document processing",
+        "Dedicated customer support SLA",
+        "Deferred to v2 — Enjoy 100% free access for now!",
       ],
     },
   ];
@@ -585,9 +583,9 @@ export function Pricing() {
       <div className="mx-auto max-w-5xl px-5 lg:px-8">
         <Heading
           center
-          eyebrow="Transparent Pricing"
-          title="Simple, fair, and accessible to everyone."
-          sub="Enjoy 50 presentation themes and essential document tools completely free of charge. Upgrade to Pro for 100 ETB / month whenever you need extended slide counts and exclusive themes."
+          eyebrow="100% Free Access Policy"
+          title="Simple, fair, and 100% free for everyone."
+          sub="Enjoy all 110 presentation themes, vector PPTX download, and document tools completely free of charge. No credit card required. Pro features are scheduled for version 2."
         />
 
         <div className="mt-14 grid gap-6 md:grid-cols-2">
@@ -621,7 +619,7 @@ export function Pricing() {
                   {p.price}
                 </span>
                 <span className="text-sm font-medium text-muted-foreground font-sans">
-                  {p.name === "Free Plan" ? "/ forever" : "/ month"}
+                  {p.name.includes("Free") ? "/ forever" : ""}
                 </span>
               </div>
 
@@ -644,11 +642,13 @@ export function Pricing() {
                 size="lg"
                 onClick={() => {
                   if (p.hero) {
-                    setUpgradeOpen(true);
-                  } else {
                     document
                       .getElementById("presentation-maker")
                       ?.scrollIntoView({ behavior: "smooth" });
+                  } else {
+                    toast.info("Pro Plan Scheduled for Version 2", {
+                      description: "Enjoy 100% free access to all 110 templates and tools right now!",
+                    });
                   }
                 }}
               >
@@ -660,7 +660,6 @@ export function Pricing() {
       </div>
 
       <AuthModal open={authOpen} onOpenChange={setAuthOpen} defaultMode="signup" />
-      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </section>
   );
 }

@@ -78,7 +78,7 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
 /**
  * GET /api/presentations/:id/preview
  * Fetches structured presentation metadata and slide data for in-browser rendering
- * Returns 410 Gone if expired (>10 minutes)
+ * Returns 410 Gone if expired (>15 minutes)
  */
 router.get("/presentations/:id/preview", (req: Request, res: Response) => {
   const sessionId = req.params["id"];
@@ -95,7 +95,7 @@ router.get("/presentations/:id/preview", (req: Request, res: Response) => {
       success: false,
       error: {
         message:
-          "This temporary presentation has expired after 10 minutes. In accordance with DocuMind's privacy policy, all files and previews were deleted.",
+          "This temporary presentation has expired after 15 minutes. In accordance with DocuMind's privacy policy, all files and previews were deleted.",
         code: "SESSION_EXPIRED",
       },
     });
@@ -169,7 +169,7 @@ router.get("/presentations/:id/download", (req: Request, res: Response) => {
       success: false,
       error: {
         message:
-          "This download link has expired. DocuMind automatically deletes temporary presentations after 10 minutes.",
+          "This download link has expired. DocuMind automatically deletes temporary presentations after 15 minutes.",
         code: "SESSION_EXPIRED",
       },
     });

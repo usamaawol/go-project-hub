@@ -150,15 +150,15 @@ function AboutPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div>
                 <span className="font-mono text-xs font-bold uppercase text-primary">
-                  Transparent Pricing
+                  100% Free Access Policy
                 </span>
                 <h3 className="mt-1 font-serif text-2xl font-bold text-foreground">
-                  Free Access & Pro Upgrade at 100 ETB / month
+                  Free Access Forever — 110 Verified Themes Included
                 </h3>
                 <p className="mt-2 text-xs text-muted-foreground max-w-xl leading-relaxed">
-                  Every user enjoys 50 completely free presentation themes, decks up to 20 slides,
-                  lossless PDF compression, and full document tools. Need all 100+ themes, 50-slide
-                  decks, and priority rendering? Pro is only 100 ETB per month.
+                  Every user enjoys all 110 presentation and document themes, decks up to 20 slides,
+                  vector PowerPoint download, lossless PDF compression, and full document tools
+                  completely free of charge with zero watermarks. Pro plan features are scheduled for v2.
                 </p>
               </div>
 
@@ -166,8 +166,8 @@ function AboutPage() {
                 <span className="font-serif text-3xl font-bold text-foreground">0 ETB</span>
                 <span className="text-xs text-muted-foreground"> / free forever</span>
                 <div className="mt-2">
-                  <span className="rounded-full bg-surface-2 px-3 py-1 font-mono text-[11px] font-semibold text-foreground border border-border">
-                    Pro: 100 ETB / mo
+                  <span className="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3 py-1 font-mono text-[11px] font-semibold border border-emerald-500/30">
+                    110 Themes Free
                   </span>
                 </div>
               </div>

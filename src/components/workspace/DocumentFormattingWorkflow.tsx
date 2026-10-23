@@ -34,7 +34,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
-import { addWorkspaceJob } from "@/lib/workspace-history";
+
 
 export interface FormattingConfig {
   // Document Layout Archetype
@@ -183,11 +183,45 @@ export interface DocSection {
   blocks: DocBlock[];
 }
 
+export function renderRichInline(text: string) {
+  if (!text) return null;
+  // Splits by markdown bold (**...**), inline code (`...`), or italic (*...*)
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} className="font-bold text-foreground">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          key={i}
+          className="font-mono text-xs px-1.5 py-0.5 rounded bg-stone-200/70 dark:bg-zinc-800 text-primary font-semibold"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if (part.startsWith("*") && part.endsWith("*")) {
+      return (
+        <em key={i} className="italic text-foreground/90">
+          {part.slice(1, -1)}
+        </em>
+      );
+    }
+    return part;
+  });
+}
+
 export function deriveDocumentMetadata(text: string): {
   docTitle: string;
   docSubtitle: string;
   authorName?: string;
   institution?: string;
+  dateStr?: string;
   recommendedArchetype?: "executive" | "tech-spec" | "academic" | "creative";
 } {
   const lines = text
@@ -195,14 +229,44 @@ export function deriveDocumentMetadata(text: string): {
     .map((l) => l.trim())
     .filter(Boolean);
 
+  const defaultMonthYear = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
   if (lines.length === 0) {
     return {
       docTitle: "Executive Document",
       docSubtitle: "Executive Analysis and Implementation Report",
-      authorName: "DocuMind Research Group",
-      institution: "Editorial Division",
+      authorName: "Author / Researcher",
+      institution: "Academic / Professional Department",
+      dateStr: defaultMonthYear,
       recommendedArchetype: "executive",
     };
+  }
+
+  // Scan lines for explicit key-value metadata
+  let foundAuthor = "";
+  let foundInstitution = "";
+  let foundDate = "";
+  let foundSubtitle = "";
+  let foundTitle = "";
+
+  for (const l of lines) {
+    const authorM = l.match(/^(?:Author|Researcher|Prepared By|By)\s*[:]\s*(.*)$/i);
+    if (authorM && authorM[1]) foundAuthor = authorM[1].trim();
+
+    const instM = l.match(/^(?:Institution|Department|Organization|University|Affiliation)\s*[:]\s*(.*)$/i);
+    if (instM && instM[1]) foundInstitution = instM[1].trim();
+
+    const dateM = l.match(/^(?:Date|Published|Submission Date)\s*[:]\s*(.*)$/i);
+    if (dateM && dateM[1]) foundDate = dateM[1].trim();
+
+    const subM = l.match(/^(?:Subtitle|Series Subtitle)\s*[:]\s*(.*)$/i);
+    if (subM && subM[1]) foundSubtitle = subM[1].trim();
+
+    const titleM = l.match(/^(?:Title|Document Title)\s*[:]\s*(.*)$/i);
+    if (titleM && titleM[1]) foundTitle = titleM[1].trim();
   }
 
   const lower = text.toLowerCase();
@@ -215,10 +279,12 @@ export function deriveDocumentMetadata(text: string): {
     lower.includes("specification") ||
     lower.includes("architecture");
   const isAcademic =
+    lower.includes("academic") ||
     lower.includes("abstract") ||
     lower.includes("methodological") ||
     lower.includes("hypothesis") ||
-    lower.includes("et al.");
+    lower.includes("et al.") ||
+    lower.includes("research report");
 
   let recommendedArchetype: "executive" | "tech-spec" | "academic" | "creative" = "executive";
   if (isVideo) recommendedArchetype = "creative";
@@ -227,42 +293,42 @@ export function deriveDocumentMetadata(text: string): {
 
   if (isVideo) {
     return {
-      docTitle: "DocuMind Promotional Video — Production Brief",
-      docSubtitle: "Continuity Requirements, Visual Storyboard & Technical Specification",
-      authorName: "Production & Creative Team",
-      institution: "DocuMind Studios",
+      docTitle: foundTitle || "DocuMind Promotional Video — Production Brief",
+      docSubtitle: foundSubtitle || "Continuity Requirements, Visual Storyboard & Technical Specification",
+      authorName: foundAuthor || "Production & Creative Team",
+      institution: foundInstitution || "DocuMind Studios",
+      dateStr: foundDate || defaultMonthYear,
       recommendedArchetype: "creative",
     };
   }
 
-  const line0 = lines[0] || "";
-  const line1 = lines[1] || "";
-  const isHeading = /^(\d+(?:\.\d+)*|[A-Z]\.|\bSection\b|\bChapter\b|#)/i.test(line0);
+  if (!foundTitle) {
+    const line0 = lines[0] || "";
+    const line1 = lines[1] || "";
+    const isHeading = /^(\d+(?:\.\d+)*|[A-Z]\.|\bSection\b|\bChapter\b|#)/i.test(line0);
 
-  let docTitle = "";
-  let docSubtitle = "";
-
-  if (!isHeading && line0.length < 90) {
-    docTitle = line0;
-    if (line1 && !/^(\d|#)/.test(line1) && line1.length < 140) {
-      docSubtitle = line1;
-    }
-  } else {
-    // If line 0 is a heading like "1.0 Introduction & Context"
-    if (line1 && line1.length < 85 && !/^(\d|#)/.test(line1)) {
-      docTitle = line1.replace(/\.\s*$/, "");
-      docSubtitle = `Executive Brief · ${line0.replace(/^[\d.#]+\s*/, "")}`;
+    if (!isHeading && line0.length < 95) {
+      foundTitle = line0;
+      if (!foundSubtitle && line1 && !/^(\d|#)/.test(line1) && line1.length < 140) {
+        foundSubtitle = line1;
+      }
     } else {
-      docTitle = line0.replace(/^[\d.#]+\s*/, "") || "Executive Document";
-      docSubtitle = "Executive Analysis and Implementation Report";
+      if (line1 && line1.length < 85 && !/^(\d|#)/.test(line1)) {
+        foundTitle = line1.replace(/\.\s*$/, "");
+        foundSubtitle = `Executive Brief · ${line0.replace(/^[\d.#]+\s*/, "")}`;
+      } else {
+        foundTitle = line0.replace(/^[\d.#]+\s*/, "") || "Executive Document";
+        foundSubtitle = "Executive Analysis and Implementation Report";
+      }
     }
   }
 
   return {
-    docTitle: docTitle || "Executive Document",
-    docSubtitle: docSubtitle || "Executive Analysis and Implementation Report",
-    authorName: "Author / Researcher",
-    institution: "Academic / Professional Department",
+    docTitle: foundTitle || "Executive Document",
+    docSubtitle: foundSubtitle || "Executive Analysis and Implementation Report",
+    authorName: foundAuthor || "Author / Researcher",
+    institution: foundInstitution || "Academic / Professional Department",
+    dateStr: foundDate || defaultMonthYear,
     recommendedArchetype,
   };
 }
@@ -307,10 +373,15 @@ export function parseLinesToBlocks(
     const line = lines[i]?.trim();
     if (!line) continue;
 
-    // 1. Check for bullet list item
-    const listMatch = line.match(/^[-*•]\s+(.*)$/) || line.match(/^\d+\.\s+(.*)$/);
-    if (listMatch) {
-      pendingListItems.push(listMatch[1] || line);
+    // 1. Check for bullet list item:
+    // Only concise bullet lines (< 120 chars) that start with explicit bullet symbols (- * •)
+    // or short numbered items (< 70 chars, without terminal period)
+    const isExplicitBullet = /^[-*•]\s+(.*)$/.exec(line);
+    const isShortNumberedItem = /^\d+\.\s+([^.\n]{3,65})$/.exec(line);
+    const isBulletList = isExplicitBullet || (isShortNumberedItem && lines.length > 2);
+
+    if (isBulletList) {
+      pendingListItems.push(isExplicitBullet ? isExplicitBullet[1]! : isShortNumberedItem![1]!);
       continue;
     } else {
       flushList();
@@ -756,6 +827,7 @@ export function DocumentFormattingWorkflow({
       docSubtitle: meta.docSubtitle,
       authorName: meta.authorName || prev.authorName,
       institution: meta.institution || prev.institution,
+      dateStr: meta.dateStr || prev.dateStr,
       layoutArchetype: meta.recommendedArchetype || prev.layoutArchetype,
     }));
   };
@@ -781,14 +853,6 @@ export function DocumentFormattingWorkflow({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    addWorkspaceJob({
-      name: docName,
-      tool: "Document Studio",
-      format: "DOCX",
-      originalSize: `${rawText.split("\n\n").length} Sections`,
-      resultSize: `${(blob.size / 1024).toFixed(1)} KB`,
-    });
-
     toast.success("Document downloaded in editable Word-compatible format!");
   };
 
@@ -802,14 +866,6 @@ export function DocumentFormattingWorkflow({
     printWindow.document.write(htmlContent);
     printWindow.document.close();
     printWindow.focus();
-
-    addWorkspaceJob({
-      name: `${config.docTitle.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32) || "formatted_document"}.pdf`,
-      tool: "Document Studio",
-      format: "PDF",
-      originalSize: `${rawText.split("\n\n").length} Sections`,
-      resultSize: "Print/PDF Export",
-    });
 
     setTimeout(() => {
       printWindow.print();
@@ -2073,7 +2129,77 @@ export function DocumentFormattingWorkflow({
                     {/* Body content with heading hierarchy and executive editorial blocks */}
                     <div className="space-y-6">
                       {parseDocumentSections(rawText, config.headingNumbering).map((sec, sIdx) => (
-                        <div key={sIdx} className="space-y-2">
+                        <div key={sIdx} className="space-y-3">
+                          {sIdx === 0 && (
+                            <div className="mb-8 pt-1">
+                              {/* Corner crop marks */}
+                              <div className="relative mb-2">
+                                <div className="absolute -top-3 -left-3 w-4 h-4 border-t border-l border-stone-300 dark:border-zinc-700 pointer-events-none" />
+                                <div className="absolute -top-3 -right-3 w-4 h-4 border-t border-r border-stone-300 dark:border-zinc-700 pointer-events-none" />
+                              </div>
+
+                              {/* Department Tagline with formal underline */}
+                              <div className="border-b border-stone-800 dark:border-zinc-300 pb-1 mb-5 inline-block">
+                                <p className="font-serif tracking-widest uppercase text-xs font-semibold text-stone-800 dark:text-zinc-200">
+                                  {config.institution
+                                    ? config.institution.toUpperCase()
+                                    : "ACADEMIC / PROFESSIONAL DEPARTMENT"}
+                                </p>
+                              </div>
+
+                              {/* Main Document Title with formal underline */}
+                              <div className="border-b-2 border-stone-900 dark:border-zinc-100 pb-2 mb-4">
+                                <h1 className="font-serif text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight text-stone-900 dark:text-zinc-50">
+                                  {config.docTitle}
+                                </h1>
+                              </div>
+
+                              {/* Subtitle with underline */}
+                              {config.docSubtitle && (
+                                <div className="border-b border-stone-700 dark:border-zinc-300 pb-1 mb-5 inline-block">
+                                  <p className="font-serif italic text-base text-stone-700 dark:text-zinc-300">
+                                    {config.docSubtitle}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Metadata Block: Author, Date, Institution, Series subtitle */}
+                              <div className="space-y-1.5 text-xs font-serif mb-8 text-stone-800 dark:text-zinc-300">
+                                <div>
+                                  <div className="border-b border-stone-400 dark:border-zinc-600 pb-0.5 inline-block min-w-[220px]">
+                                    <strong className="font-bold text-stone-900 dark:text-zinc-100">
+                                      Author:
+                                    </strong>{" "}
+                                    <span>{config.authorName || "Author / Researcher"}</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="border-b border-stone-400 dark:border-zinc-600 pb-0.5 inline-block min-w-[220px]">
+                                    <strong className="font-bold text-stone-900 dark:text-zinc-100">
+                                      Date:
+                                    </strong>{" "}
+                                    <span>{config.dateStr || "October 2026"}</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="border-b border-stone-400 dark:border-zinc-600 pb-0.5 inline-block min-w-[280px]">
+                                    <strong className="font-bold text-stone-900 dark:text-zinc-100">
+                                      Institution:
+                                    </strong>{" "}
+                                    <span>
+                                      {config.institution || "Academic / Professional Department"}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="pt-2 border-b border-stone-300 dark:border-zinc-700 pb-1 text-[11px] text-stone-500 dark:text-zinc-400 font-sans">
+                                  <span>
+                                    DocuMind Research · Technical Report Series DocuMind Executive Technical Report Series
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
                           {sec.level === 1 && (
                             <div className="pt-2">
                               <h1
@@ -2082,7 +2208,7 @@ export function DocumentFormattingWorkflow({
                                     ? paperMode === "dark"
                                       ? "border-b border-zinc-800"
                                       : "border-b border-stone-300"
-                                    : ""
+                                    : "border-b border-stone-200 dark:border-zinc-800"
                                 } ${paperMode === "dark" ? "text-zinc-50" : "text-stone-900"}`}
                               >
                                 {sec.numberStr && (
@@ -2311,23 +2437,23 @@ export function DocumentFormattingWorkflow({
                                         paperMode === "dark" ? "text-zinc-200" : "text-stone-800"
                                       }`}
                                     >
-                                      {block.content}
+                                      {renderRichInline(block.content)}
                                     </p>
                                   )}
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            /* Academic manuscript mode: strict standard paragraphs */
-                            <div className="space-y-2">
+                            /* Academic manuscript mode: formatted standard paragraphs */
+                            <div className="space-y-3">
                               {sec.paragraphs.map((p, pIdx) => (
                                 <p
                                   key={pIdx}
-                                  className={`text-sm leading-relaxed text-justify indent-6 ${
+                                  className={`text-sm leading-relaxed text-justify ${
                                     paperMode === "dark" ? "text-zinc-200" : "text-stone-800"
                                   }`}
                                 >
-                                  {p}
+                                  {renderRichInline(p)}
                                 </p>
                               ))}
                             </div>

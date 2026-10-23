@@ -70,7 +70,7 @@ export function PresentationPreviewPage() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<PresentationSessionData | null>(null);
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(600);
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(900);
   const [isExpired, setIsExpired] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<"fit" | 75 | 100 | 125>("fit");
@@ -538,14 +538,14 @@ export function PresentationPreviewPage() {
 
             {/* Countdown Badge & Download PPTX Button */}
             <div className="flex items-center gap-3">
-              {/* 10-Minute Expiration Badge */}
+              {/* 15-Minute Expiration Badge */}
               <div
                 className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-mono font-medium shadow-xs ${
                   secondsRemaining < 120
                     ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 animate-pulse"
                     : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
                 }`}
-                title="Temporary presentation expires 10 minutes after generation for zero-retention privacy."
+                title="Temporary presentation expires 15 minutes after generation for zero-retention privacy."
               >
                 <Clock className="h-3.5 w-3.5" />
                 <span>Expires in {formatTime(secondsRemaining)}</span>

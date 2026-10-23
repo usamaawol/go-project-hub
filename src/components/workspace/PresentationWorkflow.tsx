@@ -51,8 +51,7 @@ import {
   testAdminOpenAIConnection,
 } from "@/lib/api-client";
 import { detectTitleFromText } from "@/lib/presentation-session-client";
-import { addWorkspaceJob } from "@/lib/workspace-history";
-import { UpgradeModal } from "./UpgradeModal";
+
 import {
   Dialog,
   DialogContent,
@@ -226,11 +225,8 @@ export function PresentationWorkflow({
   // Theme Search & Filter
   const [themeSearch, setThemeSearch] = useState("");
   const [themeCategory, setThemeCategory] = useState<TemplateCategory>("All");
-  const [themeTierFilter, setThemeTierFilter] = useState<"all" | "free" | "pro">("all");
   const [previewTemplate, setPreviewTemplate] = useState<TemplateItem | null>(null);
   const [previewSlideIdx, setPreviewSlideIdx] = useState<SlideType>(0);
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
-  const [selectedProTheme, setSelectedProTheme] = useState<TemplateItem | null>(null);
 
   const { user } = useAuth();
   const isAdminOrSuperAdmin =
@@ -450,14 +446,13 @@ export function PresentationWorkflow({
 
   // Step B Theme Selection
   const handleSelectTheme = (t: TemplateItem) => {
-    if (!t.isFree) {
-      setSelectedProTheme(t);
-      setUpgradeModalOpen(true);
-      return;
-    }
     setSelectedTemplate(t);
+    const fontCandidate = t.fonts.split("+")[0]?.trim() || t.fonts.split("/")[0]?.trim();
+    if (fontCandidate) {
+      setSelectedFont(fontCandidate);
+    }
     toast.success(`Theme Applied: ${t.name}`, {
-      description: "Visual palette and font pairings configured.",
+      description: `Visual palette & typography preset configured from template.`,
     });
   };
 
@@ -517,7 +512,7 @@ export function PresentationWorkflow({
       await new Promise((r) => setTimeout(r, 500));
 
       setGenerationPhase(
-        "5/5: Compiling vector PowerPoint (.pptx) & starting 10-minute preview...",
+        "5/5: Compiling vector PowerPoint (.pptx) & starting 15-minute preview...",
       );
 
       const detected = detectTitleFromText(contentToUse);
@@ -551,22 +546,6 @@ export function PresentationWorkflow({
         slideCount,
       });
 
-      // Record authentic job in workspace history
-      const totalSlides =
-        session.slideCount || (session as { slides?: unknown[] }).slides?.length || slideCount || 8;
-
-      addWorkspaceJob({
-        id: session.sessionId,
-        name: `${session.title || "Presentation"}.pptx`,
-        tool: "Presentation Maker",
-        format: "PPTX",
-        originalSize: `${totalSlides} Slides`,
-        resultSize: "2.1 MB",
-        downloadUrl:
-          (session as { downloadUrl?: string }).downloadUrl ||
-          `/api/presentations/${session.sessionId}/download`,
-      });
-
       toast.success("Presentation Generated!", {
         description: `Opening 16:9 preview for "${session.title}".`,
       });
@@ -597,8 +576,6 @@ export function PresentationWorkflow({
 
   // Filter templates for theme picker
   const filteredTemplates = TEMPLATES.filter((t) => {
-    if (themeTierFilter === "free" && !t.isFree) return false;
-    if (themeTierFilter === "pro" && t.isFree) return false;
     if (themeCategory !== "All" && t.category.toLowerCase() !== themeCategory.toLowerCase()) {
       return false;
     }
@@ -632,7 +609,7 @@ export function PresentationWorkflow({
                 {currentStep === "settings" &&
                   "Select theme, font family, typography scale, and slide count"}
                 {currentStep === "generating" &&
-                  "Synthesizing slides and creating 10-minute temporary preview session"}
+                  "Synthesizing slides and creating 15-minute temporary preview session"}
               </p>
             </div>
           </div>
@@ -911,41 +888,10 @@ export function PresentationWorkflow({
                 </p>
               </div>
 
-              {/* Theme Tier Tabs */}
-              <div className="flex rounded-xl border border-border bg-surface-2 p-1">
-                <button
-                  type="button"
-                  onClick={() => setThemeTierFilter("all")}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                    themeTierFilter === "all"
-                      ? "bg-primary text-primary-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  All (110)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setThemeTierFilter("free")}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                    themeTierFilter === "free"
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Free (50)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setThemeTierFilter("pro")}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                    themeTierFilter === "pro"
-                      ? "bg-amber-600 text-white shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Pro (60)
-                </button>
+              {/* 100% Free Themes Policy */}
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3.5 py-1.5 font-mono text-xs font-semibold border border-emerald-500/25 shadow-xs">
+                <Check className="h-3.5 w-3.5" />
+                <span>110 Themes 100% Free</span>
               </div>
             </div>
 
@@ -989,7 +935,6 @@ export function PresentationWorkflow({
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[460px] overflow-y-auto p-1">
               {filteredTemplates.map((t) => {
                 const isSelected = selectedTemplate.id === t.id;
-                const isPro = !t.isFree;
 
                 return (
                   <div
@@ -1006,15 +951,9 @@ export function PresentationWorkflow({
                       <div className="relative aspect-16/10 w-full rounded-lg overflow-hidden border border-border/80">
                         <ThemeThumb kind={t.kind} slide={0} />
                         <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
-                          {isPro ? (
-                            <span className="rounded-full bg-amber-500/90 px-1.5 py-0.2 font-mono text-[9px] font-bold text-black uppercase">
-                              Pro
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-emerald-600/90 px-1.5 py-0.2 font-mono text-[9px] font-bold text-white uppercase">
-                              Free
-                            </span>
-                          )}
+                          <span className="rounded-full bg-emerald-600/90 px-1.5 py-0.2 font-mono text-[9px] font-bold text-white uppercase">
+                            Free
+                          </span>
                         </div>
 
                         {/* Theme Slide Preview Trigger Button */}
@@ -1256,25 +1195,27 @@ export function PresentationWorkflow({
                   Contextual Pictures & Vector Diagrams
                 </h3>
               </div>
-              <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleOpenAdminKeyModal}
-                  className="text-xs h-8 font-semibold border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary flex items-center gap-1.5 shadow-xs"
-                >
-                  <Key className="h-3.5 w-3.5" />
-                  <span>Admin: Enter Gemini Key</span>
-                </Button>
-                <Link
-                  to="/admin"
-                  className="text-xs font-semibold text-muted-foreground hover:text-primary transition flex items-center gap-1 bg-surface-2 px-3 py-1.5 rounded-lg border border-border h-8"
-                >
-                  <span>Admin Center</span>
-                  <span className="text-[10px] text-primary">→</span>
-                </Link>
-              </div>
+              {isAdminOrSuperAdmin && (
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleOpenAdminKeyModal}
+                    className="text-xs h-8 font-semibold border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Key className="h-3.5 w-3.5" />
+                    <span>Admin: AI Credentials</span>
+                  </Button>
+                  <Link
+                    to="/admin"
+                    className="text-xs font-semibold text-muted-foreground hover:text-primary transition flex items-center gap-1 bg-surface-2 px-3 py-1.5 rounded-lg border border-border h-8"
+                  >
+                    <span>Admin Center</span>
+                    <span className="text-[10px] text-primary">→</span>
+                  </Link>
+                </div>
+              )}
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -1372,19 +1313,6 @@ export function PresentationWorkflow({
         </div>
       )}
 
-      {/* Upgrade Modal for Pro Themes */}
-      <UpgradeModal
-        open={upgradeModalOpen}
-        onOpenChange={setUpgradeModalOpen}
-        proThemeName={selectedProTheme?.name}
-        onSelectFreeAlternative={() => {
-          setUpgradeModalOpen(false);
-          const freeAlt = TEMPLATES.find((t) => t.isFree) || TEMPLATES[0]!;
-          setSelectedTemplate(freeAlt);
-          toast.info(`Switched to Free Theme: ${freeAlt.name}`);
-        }}
-      />
-
       {/* Theme Slide Preview Modal */}
       {previewTemplate && (
         <Dialog open={!!previewTemplate} onOpenChange={(o) => !o && setPreviewTemplate(null)}>
@@ -1394,14 +1322,8 @@ export function PresentationWorkflow({
                 <span className="font-mono text-xs uppercase font-bold text-primary">
                   Theme Slide Inspector • {previewTemplate.category}
                 </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
-                    previewTemplate.isFree
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                  }`}
-                >
-                  {previewTemplate.isFree ? "100% Free Theme" : "Pro Theme"}
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  100% Free Theme
                 </span>
               </div>
               <DialogTitle className="font-serif text-2xl font-bold mt-1">

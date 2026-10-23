@@ -73,7 +73,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/",
     title: "7. Download PPTX & Ephemeral Lifespan",
     content:
-      "Download your editable vector .pptx whenever you are ready. For maximum privacy, your temporary files automatically delete after 10 minutes with zero retention.",
+      "Download your editable vector .pptx whenever you are ready. For maximum privacy, your temporary files automatically delete after 15 minutes with zero retention.",
     placement: "bottom",
   },
 ];

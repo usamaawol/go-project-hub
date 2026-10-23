@@ -416,7 +416,7 @@ export async function createPresentationSessionApi(input: {
             fileSize: 45000,
             createdAt: Date.now(),
             expiresAt: json.data.expiresAt,
-            secondsRemaining: json.data.secondsRemaining || 600,
+            secondsRemaining: json.data.secondsRemaining || 900,
           };
           saveClientSession(clientSession);
         }
@@ -463,8 +463,8 @@ export async function createPresentationSessionApi(input: {
     slides,
     fileSize: 45000,
     createdAt: Date.now(),
-    expiresAt: Date.now() + 10 * 60 * 1000,
-    secondsRemaining: 600,
+    expiresAt: Date.now() + 15 * 60 * 1000,
+    secondsRemaining: 900,
   };
 
   saveClientSession(clientSession);
@@ -474,7 +474,7 @@ export async function createPresentationSessionApi(input: {
     title: clientSession.title,
     slideCount: clientSession.slideCount,
     expiresAt: clientSession.expiresAt,
-    secondsRemaining: 600,
+    secondsRemaining: 900,
     slides: clientSession.slides,
     downloadUrl: `/api/presentations/${sessionId}/download`,
   };

@@ -306,7 +306,7 @@ export function HowItWorksPage() {
               <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 flex flex-col justify-between">
                 <div>
                   <span className="rounded-full bg-emerald-600/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">
-                    Free Forever
+                    100% Free Forever
                   </span>
                   <div className="mt-3 flex items-baseline gap-1">
                     <span className="text-3xl font-serif font-bold text-foreground">0 ETB</span>
@@ -315,7 +315,7 @@ export function HowItWorksPage() {
                   <ul className="mt-4 space-y-2 text-xs text-muted-foreground">
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                      <span>50 fully editable presentation themes</span>
+                      <span>All 110 presentation and document themes</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
@@ -343,43 +343,39 @@ export function HowItWorksPage() {
                 </div>
               </div>
 
-              {/* Pro Tier */}
-              <div className="rounded-2xl border border-primary/40 bg-card p-6 flex flex-col justify-between shadow-card">
+              {/* Version 2 Roadmap */}
+              <div className="rounded-2xl border border-border bg-card p-6 flex flex-col justify-between shadow-xs">
                 <div>
-                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-primary uppercase">
-                    Pro Workspace
+                  <span className="rounded-full bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] font-bold text-muted-foreground uppercase">
+                    Version 2 Roadmap
                   </span>
                   <div className="mt-3 flex items-baseline gap-1">
-                    <span className="text-3xl font-serif font-bold text-foreground">100 ETB</span>
-                    <span className="text-xs text-muted-foreground">/ month</span>
+                    <span className="text-3xl font-serif font-bold text-foreground">Pro Features</span>
+                    <span className="text-xs text-muted-foreground">/ coming in v2</span>
                   </div>
                   <ul className="mt-4 space-y-2 text-xs text-muted-foreground">
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                      <span>Access to all 110 presentation themes</span>
+                      <span>Expanded decks up to 50 slides</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                      <span>Generate decks with up to 50 slides</span>
+                      <span>Multi-member team workspaces</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                      <span>Priority AI queue throughput</span>
+                      <span>Custom corporate brand tokens</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                      <span>Commercial licensing & corporate palettes</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                      <span>Telebirr, CBE Birr & Chapa payment methods</span>
+                      <span>Deferred to v2 — Enjoy 100% free now!</span>
                     </li>
                   </ul>
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-border">
                   <Button variant="glass" size="sm" className="w-full text-xs" asChild>
-                    <Link to="/templates">Browse Pro Themes</Link>
+                    <Link to="/templates">Browse 110 Free Themes</Link>
                   </Button>
                 </div>
               </div>

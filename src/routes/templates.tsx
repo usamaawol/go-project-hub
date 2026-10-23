@@ -5,25 +5,16 @@ import {
   Download,
   Eye,
   Search,
-  Filter,
   Check,
   ChevronLeft,
   ChevronRight,
-  Layers,
-  ArrowRight,
-  Lock,
   Palette,
-  FileDown,
   Loader2,
   Bookmark,
   Monitor,
   FileText,
   Globe,
-  SlidersHorizontal,
-  FolderOpen,
-  ArrowUpRight,
   Layout,
-  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
@@ -37,7 +28,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { UpgradeModal } from "@/components/workspace/UpgradeModal";
 import { ThemeThumb, type SlideType, SLIDE_LABELS } from "@/components/landing/ThemeThumb";
 import {
   TEMPLATES,
@@ -64,7 +54,7 @@ export const Route = createFileRoute("/templates")({
       {
         name: "description",
         content:
-          "Browse 110+ Gamma-style templates for presentations, webpages, and documents. 50 completely free templates with vector PPTX export, 1-click AI generation, and curated layouts.",
+          "Browse 110 Gamma-style templates for presentations, webpages, and documents. 100% free with vector PPTX export, 1-click AI generation, and curated layouts.",
       },
     ],
   }),
@@ -77,16 +67,13 @@ function TemplatesCatalogPage() {
 
   // Filters & Search
   const [selectedFormat, setSelectedFormat] = useState<"all" | TemplateContentType>("all");
-  const [selectedTier, setSelectedTier] = useState<"all" | "free" | "pro">("all");
   const [selectedCategory, setSelectedCategory] = useState<TemplateCategory>("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
 
-  // Preview & Modal State
+  // Preview State
   const [previewTemplate, setPreviewTemplate] = useState<TemplateItem | null>(null);
   const [previewSlideIdx, setPreviewSlideIdx] = useState<SlideType>(0);
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
-  const [proThemeTarget, setProThemeTarget] = useState<TemplateItem | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => getBookmarkedTemplateIds());
 
@@ -150,10 +137,6 @@ function TemplatesCatalogPage() {
         if (type !== selectedFormat) return false;
       }
 
-      // Tier filter
-      if (selectedTier === "free" && t.tier !== "free") return false;
-      if (selectedTier === "pro" && t.tier !== "pro") return false;
-
       // Category filter
       if (
         selectedCategory !== "All" &&
@@ -173,7 +156,7 @@ function TemplatesCatalogPage() {
         t.tags.some((tag) => tag.toLowerCase().includes(q))
       );
     });
-  }, [selectedFormat, selectedTier, selectedCategory, searchQuery]);
+  }, [selectedFormat, selectedCategory, searchQuery]);
 
   const visibleTemplates = useMemo(() => {
     return filteredTemplates.slice(0, visibleCount);
@@ -182,12 +165,6 @@ function TemplatesCatalogPage() {
   const hasMore = visibleCount < filteredTemplates.length;
 
   const handleDownload = async (template: TemplateItem) => {
-    if (template.tier === "pro") {
-      setProThemeTarget(template);
-      setUpgradeModalOpen(true);
-      return;
-    }
-
     try {
       setDownloadingId(template.id);
       toast.info("Generating PowerPoint Deck...", {
@@ -209,12 +186,6 @@ function TemplatesCatalogPage() {
 
   // Gamma-style 1-click template usage
   const handleUseTemplate = (template: TemplateItem) => {
-    if (template.tier === "pro") {
-      setProThemeTarget(template);
-      setUpgradeModalOpen(true);
-      return;
-    }
-
     const type = getTemplateContentType(template);
 
     if (typeof window !== "undefined" && window.sessionStorage) {
@@ -271,8 +242,8 @@ function TemplatesCatalogPage() {
                 </h1>
                 <p className="mt-3 text-sm sm:text-base text-muted-foreground leading-relaxed max-w-2xl">
                   Jumpstart your ideas with our curated collection of cards, decks, and documents.
-                  Enjoy 50 completely free themes with vector PowerPoint (.pptx) download and zero
-                  watermarks, or generate instantly with 1-click AI workflows.
+                  Enjoy all 110 templates completely free of charge with vector PowerPoint (.pptx)
+                  download, zero watermarks, and instant 1-click AI generation workflows.
                 </p>
               </div>
 
@@ -397,92 +368,37 @@ function TemplatesCatalogPage() {
               </div>
             </div>
 
-            {/* Filter Bar: Tier Selector + Category Filter Pills */}
-            <div className="mt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              {/* Category Pills */}
-              <div
-                role="tablist"
-                aria-label="Template categories"
-                className="flex flex-wrap gap-2 items-center"
-              >
-                {TEMPLATE_CATEGORIES.map((cat) => {
-                  const isSelected = selectedCategory === cat;
-                  const count = categoryCounts[cat] ?? 0;
-                  return (
-                    <button
-                      key={cat}
-                      role="tab"
-                      aria-selected={isSelected}
-                      onClick={() => {
-                        setSelectedCategory(cat);
-                        setVisibleCount(INITIAL_VISIBLE_COUNT);
-                      }}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all inline-flex items-center gap-1.5 ${
-                        isSelected
-                          ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                          : "border-border bg-card text-foreground/80 hover:border-primary/40 hover:bg-surface-2"
+            {/* Filter Bar: Category Filter Pills */}
+            <div className="mt-4 flex flex-wrap gap-2 items-center">
+              {TEMPLATE_CATEGORIES.map((cat) => {
+                const isSelected = selectedCategory === cat;
+                const count = categoryCounts[cat] ?? 0;
+                return (
+                  <button
+                    key={cat}
+                    role="tab"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      setSelectedCategory(cat);
+                      setVisibleCount(INITIAL_VISIBLE_COUNT);
+                    }}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all inline-flex items-center gap-1.5 ${
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                        : "border-border bg-card text-foreground/80 hover:border-primary/40 hover:bg-surface-2"
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    <span
+                      className={`text-[10px] rounded-full px-1.5 py-0.2 ${
+                        isSelected ? "bg-white/20 text-white" : "bg-surface-2 text-muted-foreground"
                       }`}
                     >
-                      <span>{cat}</span>
-                      <span
-                        className={`text-[10px] rounded-full px-1.5 py-0.2 ${
-                          isSelected ? "bg-white/20 text-white" : "bg-surface-2 text-muted-foreground"
-                        }`}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Free vs Pro Tier Toggle */}
-              <div className="inline-flex items-center rounded-xl border border-border bg-card p-1 shadow-xs shrink-0 self-start lg:self-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTier("all");
-                    setVisibleCount(INITIAL_VISIBLE_COUNT);
-                  }}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                    selectedTier === "all"
-                      ? "bg-primary text-primary-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  All Tiers
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTier("free");
-                    setVisibleCount(INITIAL_VISIBLE_COUNT);
-                  }}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all inline-flex items-center gap-1.5 ${
-                    selectedTier === "free"
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Free (50)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTier("pro");
-                    setVisibleCount(INITIAL_VISIBLE_COUNT);
-                  }}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all inline-flex items-center gap-1.5 ${
-                    selectedTier === "pro"
-                      ? "bg-amber-600 text-white shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Sparkles className="h-3 w-3" />
-                  Pro (60)
-                </button>
-              </div>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -494,15 +410,14 @@ function TemplatesCatalogPage() {
               <span className="font-semibold text-foreground">{filteredTemplates.length}</span>{" "}
               matching layouts
               {selectedFormat !== "all" && ` • [${selectedFormat.toUpperCase()}]`}
-              {selectedTier !== "all" && ` • [${selectedTier.toUpperCase()} TIER]`}
               {searchQuery && ` for "${searchQuery}"`}
             </div>
             <div className="hidden sm:flex items-center gap-4">
               <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-sans font-medium">
-                <Check className="h-3.5 w-3.5" /> 50 Free Forever
+                <Check className="h-3.5 w-3.5" /> 110 Free Themes Forever
               </span>
-              <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-sans font-medium">
-                <Sparkles className="h-3.5 w-3.5" /> 60 Pro Decks
+              <span className="inline-flex items-center gap-1 text-primary font-sans font-medium">
+                <Sparkles className="h-3.5 w-3.5" /> Vector PPTX Export Included
               </span>
             </div>
           </div>
@@ -525,7 +440,6 @@ function TemplatesCatalogPage() {
                   onClick={() => {
                     setSearchQuery("");
                     setSelectedCategory("All");
-                    setSelectedTier("all");
                     setSelectedFormat("all");
                   }}
                 >
@@ -536,7 +450,6 @@ function TemplatesCatalogPage() {
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {visibleTemplates.map((template) => {
-                const isPro = template.tier === "pro";
                 const isDownloading = downloadingId === template.id;
                 const contentType = getTemplateContentType(template);
                 const badge = getTemplateBadge(template);
@@ -578,17 +491,11 @@ function TemplatesCatalogPage() {
                           </span>
                         </div>
 
-                        {/* Top Right Badges: Free/Pro */}
+                        {/* Top Right Badge: 100% Free */}
                         <div className="absolute top-2.5 right-2.5">
-                          {isPro ? (
-                            <span className="rounded-full bg-amber-500/95 backdrop-blur-xs px-2 py-0.5 font-mono text-[10px] font-bold text-black uppercase shadow-xs">
-                              Pro
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-emerald-600/95 backdrop-blur-xs px-2 py-0.5 font-mono text-[10px] font-bold text-white uppercase shadow-xs">
-                              Free
-                            </span>
-                          )}
+                          <span className="rounded-full bg-emerald-600/95 backdrop-blur-xs px-2 py-0.5 font-mono text-[10px] font-bold text-white uppercase shadow-xs">
+                            Free
+                          </span>
                         </div>
 
                         {/* Hover Overlay with Preview hint */}
@@ -677,47 +584,31 @@ function TemplatesCatalogPage() {
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
 
-                      {/* Primary Gamma Action: Use this template */}
-                      {isPro ? (
-                        <Button
-                          size="sm"
-                          variant="hero"
-                          className="h-8 text-xs flex-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs"
-                          onClick={() => {
-                            setProThemeTarget(template);
-                            setUpgradeModalOpen(true);
-                          }}
-                        >
-                          <Lock className="h-3.5 w-3.5 mr-1" /> Unlock Pro
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="hero"
-                          className="h-8 text-xs flex-1 rounded-xl shadow-xs font-semibold"
-                          onClick={() => handleUseTemplate(template)}
-                        >
-                          <Sparkles className="h-3.5 w-3.5 mr-1" /> Use Template
-                        </Button>
-                      )}
+                      {/* Primary Gamma Action: Use this template (100% Free) */}
+                      <Button
+                        size="sm"
+                        variant="hero"
+                        className="h-8 text-xs flex-1 rounded-xl shadow-xs font-semibold"
+                        onClick={() => handleUseTemplate(template)}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 mr-1" /> Use Template
+                      </Button>
 
                       {/* Secondary Quick Vector Export */}
-                      {!isPro && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                          disabled={isDownloading}
-                          onClick={() => handleDownload(template)}
-                          title="Download Vector PPTX"
-                        >
-                          {isDownloading ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Download className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                        disabled={isDownloading}
+                        onClick={() => handleDownload(template)}
+                        title="Download Vector PPTX"
+                      >
+                        {isDownloading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Download className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 );
@@ -740,19 +631,19 @@ function TemplatesCatalogPage() {
             </div>
           )}
 
-          {/* Bottom Gamma Ethos Banner */}
+          {/* Bottom Banner: 100% Free Ethos */}
           <div className="mt-16 rounded-3xl border border-primary/20 bg-linear-to-r from-primary/10 via-card to-primary/10 p-8 sm:p-10 text-center sm:text-left sm:flex sm:items-center sm:justify-between gap-8 shadow-sm">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/20 px-3 py-0.5 text-xs font-mono font-bold uppercase tracking-wider text-primary mb-2">
                 100% Free Access Policy
               </div>
               <h3 className="font-serif text-2xl sm:text-3xl font-bold text-foreground">
-                50 Free Themes Forever. Vector PPTX Export Included.
+                110 Free Themes Forever. Vector PPTX Export Included.
               </h3>
               <p className="mt-2 text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
-                Every free theme comes with vector PowerPoint export, standard widescreen 16:9 and
-                A4 document formatting, and no watermarks. Upgrade anytime to unlock all 110
-                exclusive designs, priority AI generations, and advanced styling features.
+                Every theme comes with vector PowerPoint export, standard widescreen 16:9 and
+                A4 document formatting, and no watermarks. 100% free access for all creators,
+                educators, and professionals.
               </p>
             </div>
             <div className="mt-4 sm:mt-0 shrink-0 flex items-center gap-3">
@@ -760,12 +651,11 @@ function TemplatesCatalogPage() {
                 variant="hero"
                 size="lg"
                 className="rounded-2xl"
-                onClick={() => {
-                  setProThemeTarget(null);
-                  setUpgradeModalOpen(true);
-                }}
+                asChild
               >
-                <Sparkles className="h-4 w-4 mr-2" /> Upgrade to Pro
+                <Link to="/presentation-maker">
+                  <Sparkles className="h-4 w-4 mr-2" /> Start Creating Free
+                </Link>
               </Button>
             </div>
           </div>
@@ -780,14 +670,8 @@ function TemplatesCatalogPage() {
           <DialogContent className="max-w-4xl border-border bg-card p-6 sm:p-8 shadow-lift max-h-[90vh] overflow-y-auto rounded-3xl">
             <DialogHeader>
               <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className={`rounded-full px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
-                    previewTemplate.tier === "pro"
-                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                  }`}
-                >
-                  {previewTemplate.tier === "pro" ? "Pro Exclusive Deck" : "100% Free Template"}
+                <span className="rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider">
+                  100% Free Template
                 </span>
 
                 <span className="rounded-full bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase flex items-center gap-1">
@@ -950,20 +834,6 @@ function TemplatesCatalogPage() {
           </DialogContent>
         </Dialog>
       )}
-
-      {/* Upgrade Modal for Pro themes */}
-      <UpgradeModal
-        open={upgradeModalOpen}
-        onOpenChange={setUpgradeModalOpen}
-        proThemeName={proThemeTarget?.name}
-        onSelectFreeAlternative={() => {
-          setUpgradeModalOpen(false);
-          setSelectedTier("free");
-          toast.info("Showing 50 Free Themes", {
-            description: "All free themes can be previewed, edited, and downloaded at zero cost.",
-          });
-        }}
-      />
     </div>
   );
 }

@@ -1149,7 +1149,7 @@ function AdminPage() {
                 onClick={handlePurgeTempFiles}
                 disabled={purging}
                 className="text-xs h-8 px-2.5 border-border bg-card hover:bg-surface-2 text-rose-600 dark:text-rose-400"
-                title="Purge temporary presentation slides and disk buffers older than 10 minutes"
+                title="Purge temporary presentation slides and disk buffers older than 15 minutes"
               >
                 <Trash2 className={`h-3.5 w-3.5 mr-1 ${purging ? "animate-spin" : ""}`} />
                 Purge Temp Files

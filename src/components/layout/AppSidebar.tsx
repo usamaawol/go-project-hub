@@ -128,7 +128,7 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
       to: "/how-it-works",
       icon: HelpCircle,
       tourId: "nav-how-it-works",
-      desc: "Guides & pricing breakdown",
+      desc: "Guides & platform architecture",
     },
     {
       label: "About DocuMind",

@@ -79,8 +79,8 @@ export interface CreatePresentationSessionInput {
   geminiApiKey?: string;
 }
 
-// 10 Minutes in milliseconds
-const SESSION_TTL_MS = 10 * 60 * 1000;
+// 15 Minutes in milliseconds (zero-retention ephemeral session)
+const SESSION_TTL_MS = 15 * 60 * 1000;
 
 // Isolated temporary directory outside the web-accessible root
 const BASE_TEMP_DIR = path.join(os.tmpdir(), "documind-temp-sessions");

@@ -30,8 +30,8 @@ describe("DocuMind Backend Services & 100% Free Access Policy", () => {
 
     const freeCount = TEMPLATES.filter((t) => t.isFree).length;
     const proCount = TEMPLATES.filter((t) => !t.isFree).length;
-    expect(freeCount).toBe(50);
-    expect(proCount).toBe(60);
+    expect(freeCount).toBe(TEMPLATES.length);
+    expect(proCount).toBe(0);
   });
 
   it("extracts text from buffer accurately", async () => {
@@ -107,7 +107,7 @@ describe("DocuMind Backend Services & 100% Free Access Policy", () => {
 
     expect(session.id).toBeDefined();
     expect(session.slides.length).toBe(5);
-    expect(session.expiresAt).toBeGreaterThan(Date.now() + 9 * 60 * 1000); // ~10 minutes
+    expect(session.expiresAt).toBeGreaterThan(Date.now() + 14 * 60 * 1000); // ~15 minutes
     expect(fs.existsSync(session.filePath)).toBe(true);
 
     // Verify session retrieval
