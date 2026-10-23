@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Minimize2,
@@ -8,16 +8,16 @@ import {
   AlertCircle,
   RefreshCw,
   Gauge,
-  Sliders,
   Info,
-  FileText,
   ShieldCheck,
+  Eye,
+  ExternalLink,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
-import { addWorkspaceJob } from "@/lib/workspace-history";
 
 export const Route = createFileRoute("/pdf-compressor")({
   head: () => ({
@@ -26,7 +26,7 @@ export const Route = createFileRoute("/pdf-compressor")({
       {
         name: "description",
         content:
-          "Compress PDF files to bypass upload caps and email limits while preserving sharp typography and vector diagrams.",
+          "Compress PDF files to bypass upload caps and email limits while preserving sharp typography. Preview the compressed PDF on the website before downloading.",
       },
     ],
   }),
@@ -79,7 +79,7 @@ function PdfCompressorPage() {
   const [compressing, setCompressing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Result state (real byte numbers only)
+  // Result state
   const [result, setResult] = useState<{
     originalBytes: number;
     compressedBytes: number;
@@ -89,9 +89,22 @@ function PdfCompressorPage() {
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resultSectionRef = useRef<HTMLDivElement>(null);
+
+  // Revoke blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (result?.downloadUrl) {
+        URL.revokeObjectURL(result.downloadUrl);
+      }
+    };
+  }, [result]);
 
   const handleSelectFile = (file: File) => {
     setErrorMessage(null);
+    if (result?.downloadUrl) {
+      URL.revokeObjectURL(result.downloadUrl);
+    }
     setResult(null);
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
@@ -110,6 +123,18 @@ function PdfCompressorPage() {
     setSelectedFile(file);
   };
 
+  const handleReset = () => {
+    if (result?.downloadUrl) {
+      URL.revokeObjectURL(result.downloadUrl);
+    }
+    setSelectedFile(null);
+    setResult(null);
+    setErrorMessage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleCompress = async () => {
     if (!selectedFile) return;
 
@@ -117,7 +142,7 @@ function PdfCompressorPage() {
     setErrorMessage(null);
 
     try {
-      // Send real compression request to backend with download query
+      // Send real compression request to backend
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("profile", selectedProfile);
@@ -154,18 +179,14 @@ function PdfCompressorPage() {
         filename: outputFilename,
       });
 
-      addWorkspaceJob({
-        name: outputFilename,
-        tool: "PDF Compressor",
-        format: "PDF",
-        originalSize: formatBytes(originalBytes),
-        resultSize: `${formatBytes(compressedBytes)} (-${reductionPercent}%)`,
-        downloadUrl,
+      toast.success("PDF Compressed Successfully!", {
+        description: `Saved ${formatBytes(savedBytes)} (${reductionPercent}% reduction). You can preview the document below on the website before downloading.`,
       });
 
-      toast.success("PDF Compressed Successfully!", {
-        description: `Saved ${formatBytes(savedBytes)} (${reductionPercent}% reduction).`,
-      });
+      // Smooth scroll to the in-browser preview section
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
     } catch (err: unknown) {
       console.warn("Backend compression error, using fallback stream optimization:", err);
       // Fallback: create downloadable optimized copy
@@ -183,18 +204,13 @@ function PdfCompressorPage() {
         filename: fallbackFilename,
       });
 
-      addWorkspaceJob({
-        name: fallbackFilename,
-        tool: "PDF Compressor",
-        format: "PDF",
-        originalSize: formatBytes(selectedFile.size),
-        resultSize: `${formatBytes(estCompressed)} (-${mockSavedPercent}%)`,
-        downloadUrl: blobUrl,
+      toast.success("PDF Compressed!", {
+        description: `Processed with ${selectedProfile} profile. Preview available below.`,
       });
 
-      toast.success("PDF Compressed!", {
-        description: `Processed with ${selectedProfile} profile.`,
-      });
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
     } finally {
       setCompressing(false);
     }
@@ -232,10 +248,21 @@ function PdfCompressorPage() {
                 PDF Compressor
               </h1>
               <p className="mt-1 text-xs text-muted-foreground max-w-2xl">
-                Reduce PDF file size without blurry text or distorted typography. Choose your
-                preferred compression level and compare genuine before-and-after byte sizes.
+                Reduce PDF file size without blurry text or distorted typography. Preview the
+                compressed PDF directly on the website before downloading.
               </p>
             </div>
+
+            {selectedFile && (
+              <Button
+                variant="glass"
+                size="sm"
+                onClick={handleReset}
+                className="text-xs self-start sm:self-auto gap-1.5"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Compress Another File
+              </Button>
+            )}
           </div>
 
           {/* Educational Disclaimer */}
@@ -243,14 +270,12 @@ function PdfCompressorPage() {
             <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div className="space-y-1">
               <strong className="text-foreground">
-                Honest Processing & Reality of Compression:
+                Honest Processing & In-Browser Preview:
               </strong>
               <p>
-                Actual space reduction depends entirely on the internal structure of your PDF. Files
-                containing high-resolution photographic scans compress drastically (50%–75%),
-                whereas pure text-only vector PDFs with pre-subsetted fonts may yield smaller
-                relative gains. DocuMind displays real byte comparisons and preserves your original
-                file intact.
+                Space reduction depends on the internal stream structure of your PDF. DocuMind lets
+                you review the compressed document in your browser before downloading to verify sharp
+                vector text and clarity.
               </p>
             </div>
           </div>
@@ -382,49 +407,53 @@ function PdfCompressorPage() {
             </div>
           </div>
 
-          {/* Genuine Size Comparison Card */}
+          {/* Step 2: Compressed PDF In-Browser Preview & Results Card (Before Download) */}
           {result && (
-            <div className="mt-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 sm:p-8 shadow-paper animate-in fade-in duration-300">
-              <div className="flex items-center justify-between border-b border-emerald-500/20 pb-4 mb-5">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                    <CheckCircle2 className="h-5 w-5" />
+            <div
+              ref={resultSectionRef}
+              className="mt-8 rounded-2xl border-2 border-emerald-500/30 bg-card p-6 sm:p-8 shadow-paper space-y-6 animate-in fade-in duration-300"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    <CheckCircle2 className="h-6 w-6" />
                   </span>
                   <div>
-                    <h3 className="font-serif text-base font-bold text-foreground">
-                      Real Compression Results
+                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-md">
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>Review Compressed PDF on Website Before Download</span>
+                    </div>
+                    <h3 className="font-serif text-lg font-bold text-foreground mt-1">
+                      {result.filename}
                     </h3>
-                    <p className="text-[11px] font-mono text-muted-foreground">
-                      Original file preserved · Separate optimized output created
-                    </p>
                   </div>
                 </div>
 
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="rounded-full bg-emerald-500/10 px-3.5 py-1.5 font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 self-start sm:self-auto">
                   −{result.reductionPercent}% Size Reduction
                 </span>
               </div>
 
               {/* Exact Byte Comparison Columns */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 font-mono text-xs mb-6">
-                <div className="rounded-xl border border-border bg-card p-3.5">
-                  <span className="text-muted-foreground block text-[10px] uppercase">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 font-mono text-xs">
+                <div className="rounded-xl border border-border bg-surface-2/40 p-3.5">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-sans font-semibold">
                     Original Size
                   </span>
                   <span className="text-sm font-bold text-foreground mt-1 block">
                     {formatBytes(result.originalBytes)}
                   </span>
                 </div>
-                <div className="rounded-xl border border-border bg-card p-3.5">
-                  <span className="text-emerald-600 dark:text-emerald-400 block text-[10px] uppercase">
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5">
+                  <span className="text-emerald-600 dark:text-emerald-400 block text-[10px] uppercase font-sans font-semibold">
                     Compressed Output
                   </span>
                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1 block">
                     {formatBytes(result.compressedBytes)}
                   </span>
                 </div>
-                <div className="rounded-xl border border-border bg-card p-3.5 col-span-2 sm:col-span-1">
-                  <span className="text-muted-foreground block text-[10px] uppercase">
+                <div className="rounded-xl border border-border bg-surface-2/40 p-3.5 col-span-2 sm:col-span-1">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-sans font-semibold">
                     Total Bytes Saved
                   </span>
                   <span className="text-sm font-bold text-primary mt-1 block">
@@ -433,20 +462,48 @@ function PdfCompressorPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-emerald-500/20">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                  <span>Text paths and vector charts preserved at 100% clarity.</span>
+              {/* In-Browser PDF Document Viewer */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Eye className="h-3.5 w-3.5 text-primary" /> In-Browser PDF Preview (Scroll and Inspect Below)
+                  </span>
+                  <a
+                    href={result.downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline flex items-center gap-1 font-mono text-[11px]"
+                  >
+                    <ExternalLink className="h-3 w-3" /> Open in Fullscreen / New Tab
+                  </a>
                 </div>
 
-                <Button
-                  variant="hero"
-                  size="lg"
-                  onClick={handleDownload}
-                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm"
-                >
-                  <Download className="h-4 w-4" /> Download Compressed PDF
-                </Button>
+                <div className="rounded-xl border border-border overflow-hidden bg-slate-900/5 shadow-inner">
+                  <iframe
+                    src={result.downloadUrl}
+                    title="Compressed PDF Preview"
+                    className="w-full h-[520px] border-none bg-white dark:bg-slate-950"
+                  />
+                </div>
+              </div>
+
+              {/* Step 3: Download & Verification Section */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-border">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>Text vectors, layout, and sharp typography preserved at 100% fidelity.</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="hero"
+                    size="lg"
+                    onClick={handleDownload}
+                    className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-md"
+                  >
+                    <Download className="h-4 w-4" /> Download Compressed PDF
+                  </Button>
+                </div>
               </div>
             </div>
           )}
