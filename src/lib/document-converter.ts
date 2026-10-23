@@ -10,6 +10,7 @@ export interface ClientConversionResult {
   targetFormat: ConversionTarget;
   sizeBytes: number;
   wordCount: number;
+  previewText?: string;
 }
 
 /**
@@ -299,6 +300,7 @@ export async function convertDocument(
           targetFormat,
           sizeBytes: blob.size,
           wordCount: json.data.wordCount || 0,
+          previewText: json.data.previewText,
         };
       }
     }
@@ -334,5 +336,6 @@ export async function convertDocument(
     targetFormat,
     sizeBytes: resultBlob.size,
     wordCount: extraction.wordCount || text.split(/\s+/).filter(Boolean).length,
+    previewText: text,
   };
 }

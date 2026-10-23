@@ -307,6 +307,7 @@ export async function handleConvertDocument(
         mimeType: result.mimeType,
         sizeBytes: result.sizeBytes,
         wordCount: result.wordCount,
+        previewText: result.previewText,
         processingTimeMs: duration,
         base64: result.buffer.toString("base64"),
       },

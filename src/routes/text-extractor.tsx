@@ -9,12 +9,15 @@ import {
   AlertCircle,
   RefreshCw,
   FileText,
-  Info,
   Search,
   Check,
   ImageIcon,
   Sparkles,
   RotateCcw,
+  Edit3,
+  Eye,
+  Columns2,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
@@ -29,7 +32,7 @@ export const Route = createFileRoute("/text-extractor")({
       {
         name: "description",
         content:
-          "Extract clean, readable text from documents and image screenshots with high-accuracy OCR. 100% free with instant copy and text export.",
+          "Extract clean, readable text from documents and image screenshots with high-accuracy OCR. Review and edit extracted text on the website before downloading.",
       },
     ],
   }),
@@ -39,6 +42,16 @@ export const Route = createFileRoute("/text-extractor")({
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
 const ALLOWED_EXTS = ["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp", "bmp", "tiff"];
 
+interface ExtractedTextState {
+  text: string;
+  originalText: string;
+  wordCount: number;
+  lineCount: number;
+  charCount: number;
+  filename: string;
+  format: string;
+}
+
 function TextExtractorPage() {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -46,19 +59,14 @@ function TextExtractorPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
-  const [extractedData, setExtractedData] = useState<{
-    text: string;
-    wordCount: number;
-    lineCount: number;
-    charCount: number;
-    filename: string;
-    format: string;
-  } | null>(null);
+  const [extractedData, setExtractedData] = useState<ExtractedTextState | null>(null);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<"editor" | "preview" | "compare">("editor");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const extractedSectionRef = useRef<HTMLDivElement>(null);
 
   // Clean up object URLs on unmount
   useEffect(() => {
@@ -96,8 +104,14 @@ function TextExtractorPage() {
       setImagePreviewUrl(url);
     }
 
-    // Run extraction & OCR
+    // Run extraction & OCR immediately
+    await executeExtraction(file, isImageFile, ext);
+  };
+
+  const executeExtraction = async (file: File, isImageFile: boolean, ext: string) => {
     setExtracting(true);
+    setWarningMessage(null);
+
     try {
       const result = await extractDocumentText(file);
       const text = result.text || "";
@@ -115,6 +129,7 @@ function TextExtractorPage() {
 
       setExtractedData({
         text,
+        originalText: text,
         wordCount,
         lineCount,
         charCount,
@@ -122,9 +137,21 @@ function TextExtractorPage() {
         format: isImageFile ? "IMAGE OCR" : result.format || ext.toUpperCase(),
       });
 
+      // Default to compare tab if it's an image, or editor for documents
+      if (isImageFile) {
+        setActiveTab("compare");
+      } else {
+        setActiveTab("editor");
+      }
+
       toast.success(isImageFile ? "Screenshot OCR Complete!" : "Text Extracted!", {
-        description: `Successfully extracted ${wordCount} words verbatim from "${file.name}".`,
+        description: `Successfully extracted ${wordCount} words verbatim. You can review and edit below before downloading.`,
       });
+
+      // Automatically scroll smoothly to the extracted text viewer
+      setTimeout(() => {
+        extractedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
     } catch (err: unknown) {
       console.error("Extraction error:", err);
       const msg = err instanceof Error ? err.message : "Error extracting text from file.";
@@ -133,6 +160,37 @@ function TextExtractorPage() {
     } finally {
       setExtracting(false);
     }
+  };
+
+  const handleTextChange = (newText: string) => {
+    if (!extractedData) return;
+    const wordCount = newText.split(/\s+/).filter(Boolean).length;
+    const lineCount = newText ? newText.split("\n").length : 0;
+    const charCount = newText.length;
+
+    setExtractedData({
+      ...extractedData,
+      text: newText,
+      wordCount,
+      lineCount,
+      charCount,
+    });
+  };
+
+  const handleRevert = () => {
+    if (!extractedData) return;
+    const wordCount = extractedData.originalText.split(/\s+/).filter(Boolean).length;
+    const lineCount = extractedData.originalText ? extractedData.originalText.split("\n").length : 0;
+    const charCount = extractedData.originalText.length;
+
+    setExtractedData({
+      ...extractedData,
+      text: extractedData.originalText,
+      wordCount,
+      lineCount,
+      charCount,
+    });
+    toast.info("Reverted text back to initial extracted version.");
   };
 
   const handleReset = () => {
@@ -144,6 +202,7 @@ function TextExtractorPage() {
     setExtractedData(null);
     setWarningMessage(null);
     setSearchTerm("");
+    setActiveTab("editor");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -153,7 +212,9 @@ function TextExtractorPage() {
     if (!extractedData) return;
     navigator.clipboard.writeText(extractedData.text);
     setCopied(true);
-    toast.success("Copied to clipboard!");
+    toast.success("Copied to clipboard!", {
+      description: `${extractedData.wordCount} words copied with all your current edits.`,
+    });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -168,23 +229,26 @@ function TextExtractorPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast.success("Downloaded text file!");
+    toast.success("Downloaded text file!", {
+      description: "File saved with your verified content and edits.",
+    });
   };
-
-  const filteredText = extractedData
-    ? searchTerm.trim()
-      ? extractedData.text
-          .split("\n")
-          .filter((line) => line.toLowerCase().includes(searchTerm.toLowerCase()))
-          .join("\n")
-      : extractedData.text
-    : "";
 
   const isCurrentFileImage =
     selectedFile &&
     ["png", "jpg", "jpeg", "webp", "bmp", "tiff"].includes(
       selectedFile.name.split(".").pop()?.toLowerCase() || "",
     );
+
+  const isEdited = extractedData ? extractedData.text !== extractedData.originalText : false;
+
+  const filteredLines = extractedData
+    ? searchTerm.trim()
+      ? extractedData.text
+          .split("\n")
+          .filter((line) => line.toLowerCase().includes(searchTerm.toLowerCase()))
+      : extractedData.text.split("\n")
+    : [];
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -204,12 +268,12 @@ function TextExtractorPage() {
                 <span>Deterministic Text & Screenshot OCR Extraction</span>
               </div>
               <h1 className="mt-2 font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                Text Extractor
+                Text Extractor & OCR
               </h1>
               <p className="mt-1 text-xs text-muted-foreground max-w-2xl leading-relaxed">
                 Extract verbatim text from PDF, Word documents (.docx), plain text (.txt), and any
-                picture or screenshot (PNG, JPG, WEBP). Copy the clean text instantly or download it
-                as an editable file.
+                picture or screenshot (PNG, JPG, WEBP). Review and edit what the system generates
+                directly on the website before downloading.
               </p>
             </div>
 
@@ -229,22 +293,28 @@ function TextExtractorPage() {
           <div className="mb-8 rounded-2xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 p-4 text-xs text-foreground/80 flex items-start gap-3">
             <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <strong className="text-foreground">Supports Screenshots & Pictures:</strong>
+              <strong className="text-foreground">Screenshot OCR & In-Browser Review:</strong>
               <p className="leading-relaxed">
-                Took a picture of a document, book page, white paper, or captured a screen snippet?
-                Upload your picture or screenshot directly. DocuMind analyzes the image using
-                optical character recognition (OCR) and extracts the exact text verbatim, preserving
-                spelling, numbers, and paragraphs.
+                Upload a document or snapshot of any text. DocuMind extracts the exact text verbatim,
+                displays it directly on the website for you to inspect and edit any typos or
+                mistakes, and lets you download the verified text file.
               </p>
             </div>
           </div>
 
-          {/* Upload Card */}
+          {/* Step 1: Upload Card */}
           <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-6">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Upload Document, Picture, or Screenshot to Extract
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Step 1: Upload Document, Picture, or Screenshot
+                </label>
+                {selectedFile && (
+                  <span className="text-[11px] font-mono text-emerald-600 font-medium">
+                    ✓ File Loaded
+                  </span>
+                )}
+              </div>
 
               <div
                 onClick={() => fileInputRef.current?.click()}
@@ -315,7 +385,7 @@ function TextExtractorPage() {
             )}
 
             {extracting && (
-              <div className="flex items-center justify-center gap-2.5 text-xs font-medium text-primary py-4">
+              <div className="flex items-center justify-center gap-2.5 text-xs font-medium text-primary py-4 bg-primary/5 rounded-xl border border-primary/20 animate-pulse">
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 <span>
                   {isCurrentFileImage
@@ -333,78 +403,276 @@ function TextExtractorPage() {
             )}
           </div>
 
-          {/* Extracted Text Viewer Card */}
+          {/* Step 2: Extracted Text Review & Live In-Browser Editor (Before Download) */}
           {extractedData && (
-            <div className="mt-8 rounded-2xl border border-border bg-card p-6 shadow-paper space-y-4 animate-in fade-in duration-300">
+            <div
+              ref={extractedSectionRef}
+              className="mt-8 rounded-2xl border-2 border-primary/30 bg-card p-6 sm:p-8 shadow-paper space-y-6 animate-in fade-in duration-300"
+            >
               {/* Telemetry Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  <span className="font-semibold text-sm text-foreground">
-                    {extractedData.filename}
-                  </span>
-                  <span className="rounded bg-surface-2 px-2 py-0.5 font-mono text-[10px] text-muted-foreground border border-border">
-                    {extractedData.format}
-                  </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-md">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Step 2: Review & Edit Extracted Text on Website (Before Download)</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2.5">
+                    <FileText className="h-5 w-5 text-primary" />
+                    <h2 className="font-serif text-xl font-bold text-foreground">
+                      {extractedData.filename}
+                    </h2>
+                    <span className="rounded bg-surface-2 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-primary border border-primary/20">
+                      {extractedData.format}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-muted-foreground">
-                  <span className="text-foreground font-semibold">
-                    {extractedData.wordCount} words
+                <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                  <span className="bg-surface-2 border border-border px-3 py-1 rounded-lg text-foreground font-semibold">
+                    {extractedData.wordCount.toLocaleString()} words
                   </span>
-                  <span>·</span>
-                  <span>{extractedData.lineCount} lines</span>
-                  <span>·</span>
-                  <span>{extractedData.charCount} characters</span>
+                  <span className="bg-surface-2 border border-border px-3 py-1 rounded-lg text-muted-foreground">
+                    {extractedData.charCount.toLocaleString()} chars
+                  </span>
+                  <span className="bg-surface-2 border border-border px-3 py-1 rounded-lg text-muted-foreground">
+                    {extractedData.lineCount.toLocaleString()} lines
+                  </span>
+                  {isEdited && (
+                    <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1">
+                      <Edit3 className="h-3 w-3" /> Edited
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* Action Toolbar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="relative flex-1 max-w-sm">
+              {/* View Switcher Tabs & In-Page Search */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-surface-2/60 border border-border self-start">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("editor")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                      activeTab === "editor"
+                        ? "bg-background text-foreground shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Edit3 className="h-3.5 w-3.5" /> Live Editor
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("preview")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                      activeTab === "preview"
+                        ? "bg-background text-foreground shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Eye className="h-3.5 w-3.5" /> Formatted View
+                  </button>
+
+                  {imagePreviewUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("compare")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                        activeTab === "compare"
+                          ? "bg-background text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Columns2 className="h-3.5 w-3.5" /> Side-by-Side Compare
+                    </button>
+                  )}
+                </div>
+
+                {/* Search in text */}
+                <div className="relative flex-1 max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <input
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search within extracted text..."
+                    placeholder="Search keywords in text..."
                     className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
                   />
                 </div>
+              </div>
 
-                <div className="flex items-center gap-2">
+              {/* Tab 1: Live Interactive Text Editor */}
+              {activeTab === "editor" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      Edit text directly below to fix typos, refine wording, or add notes:
+                    </span>
+                    {isEdited && (
+                      <button
+                        type="button"
+                        onClick={handleRevert}
+                        className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                      >
+                        <Undo2 className="h-3 w-3" /> Revert to Original OCR
+                      </button>
+                    )}
+                  </div>
+
+                  <textarea
+                    value={extractedData.text}
+                    onChange={(e) => handleTextChange(e.target.value)}
+                    rows={16}
+                    spellCheck={true}
+                    className="w-full rounded-xl border border-border bg-surface-2/30 p-4 font-mono text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-hidden transition-all shadow-inner resize-y"
+                    placeholder="Extracted text will appear here..."
+                  />
+
+                  {searchTerm.trim() && (
+                    <div className="text-[11px] text-muted-foreground">
+                      Found {filteredLines.length} lines matching &ldquo;{searchTerm}&rdquo;.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 2: Formatted Typography View */}
+              {activeTab === "preview" && (
+                <div className="space-y-3">
+                  <div className="text-xs text-muted-foreground">
+                    Formatted document layout with paragraphs and headings:
+                  </div>
+
+                  <div className="max-h-[500px] overflow-y-auto rounded-xl border border-border bg-surface-2/30 p-6 space-y-4 font-sans text-xs leading-relaxed text-foreground select-text">
+                    {filteredLines.length > 0 ? (
+                      filteredLines.map((line, idx) => {
+                        const trimmed = line.trim();
+                        if (!trimmed) return <div key={idx} className="h-2" />;
+                        const isHeading =
+                          /^#+\s+/.test(trimmed) ||
+                          (trimmed.length < 60 &&
+                            !trimmed.endsWith(".") &&
+                            !/^[-*•]/.test(trimmed) &&
+                            /^[A-Z0-9]/.test(trimmed));
+                        const isBullet = /^[-*•\d.]\s+/.test(trimmed);
+
+                        if (isHeading) {
+                          return (
+                            <h3
+                              key={idx}
+                              className="font-serif font-bold text-sm text-foreground pt-2 border-b border-border/40 pb-1"
+                            >
+                              {trimmed.replace(/^#+\s*/, "")}
+                            </h3>
+                          );
+                        }
+
+                        if (isBullet) {
+                          return (
+                            <div key={idx} className="flex items-start gap-2 pl-2">
+                              <span className="text-primary font-bold">•</span>
+                              <span>{trimmed.replace(/^[-*•\d.]\s+/, "")}</span>
+                            </div>
+                          );
+                        }
+
+                        return <p key={idx}>{line}</p>;
+                      })
+                    ) : (
+                      <span className="text-muted-foreground italic">No matching lines found.</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Side-by-Side Comparison (Source Image vs Extracted Text) */}
+              {activeTab === "compare" && imagePreviewUrl && (
+                <div className="space-y-3">
+                  <div className="text-xs text-muted-foreground">
+                    Compare your uploaded image on the left with the extracted editable text on the right:
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Source Image */}
+                    <div className="flex flex-col rounded-xl border border-border bg-surface-2/40 p-4">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <ImageIcon className="h-3.5 w-3.5 text-primary" /> Source Image / Screenshot
+                      </span>
+                      <div className="flex-1 flex items-center justify-center overflow-hidden rounded-lg bg-black/5 dark:bg-black/20 p-2 min-h-[300px]">
+                        <img
+                          src={imagePreviewUrl}
+                          alt="Source Screenshot"
+                          className="max-h-[420px] w-full object-contain rounded"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Editable Extracted Text */}
+                    <div className="flex flex-col rounded-xl border border-border bg-surface-2/40 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <Edit3 className="h-3.5 w-3.5 text-primary" /> Extracted Text (Editable)
+                        </span>
+                        {isEdited && (
+                          <button
+                            type="button"
+                            onClick={handleRevert}
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                          >
+                            <Undo2 className="h-3 w-3" /> Revert
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        value={extractedData.text}
+                        onChange={(e) => handleTextChange(e.target.value)}
+                        rows={16}
+                        spellCheck={true}
+                        className="w-full flex-1 rounded-lg border border-border bg-background p-3.5 font-mono text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden min-h-[350px] resize-y"
+                        placeholder="Extracted text..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Export & Download Action Bar */}
+              <div className="border-t border-border pt-6 mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-2/20 -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 p-6 sm:p-8 rounded-b-2xl">
+                <div>
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Step 3: Export & Download Verified Text
+                  </span>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    The downloaded file will include all of your live edits and corrections made above.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
                   <Button
                     variant="glass"
-                    size="sm"
+                    size="lg"
                     onClick={handleCopy}
-                    className="text-xs gap-1.5"
+                    className="text-xs gap-1.5 font-medium"
                   >
                     {copied ? (
                       <>
-                        <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied Text
+                        <Check className="h-4 w-4 text-emerald-600" /> Copied to Clipboard
                       </>
                     ) : (
                       <>
-                        <Copy className="h-3.5 w-3.5" /> Copy Text
+                        <Copy className="h-4 w-4" /> Copy Text
                       </>
                     )}
                   </Button>
+
                   <Button
                     variant="hero"
-                    size="sm"
+                    size="lg"
                     onClick={handleDownload}
-                    className="text-xs gap-1.5"
+                    className="text-xs gap-2 px-6 font-semibold shadow-md"
                   >
-                    <Download className="h-3.5 w-3.5" /> Download (.txt)
+                    <Download className="h-4 w-4" /> Download Verified Text (.txt)
                   </Button>
                 </div>
-              </div>
-
-              {/* Text Area */}
-              <div className="max-h-96 overflow-y-auto rounded-xl border border-border bg-surface-2/30 p-4 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap select-text">
-                {filteredText || (
-                  <span className="text-muted-foreground italic">No matching lines found.</span>
-                )}
               </div>
             </div>
           )}

@@ -10,6 +10,7 @@ export interface ConversionResult {
   filename: string;
   sizeBytes: number;
   wordCount: number;
+  previewText?: string;
 }
 
 /**
@@ -300,6 +301,7 @@ export async function convertDocumentBuffer(
       filename: `${baseName}_converted.txt`,
       sizeBytes: buffer.length,
       wordCount: extraction.wordCount,
+      previewText: text,
     };
   }
 
@@ -312,6 +314,7 @@ export async function convertDocumentBuffer(
       filename: `${baseName}_converted.docx`,
       sizeBytes: buffer.length,
       wordCount: extraction.wordCount,
+      previewText: text,
     };
   }
 
@@ -323,6 +326,7 @@ export async function convertDocumentBuffer(
       filename: `${baseName}_converted.pdf`,
       sizeBytes: buffer.length,
       wordCount: extraction.wordCount,
+      previewText: text,
     };
   }
 

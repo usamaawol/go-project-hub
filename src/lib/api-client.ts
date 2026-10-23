@@ -124,6 +124,54 @@ export async function extractDocumentText(file: File): Promise<{
     }
   }
 
+  // Client-side PDF stream fallback (when backend server is offline)
+  if (ext === "pdf") {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const textDecoder = new TextDecoder("latin1");
+      const raw = textDecoder.decode(bytes);
+      const textPieces: string[] = [];
+
+      const btRegex = /BT[\s\S]*?ET/g;
+      let match: RegExpExecArray | null;
+      while ((match = btRegex.exec(raw)) !== null) {
+        const block = match[0];
+        const tjRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g;
+        let tjMatch: RegExpExecArray | null;
+        while ((tjMatch = tjRegex.exec(block)) !== null) {
+          textPieces.push(tjMatch[1]);
+        }
+        const tjArrRegex = /\[([\s\S]*?)\]\s*TJ/g;
+        let arrMatch: RegExpExecArray | null;
+        while ((arrMatch = tjArrRegex.exec(block)) !== null) {
+          const parts = arrMatch[1].match(/\(([^)]+)\)/g);
+          if (parts) {
+            textPieces.push(parts.map((p) => p.slice(1, -1)).join(""));
+          }
+        }
+      }
+
+      if (textPieces.length > 0) {
+        const text = textPieces
+          .join(" ")
+          .replace(/\\([()\\])/g, "$1")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (text.length > 10) {
+          return {
+            text,
+            wordCount: text.split(/\s+/).filter(Boolean).length,
+            lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
+            format: "pdf",
+          };
+        }
+      }
+    } catch (pdfErr) {
+      console.warn("Client fallback PDF parser error:", pdfErr);
+    }
+  }
+
   // Binary files (PDF) require the backend extractor for accurate text extraction
   return {
     text: "",

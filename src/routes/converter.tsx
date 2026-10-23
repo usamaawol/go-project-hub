@@ -9,6 +9,10 @@ import {
   RefreshCw,
   FileType,
   Info,
+  Copy,
+  Check,
+  FileText,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
@@ -47,8 +51,10 @@ function ConverterPage() {
     blobUrl: string;
     sizeBytes: number;
     wordCount?: number;
+    previewText?: string;
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,6 +109,7 @@ function ConverterPage() {
         blobUrl,
         sizeBytes: result.sizeBytes,
         wordCount: result.wordCount,
+        previewText: result.previewText,
       });
 
       toast.success("Conversion Complete!", {
@@ -116,6 +123,14 @@ function ConverterPage() {
     } finally {
       setConverting(false);
     }
+  };
+
+  const handleCopy = () => {
+    if (!convertedResult?.previewText) return;
+    navigator.clipboard.writeText(convertedResult.previewText);
+    setCopied(true);
+    toast.success("Copied converted text to clipboard!");
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
@@ -298,31 +313,72 @@ function ConverterPage() {
 
           {/* Converted Result Display Card */}
           {convertedResult && (
-            <div className="mt-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 shadow-paper flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in duration-300">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                  <CheckCircle2 className="h-6 w-6" />
+            <div className="mt-8 rounded-2xl border-2 border-emerald-500/30 bg-card p-6 sm:p-8 shadow-paper space-y-6 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    <CheckCircle2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <span className="font-serif text-lg font-bold text-foreground block">
+                      {convertedResult.filename}
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      Converted to{" "}
+                      <span className="font-bold text-primary">{convertedResult.targetFormat}</span> ·{" "}
+                      {(convertedResult.sizeBytes / 1024).toFixed(1)} KB{" "}
+                      {convertedResult.wordCount ? `· ${convertedResult.wordCount} words preserved` : ""}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-serif text-base font-bold text-foreground block">
-                    {convertedResult.filename}
-                  </span>
-                  <p className="text-xs text-muted-foreground">
-                    Converted to {convertedResult.targetFormat} ·{" "}
-                    {(convertedResult.sizeBytes / 1024).toFixed(1)} KB{" "}
-                    {convertedResult.wordCount ? `· ${convertedResult.wordCount} words preserved` : ""}
-                  </p>
+
+                <div className="flex items-center gap-2">
+                  {convertedResult.previewText && (
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={handleCopy}
+                      className="text-xs gap-1.5"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied Text
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" /> Copy Text
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    variant="hero"
+                    size="sm"
+                    onClick={handleDownload}
+                    className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm text-xs"
+                  >
+                    <Download className="h-4 w-4" /> Download Converted {convertedResult.targetFormat}
+                  </Button>
                 </div>
               </div>
 
-              <Button
-                variant="hero"
-                size="lg"
-                onClick={handleDownload}
-                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm"
-              >
-                <Download className="h-4 w-4" /> Download Converted {convertedResult.targetFormat}
-              </Button>
+              {/* Converted / Extracted Text Preview on Website */}
+              {convertedResult.previewText && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-primary" /> Converted Content Preview (Preserved Verbatim on Website)
+                    </span>
+                    <span className="font-mono text-[11px]">
+                      {convertedResult.wordCount} words · {convertedResult.previewText.length} characters
+                    </span>
+                  </div>
+
+                  <div className="max-h-72 overflow-y-auto rounded-xl border border-border bg-surface-2/30 p-4 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap select-text">
+                    {convertedResult.previewText}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>
