@@ -3,6 +3,8 @@
  * Seamlessly interfaces with Node.js/Express backend with browser-side fallbacks.
  */
 
+import { extractTextFromPdfBytes } from "./pdf-extractor";
+
 const API_BASE = "/api";
 
 export interface HealthResponse {
@@ -38,6 +40,7 @@ export async function extractDocumentText(file: File): Promise<{
   isScannedOrEmpty?: boolean;
   warning?: string;
 }> {
+  // 1. Try backend extraction service if available
   try {
     const formData = new FormData();
     formData.append("file", file);
@@ -49,23 +52,18 @@ export async function extractDocumentText(file: File): Promise<{
 
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data) {
+      if (json.success && json.data && json.data.text?.trim()?.length > 0) {
         return json.data;
-      }
-    } else {
-      const errJson = await res.json().catch(() => null);
-      if (errJson?.error?.message) {
-        throw new Error(errJson.error.message);
       }
     }
   } catch (e) {
-    if (e instanceof Error && !e.message.includes("Failed to fetch")) {
-      throw e;
-    }
-    console.warn("Backend extraction unavailable, checking browser text extraction:", e);
+    console.warn("Backend extraction unavailable, using in-browser extraction engine:", e);
   }
 
-  const ext = file.name.split(".").pop()?.toLowerCase();
+  // 2. Client-side extraction engine (runs natively on Vercel, client browser, and offline)
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+
+  // Plain Text / Markdown / CSV
   if (ext === "txt" || ext === "md" || ext === "csv") {
     const text = (await file.text()).trim();
     if (text.length === 0) {
@@ -86,8 +84,48 @@ export async function extractDocumentText(file: File): Promise<{
     };
   }
 
-  // Client-side image OCR fallback
-  const isImage = ["png", "jpg", "jpeg", "webp", "bmp"].includes(ext || "");
+  // PDF Extraction (handles compressed FlateDecode streams, vector fonts, and scanned pages)
+  if (ext === "pdf" || file.type === "application/pdf") {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const pdfResult = await extractTextFromPdfBytes(bytes);
+
+      if (pdfResult.text && pdfResult.text.length > 0) {
+        return {
+          text: pdfResult.text,
+          wordCount: pdfResult.wordCount,
+          lineCount: pdfResult.lineCount,
+          format: pdfResult.isOcr ? "PDF OCR" : "pdf",
+        };
+      }
+    } catch (pdfErr) {
+      console.warn("Client-side PDF extraction error:", pdfErr);
+    }
+  }
+
+  // Client-side DOCX text extraction
+  if (ext === "docx" || ext === "doc" || file.type.includes("wordprocessingml")) {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      const text = (result.value || "").trim();
+      if (text.length > 0) {
+        return {
+          text,
+          wordCount: text.split(/\s+/).filter(Boolean).length,
+          lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
+          format: "docx",
+        };
+      }
+    } catch (mErr) {
+      console.warn("Client-side Mammoth extraction error:", mErr);
+    }
+  }
+
+  // Client-side image OCR (PNG, JPG, JPEG, WEBP, BMP)
+  const isImage = file.type.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "bmp", "tiff"].includes(ext);
   if (isImage) {
     try {
       const { createWorker } = await import("tesseract.js");
@@ -95,91 +133,26 @@ export async function extractDocumentText(file: File): Promise<{
       const ret = await worker.recognize(file);
       await worker.terminate();
       const text = (ret?.data?.text || "").trim();
-      return {
-        text,
-        wordCount: text.split(/\s+/).filter(Boolean).length,
-        lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
-        format: "image",
-      };
+      if (text.length > 0) {
+        return {
+          text,
+          wordCount: text.split(/\s+/).filter(Boolean).length,
+          lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
+          format: "image",
+        };
+      }
     } catch (ocrErr) {
       console.warn("Client-side OCR fallback error:", ocrErr);
     }
   }
 
-  // Client-side DOCX text extraction fallback
-  if (ext === "docx" || ext === "doc") {
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      const text = (result.value || "").trim();
-      return {
-        text,
-        wordCount: text.split(/\s+/).filter(Boolean).length,
-        lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
-        format: "docx",
-      };
-    } catch (mErr) {
-      console.warn("Client-side Mammoth extraction error:", mErr);
-    }
-  }
-
-  // Client-side PDF stream fallback (when backend server is offline)
-  if (ext === "pdf") {
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      const textDecoder = new TextDecoder("latin1");
-      const raw = textDecoder.decode(bytes);
-      const textPieces: string[] = [];
-
-      const btRegex = /BT[\s\S]*?ET/g;
-      let match: RegExpExecArray | null;
-      while ((match = btRegex.exec(raw)) !== null) {
-        const block = match[0];
-        const tjRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g;
-        let tjMatch: RegExpExecArray | null;
-        while ((tjMatch = tjRegex.exec(block)) !== null) {
-          textPieces.push(tjMatch[1]);
-        }
-        const tjArrRegex = /\[([\s\S]*?)\]\s*TJ/g;
-        let arrMatch: RegExpExecArray | null;
-        while ((arrMatch = tjArrRegex.exec(block)) !== null) {
-          const parts = arrMatch[1].match(/\(([^)]+)\)/g);
-          if (parts) {
-            textPieces.push(parts.map((p) => p.slice(1, -1)).join(""));
-          }
-        }
-      }
-
-      if (textPieces.length > 0) {
-        const text = textPieces
-          .join(" ")
-          .replace(/\\([()\\])/g, "$1")
-          .replace(/\s+/g, " ")
-          .trim();
-        if (text.length > 10) {
-          return {
-            text,
-            wordCount: text.split(/\s+/).filter(Boolean).length,
-            lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
-            format: "pdf",
-          };
-        }
-      }
-    } catch (pdfErr) {
-      console.warn("Client fallback PDF parser error:", pdfErr);
-    }
-  }
-
-  // Binary files (PDF) require the backend extractor for accurate text extraction
   return {
     text: "",
     wordCount: 0,
     lineCount: 0,
     format: ext || "unknown",
     isScannedOrEmpty: true,
-    warning: `Unable to extract selectable text from this ${ext?.toUpperCase() || "document"} file. Please ensure the backend server is active and the file is not a scanned image.`,
+    warning: `Unable to extract selectable text from this ${ext?.toUpperCase() || "document"} file. Please ensure the document is not an empty or password-protected file.`,
   };
 }
 

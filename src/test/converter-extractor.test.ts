@@ -190,5 +190,26 @@ All original topics, main ideas, and structure are preserved with zero data loss
       expect(res.format).toBe("image");
       expect(res.ocrEngine).toBeDefined(); // gemini-vision or tesseract
     });
+
+    it("converts compressed PDF with FlateDecode streams client-side without errors", async () => {
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([612, 792]);
+      page.drawText("Internet Programming II Nextjs Assignment: Building Modern Web Applications", {
+        x: 50,
+        y: 700,
+        size: 12,
+      });
+      const pdfBytes = await pdfDoc.save();
+      const file = new File([pdfBytes], "optimized_Internet_Programming_II_Nextjs_Assignment.pdf", {
+        type: "application/pdf",
+      });
+
+      const { convertDocument } = await import("../lib/document-converter");
+      const result = await convertDocument(file, "TXT");
+
+      expect(result.filename).toBe("optimized_Internet_Programming_II_Nextjs_Assignment_converted.txt");
+      expect(result.previewText).toContain("Internet Programming II Nextjs Assignment");
+      expect(result.wordCount).toBeGreaterThan(0);
+    });
   });
 });

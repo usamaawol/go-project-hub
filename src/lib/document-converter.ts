@@ -310,11 +310,24 @@ export async function convertDocument(
 
   // 2. Client-side fallback engine
   const extraction = await extractDocumentText(file);
-  const text = extraction.text.trim();
+  let text = extraction.text.trim();
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+
+  // Resilient secondary check for PDF files
+  if (!text && (ext === "pdf" || file.type.includes("pdf"))) {
+    try {
+      const { extractTextFromPdfBytes } = await import("./pdf-extractor");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const pdfRes = await extractTextFromPdfBytes(bytes);
+      text = pdfRes.text.trim();
+    } catch (e) {
+      console.warn("Direct PDF extraction error:", e);
+    }
+  }
 
   if (!text) {
     throw new Error(
-      `Could not convert "${file.name}": no readable text was found in the document.`,
+      `Could not convert "${file.name}": no readable text was found in the document. Please verify the document contains readable text and is not an empty or password-protected file.`,
     );
   }
 
