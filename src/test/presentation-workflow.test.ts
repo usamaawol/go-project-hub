@@ -530,4 +530,50 @@ Submersibles must withstand ambient pressures exceeding 1,000 atmospheres.`;
     expect(sceneBlock?.sceneMeta?.visual).toContain("Split-screen montage");
     expect(sceneBlock?.sceneMeta?.audio).toContain("Knowledge teams spend 68%");
   });
+
+  it("Scenario 22: Document Studio cleanly handles conversational prompts, eliminates double numbering prefixes, and avoids fake horizontal lines or A4 constraints", async () => {
+    const {
+      parseDocumentSections,
+      deriveDocumentMetadata,
+    } = await import("../components/workspace/DocumentFormattingWorkflow");
+
+    const promptText = `Absolutely. Before writing the final master prompt for Claude, let's create a reference document for the Eagle Technology company book. This will show what we have decided, what each chapter should contain, and what still needs clarification. We can review and correct this reference before asking Claude to write the complete book.
+
+2.0 EAGLE TECHNOLOGY
+2.0.1 Smart Solutions. Real Impact.
+Company Foundation, Governance, Policies and Strategic Direction
+
+2.1 1. Purpose of the book
+The book will be Eagle Technology's foundational reference.
+
+2.2 It should serve as
+- A guide for the four founders.
+- A reference for future team members.
+
+2.3 2. Company identity
+Company name: Eagle Technology
+Motto: Smart Solutions. Real Impact.`;
+
+    // 1. Title detection must NOT make the 260-char conversational paragraph the title!
+    const meta = deriveDocumentMetadata(promptText);
+    expect(meta.docTitle.length).toBeLessThan(75);
+    expect(meta.docTitle).not.toContain("Before writing the final master prompt");
+    expect(meta.docTitle).toContain("Eagle Technology");
+
+    // 2. Headings must NOT have redundant double numbering prefixes like "2.1 1. Purpose"
+    const sections = parseDocumentSections(promptText, "decimal");
+    expect(sections.length).toBeGreaterThanOrEqual(4);
+
+    const purposeSec = sections.find((s) => s.title.includes("Purpose of the book"));
+    expect(purposeSec).toBeDefined();
+    // Must be "Purpose of the book", NOT "1. Purpose of the book"
+    expect(purposeSec?.title).toBe("Purpose of the book");
+    expect(purposeSec?.numberStr.trim()).toBe("2.1");
+
+    const identitySec = sections.find((s) => s.title.includes("Company identity"));
+    expect(identitySec).toBeDefined();
+    // Must be "Company identity", NOT "2. Company identity"
+    expect(identitySec?.title).toBe("Company identity");
+    expect(identitySec?.numberStr.trim()).toBe("2.3");
+  });
 });

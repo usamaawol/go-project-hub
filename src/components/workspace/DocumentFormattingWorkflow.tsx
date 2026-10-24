@@ -291,9 +291,9 @@ export function deriveDocumentMetadata(text: string): {
   else if (isSpec) recommendedArchetype = "tech-spec";
   else if (isAcademic) recommendedArchetype = "academic";
 
-  if (isVideo) {
+  if (isVideo && !foundTitle) {
     return {
-      docTitle: foundTitle || "DocuMind Promotional Video — Production Brief",
+      docTitle: "DocuMind Promotional Video — Production Brief",
       docSubtitle: foundSubtitle || "Continuity Requirements, Visual Storyboard & Technical Specification",
       authorName: foundAuthor || "Production & Creative Team",
       institution: foundInstitution || "DocuMind Studios",
@@ -303,31 +303,70 @@ export function deriveDocumentMetadata(text: string): {
   }
 
   if (!foundTitle) {
-    const line0 = lines[0] || "";
-    const line1 = lines[1] || "";
-    const isHeading = /^(\d+(?:\.\d+)*|[A-Z]\.|\bSection\b|\bChapter\b|#)/i.test(line0);
-
-    if (!isHeading && line0.length < 95) {
-      foundTitle = line0;
-      if (!foundSubtitle && line1 && !/^(\d|#)/.test(line1) && line1.length < 140) {
-        foundSubtitle = line1;
+    // Check if line is conversational or too long to be a document title
+    const isConversationalOrLong = (l: string) => {
+      if (l.length > 80) return true;
+      if (
+        /^(?:absolutely|before writing|let's create|let us|here is|here are|sure|please|note that|this document outlines|as requested)\b/i.test(
+          l,
+        )
+      ) {
+        return true;
       }
+      // Multiple full sentences ending with periods
+      if (l.split(/[.?!]\s+/).length > 2) return true;
+      return false;
+    };
+
+    // Check markdown H1 first
+    const h1Line = lines.find((l) => /^#\s+(.+)$/.test(l));
+    if (h1Line) {
+      foundTitle = h1Line.replace(/^#\s+/, "").trim();
     } else {
-      if (line1 && line1.length < 85 && !/^(\d|#)/.test(line1)) {
-        foundTitle = line1.replace(/\.\s*$/, "");
-        foundSubtitle = `Executive Brief · ${line0.replace(/^[\d.#]+\s*/, "")}`;
+      // Find the first clean heading or subject candidate
+      for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        const cur = lines[i]!;
+        // Skip metadata lines
+        if (/^(?:author|date|institution|by|title|subtitle):/i.test(cur)) continue;
+
+        // Check for reference document intent pattern: e.g. "...reference document for the Eagle Technology company book..."
+        const refMatch = cur.match(
+          /reference document for (?:the )?([a-zA-Z0-9\s]+?)(?: company book|\.|$)/i,
+        );
+        if (refMatch && refMatch[1] && refMatch[1].length < 50) {
+          foundTitle = `${refMatch[1].trim()} — Reference Guide`;
+          break;
+        }
+
+        // Check if line is a clean concise heading
+        if (!isConversationalOrLong(cur)) {
+          const clean = cur
+            .replace(/^(\d+(?:\.\d+)*|[A-Z]\.|\bSection\b|\bChapter\b|#+)\s*[:.]?\s*/i, "")
+            .trim();
+          if (clean.length > 2 && clean.length < 75 && !clean.endsWith(".")) {
+            foundTitle = clean;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!foundTitle) {
+      // Check if text mentions a company or subject name
+      const eagleMatch = text.match(/([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*\s+Technology)/i);
+      if (eagleMatch && eagleMatch[1]) {
+        foundTitle = `${eagleMatch[1]} Reference Document`;
       } else {
-        foundTitle = line0.replace(/^[\d.#]+\s*/, "") || "Executive Document";
-        foundSubtitle = "Executive Analysis and Implementation Report";
+        foundTitle = "Document Workspace";
       }
     }
   }
 
   return {
-    docTitle: foundTitle || "Executive Document",
-    docSubtitle: foundSubtitle || "Executive Analysis and Implementation Report",
-    authorName: foundAuthor || "Author / Researcher",
-    institution: foundInstitution || "Academic / Professional Department",
+    docTitle: foundTitle || "Document Workspace",
+    docSubtitle: foundSubtitle || "",
+    authorName: foundAuthor || "",
+    institution: foundInstitution || "",
     dateStr: foundDate || defaultMonthYear,
     recommendedArchetype,
   };
@@ -602,7 +641,9 @@ export function parseDocumentSections(
       } else {
         lvl = 3;
       }
-      return { isHeader: true, level: lvl, cleanTitle: numMatch[2] };
+      // Strip any nested numbering prefix so we NEVER duplicate e.g. "2.1 1. Purpose" -> "2.1 Purpose"
+      const clean = numMatch[2].replace(/^(\d+[\s.)-]+\s*|[A-Z]\.[\s.)-]+\s*)/, "").trim();
+      return { isHeader: true, level: lvl, cleanTitle: clean || numMatch[2].trim() };
     }
 
     // SCENE header format: "SCENE 1 — 0–10 SECONDS: THE FRICTION"
@@ -636,10 +677,26 @@ export function parseDocumentSections(
     });
   };
 
-  // If text starts with 1-3 lines of title/preamble before the first real header,
-  // skip them so they don't generate a phantom section pushing section 1 into section 2
+  // Preserve preamble lines before the first header into an introductory section if appropriate
   const firstHeaderIdx = lines.findIndex((l) => isHeader(l).isHeader);
-  const startIdx = firstHeaderIdx > 0 && firstHeaderIdx <= 4 ? firstHeaderIdx : 0;
+  if (firstHeaderIdx > 0) {
+    const isFirstHeaderMajor = lines[firstHeaderIdx] ? /^1(?:\.0)?\b/.test(lines[firstHeaderIdx]!) : false;
+    if (!isFirstHeaderMajor) {
+      const preamble = lines.slice(0, firstHeaderIdx).filter(Boolean);
+      if (preamble.length > 0) {
+        const pBlocks = parseLinesToBlocks(preamble, "Overview & Context", true);
+        sections.push({
+          level: 1,
+          numberStr: headingNumbering === "decimal" ? "1.0 " : headingNumbering === "roman" ? "I. " : "",
+          title: "Overview & Context",
+          paragraphs: preamble,
+          blocks: pBlocks,
+        });
+        sectionCounter = 1;
+      }
+    }
+  }
+  const startIdx = firstHeaderIdx >= 0 ? firstHeaderIdx : 0;
 
   for (let i = startIdx; i < lines.length; i++) {
     const line = lines[i];
@@ -747,13 +804,13 @@ export function DocumentFormattingWorkflow({
   // Configuration state
   const [config, setConfig] = useState<FormattingConfig>({
     layoutArchetype: "executive",
-    hasCoverPage: true,
-    coverStyle: "academic",
+    hasCoverPage: false,
+    coverStyle: "modern",
     docTitle: "Document Title",
-    docSubtitle: "Executive Analysis and Implementation Report",
-    authorName: "Author / Researcher",
-    institution: "Academic / Professional Department",
-    dateStr: "October 2026",
+    docSubtitle: "",
+    authorName: "",
+    institution: "",
+    dateStr: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
 
     fontFamily: "serif",
     baseFontSize: "11pt",
@@ -762,13 +819,13 @@ export function DocumentFormattingWorkflow({
 
     headingNumbering: "decimal",
     headingCase: "title",
-    headingDivider: true,
+    headingDivider: false,
 
     margins: "academic",
 
-    headerText: "DocuMind Research · Technical Report Series",
+    headerText: "",
     headerAlign: "right",
-    headerRule: true,
+    headerRule: false,
 
     pageNumberPosition: "bottom-center",
     pageNumberFormat: "page-x-of-y",
@@ -780,7 +837,7 @@ export function DocumentFormattingWorkflow({
   });
 
   // Active preview tab in Step 3
-  const [previewPage, setPreviewPage] = useState<"cover" | "toc" | "body">("body");
+  const [previewPage, setPreviewPage] = useState<"full" | "body" | "toc" | "cover">("full");
   const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
 
   // File handling
@@ -823,10 +880,10 @@ export function DocumentFormattingWorkflow({
     const meta = deriveDocumentMetadata(text);
     setConfig((prev) => ({
       ...prev,
-      docTitle: meta.docTitle,
-      docSubtitle: meta.docSubtitle,
-      authorName: meta.authorName || prev.authorName,
-      institution: meta.institution || prev.institution,
+      docTitle: meta.docTitle || prev.docTitle,
+      docSubtitle: meta.docSubtitle || "",
+      authorName: meta.authorName || "",
+      institution: meta.institution || "",
       dateStr: meta.dateStr || prev.dateStr,
       layoutArchetype: meta.recommendedArchetype || prev.layoutArchetype,
     }));
@@ -1831,20 +1888,30 @@ export function DocumentFormattingWorkflow({
 
           {/* Preview Viewport Switcher & Paper Mode */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Document View Switcher */}
             <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
-              {config.hasCoverPage && (
-                <button
-                  type="button"
-                  onClick={() => setPreviewPage("cover")}
-                  className={`rounded-md px-3 py-1 transition-all ${
-                    previewPage === "cover"
-                      ? "bg-card text-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Page 1: Cover Page
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setPreviewPage("full")}
+                className={`rounded-md px-3 py-1 transition-all ${
+                  previewPage === "full"
+                    ? "bg-card text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Full Document
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewPage("body")}
+                className={`rounded-md px-3 py-1 transition-all ${
+                  previewPage === "body"
+                    ? "bg-card text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Body Only
+              </button>
               {config.includeToc && (
                 <button
                   type="button"
@@ -1855,20 +1922,22 @@ export function DocumentFormattingWorkflow({
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  Page 2: Table of Contents
+                  Table of Contents
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setPreviewPage("body")}
-                className={`rounded-md px-3 py-1 transition-all ${
-                  previewPage === "body"
-                    ? "bg-card text-foreground shadow-xs font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Page {config.hasCoverPage && config.includeToc ? "3" : "2"}: Body & Headings
-              </button>
+              {config.hasCoverPage && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewPage("cover")}
+                  className={`rounded-md px-3 py-1 transition-all ${
+                    previewPage === "cover"
+                      ? "bg-card text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Cover Page
+                </button>
+              )}
             </div>
 
             {/* Layout Archetype Switcher on Preview Stage */}
@@ -1936,13 +2005,13 @@ export function DocumentFormattingWorkflow({
             </div>
           </div>
 
-          {/* Realistic A4 Document Sheet Display */}
-          <div className="flex justify-center py-4 bg-muted/40 dark:bg-zinc-950/80 rounded-2xl border border-border/80 p-4 sm:p-8">
+          {/* Fluid Modern Document Reading Canvas (Responsive, not rigid A4) */}
+          <div className="flex justify-center py-2 bg-surface-2/30 rounded-2xl border border-border p-3 sm:p-6 lg:p-8">
             <div
-              className={`w-full max-w-[760px] min-h-[960px] shadow-2xl rounded-sm border p-10 sm:p-14 flex flex-col justify-between transition-all ${
+              className={`w-full max-w-4xl min-h-0 rounded-2xl border border-border bg-card p-6 sm:p-10 md:p-14 shadow-paper flex flex-col justify-between transition-all ${
                 paperMode === "dark"
                   ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-black/50"
-                  : "bg-white border-stone-200 text-stone-900 shadow-2xl"
+                  : "bg-white border-stone-200 text-stone-900 shadow-paper"
               } ${
                 config.fontFamily === "serif"
                   ? "font-serif"
@@ -1956,64 +2025,42 @@ export function DocumentFormattingWorkflow({
             >
               {/* ================= COVER PAGE PREVIEW ================= */}
               {previewPage === "cover" && (
-                <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left">
-                  <div
-                    className={`space-y-2 border-b-2 pb-8 ${
-                      paperMode === "dark" ? "border-zinc-700" : "border-stone-900"
-                    }`}
-                  >
-                    <p
-                      className={`text-xs uppercase tracking-widest font-sans font-semibold ${
-                        paperMode === "dark" ? "text-zinc-400" : "text-stone-500"
-                      }`}
-                    >
-                      {config.institution || "ACADEMIC PUBLICATION"}
-                    </p>
-                    <h1
-                      className={`text-3xl sm:text-4xl font-bold tracking-tight leading-tight ${
-                        paperMode === "dark" ? "text-zinc-50" : "text-stone-900"
-                      }`}
-                    >
+                <div className="flex-1 flex flex-col justify-between py-8 text-center sm:text-left space-y-6">
+                  <div className="space-y-3 pb-6">
+                    {config.institution && config.institution !== "Academic / Professional Department" && (
+                      <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
+                        {config.institution}
+                      </p>
+                    )}
+                    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-tight text-foreground">
                       {config.docTitle}
                     </h1>
                     {config.docSubtitle && (
-                      <p
-                        className={`text-base sm:text-lg font-normal italic mt-2 ${
-                          paperMode === "dark" ? "text-zinc-300" : "text-stone-600"
-                        }`}
-                      >
+                      <p className="text-base sm:text-lg font-normal italic mt-2 text-muted-foreground">
                         {config.docSubtitle}
                       </p>
                     )}
                   </div>
 
-                  <div className="my-16 space-y-4">
-                    <div
-                      className={`inline-block rounded border px-4 py-2 font-mono text-xs ${
-                        paperMode === "dark"
-                          ? "bg-zinc-800 text-zinc-300 border-zinc-700"
-                          : "bg-stone-50 text-stone-700 border-stone-300"
-                      }`}
-                    >
+                  <div className="my-8 space-y-3">
+                    <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
                       Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
                     </div>
                   </div>
 
-                  <div
-                    className={`border-t pt-6 text-xs space-y-1 font-sans ${
-                      paperMode === "dark"
-                        ? "border-zinc-700 text-zinc-300"
-                        : "border-stone-300 text-stone-700"
-                    }`}
-                  >
+                  <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
+                    {config.authorName && config.authorName !== "Author / Researcher" && (
+                      <p>
+                        <strong className="text-foreground">Author:</strong> {config.authorName}
+                      </p>
+                    )}
+                    {config.institution && config.institution !== "Academic / Professional Department" && (
+                      <p>
+                        <strong className="text-foreground">Institution:</strong> {config.institution}
+                      </p>
+                    )}
                     <p>
-                      <strong>Author:</strong> {config.authorName}
-                    </p>
-                    <p>
-                      <strong>Institution:</strong> {config.institution}
-                    </p>
-                    <p>
-                      <strong>Date of Submission:</strong> {config.dateStr}
+                      <strong className="text-foreground">Date:</strong> {config.dateStr}
                     </p>
                   </div>
                 </div>
@@ -2023,22 +2070,14 @@ export function DocumentFormattingWorkflow({
               {previewPage === "toc" && (
                 <div className="flex-1 flex flex-col">
                   {/* Running Header */}
-                  <div
-                    className={`flex items-center justify-between text-[11px] border-b pb-2 mb-8 font-sans ${
-                      paperMode === "dark"
-                        ? "border-zinc-800 text-zinc-400"
-                        : "border-stone-200 text-stone-500"
-                    }`}
-                  >
-                    <span>{config.headerText}</span>
-                    <span>Preliminary Section</span>
-                  </div>
+                  {config.headerText && (
+                    <div className="flex items-center justify-between text-[11px] pb-2 mb-6 font-sans text-muted-foreground">
+                      <span>{config.headerText}</span>
+                      <span>Preliminary Section</span>
+                    </div>
+                  )}
 
-                  <h2
-                    className={`text-2xl font-bold mb-6 tracking-tight ${
-                      paperMode === "dark" ? "text-zinc-50" : "text-stone-900"
-                    }`}
-                  >
+                  <h2 className="text-2xl font-bold mb-6 tracking-tight text-foreground">
                     Table of Contents
                   </h2>
 
@@ -2050,203 +2089,153 @@ export function DocumentFormattingWorkflow({
                           key={idx}
                           className={`flex items-baseline justify-between ${
                             item.level > 1
-                              ? paperMode === "dark"
-                                ? "pl-6 text-xs text-zinc-400"
-                                : "pl-6 text-xs text-stone-600"
-                              : "font-semibold"
+                              ? "pl-6 text-xs text-muted-foreground"
+                              : "font-semibold text-foreground"
                           }`}
                         >
                           <div className="flex items-baseline gap-2 max-w-[80%] truncate">
-                            <span
-                              className={`font-mono text-xs ${
-                                paperMode === "dark" ? "text-zinc-500" : "text-stone-500"
-                              }`}
-                            >
+                            <span className="font-mono text-xs text-muted-foreground">
                               {item.numberStr.trim() || `0${idx + 1}`}
                             </span>
-                            <span
-                              className={paperMode === "dark" ? "text-zinc-100" : "text-stone-800"}
-                            >
+                            <span className="text-foreground">
                               {item.title}
                             </span>
                           </div>
                           {config.tocDotLeaders && (
-                            <div
-                              className={`flex-1 mx-3 border-b border-dotted ${
-                                paperMode === "dark" ? "border-zinc-700" : "border-stone-400"
-                              }`}
-                            />
+                            <div className="flex-1 mx-3 border-b border-dotted border-border/40" />
                           )}
-                          <span
-                            className={`font-mono text-xs ${
-                              paperMode === "dark" ? "text-zinc-400" : "text-stone-600"
-                            }`}
-                          >
+                          <span className="font-mono text-xs text-muted-foreground">
                             {3 + idx}
                           </span>
                         </div>
                       ))}
                   </div>
 
-                  <div
-                    className={`mt-auto pt-8 border-t text-center font-mono text-xs ${
-                      paperMode === "dark"
-                        ? "border-zinc-800 text-zinc-400"
-                        : "border-stone-200 text-stone-500"
-                    }`}
-                  >
+                  <div className="mt-auto pt-6 text-center font-mono text-xs text-muted-foreground">
                     ii
                   </div>
                 </div>
               )}
 
-              {/* ================= BODY & HEADINGS PREVIEW ================= */}
-              {previewPage === "body" && (
+              {/* ================= BODY & HEADINGS / FULL DOCUMENT PREVIEW ================= */}
+              {(previewPage === "body" || previewPage === "full") && (
                 <div className="flex-1 flex flex-col justify-between">
                   <div>
                     {/* Running Header */}
-                    <div
-                      className={`flex items-center justify-between text-[11px] mb-6 font-sans ${
-                        config.headerRule
-                          ? paperMode === "dark"
-                            ? "border-b border-zinc-800 pb-2 text-zinc-400"
-                            : "border-b border-stone-200 pb-2 text-stone-500"
-                          : paperMode === "dark"
-                            ? "text-zinc-400"
-                            : "text-stone-500"
-                      }`}
-                    >
-                      <span className="truncate max-w-[60%]">{config.headerText}</span>
-                      <span className={paperMode === "dark" ? "text-zinc-500" : "text-stone-400"}>
-                        {config.layoutArchetype === "creative"
-                          ? "Production Specification"
-                          : config.layoutArchetype === "tech-spec"
-                            ? "Architecture RFC"
-                            : "Section 1"}
-                      </span>
+                    {config.headerText && (
+                      <div className="flex items-center justify-between text-[11px] mb-6 font-sans text-muted-foreground">
+                        <span className="truncate max-w-[60%]">{config.headerText}</span>
+                        <span>
+                          {config.layoutArchetype === "creative"
+                            ? "Production Specification"
+                            : config.layoutArchetype === "tech-spec"
+                              ? "Architecture RFC"
+                              : "Document Workspace"}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Document Header (Clean, modern, NO horizontal lines) */}
+                    <div className="mb-8 space-y-3">
+                      {config.institution &&
+                        config.institution !== "Academic / Professional Department" && (
+                          <div className="mb-2">
+                            <span className="font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-primary/10 text-primary">
+                              {config.institution}
+                            </span>
+                          </div>
+                        )}
+
+                      <h1 className="font-serif text-2xl sm:text-4xl font-bold tracking-tight leading-tight text-foreground">
+                        {config.docTitle}
+                      </h1>
+
+                      {config.docSubtitle &&
+                        config.docSubtitle !== "Executive Analysis and Implementation Report" && (
+                          <p className="text-sm sm:text-base text-muted-foreground font-normal">
+                            {config.docSubtitle}
+                          </p>
+                        )}
+
+                      {/* Clean metadata chip row only if real author or date provided */}
+                      {((config.authorName && config.authorName !== "Author / Researcher") ||
+                        (config.dateStr && config.dateStr !== "October 2026")) && (
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground font-sans">
+                          {config.authorName && config.authorName !== "Author / Researcher" && (
+                            <span className="font-medium text-foreground">By {config.authorName}</span>
+                          )}
+                          {config.dateStr && <span>{config.dateStr}</span>}
+                        </div>
+                      )}
                     </div>
+
+                    {/* Integrated Table of Contents in Full Document mode */}
+                    {previewPage === "full" && config.includeToc && (
+                      <div className="mb-8 rounded-xl bg-surface-2/40 border border-border/60 p-5 text-sm space-y-2.5">
+                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-2">
+                          Table of Contents
+                        </span>
+                        {parseDocumentSections(rawText, config.headingNumbering).map((sec, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex items-baseline justify-between ${
+                              sec.level > 1
+                                ? "pl-4 text-xs text-muted-foreground"
+                                : "font-semibold text-foreground text-xs sm:text-sm"
+                            }`}
+                          >
+                            <div className="flex items-baseline gap-2">
+                              {sec.numberStr && (
+                                <span className="font-mono text-xs text-primary font-bold">
+                                  {sec.numberStr}
+                                </span>
+                              )}
+                              <span>{sec.title}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Body content with heading hierarchy and executive editorial blocks */}
                     <div className="space-y-6">
                       {parseDocumentSections(rawText, config.headingNumbering).map((sec, sIdx) => (
                         <div key={sIdx} className="space-y-3">
-                          {sIdx === 0 && (
-                            <div className="mb-8 pt-1">
-                              {/* Corner crop marks */}
-                              <div className="relative mb-2">
-                                <div className="absolute -top-3 -left-3 w-4 h-4 border-t border-l border-stone-300 dark:border-zinc-700 pointer-events-none" />
-                                <div className="absolute -top-3 -right-3 w-4 h-4 border-t border-r border-stone-300 dark:border-zinc-700 pointer-events-none" />
-                              </div>
-
-                              {/* Department Tagline with formal underline */}
-                              <div className="border-b border-stone-800 dark:border-zinc-300 pb-1 mb-5 inline-block">
-                                <p className="font-serif tracking-widest uppercase text-xs font-semibold text-stone-800 dark:text-zinc-200">
-                                  {config.institution
-                                    ? config.institution.toUpperCase()
-                                    : "ACADEMIC / PROFESSIONAL DEPARTMENT"}
-                                </p>
-                              </div>
-
-                              {/* Main Document Title with formal underline */}
-                              <div className="border-b-2 border-stone-900 dark:border-zinc-100 pb-2 mb-4">
-                                <h1 className="font-serif text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight text-stone-900 dark:text-zinc-50">
-                                  {config.docTitle}
-                                </h1>
-                              </div>
-
-                              {/* Subtitle with underline */}
-                              {config.docSubtitle && (
-                                <div className="border-b border-stone-700 dark:border-zinc-300 pb-1 mb-5 inline-block">
-                                  <p className="font-serif italic text-base text-stone-700 dark:text-zinc-300">
-                                    {config.docSubtitle}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Metadata Block: Author, Date, Institution, Series subtitle */}
-                              <div className="space-y-1.5 text-xs font-serif mb-8 text-stone-800 dark:text-zinc-300">
-                                <div>
-                                  <div className="border-b border-stone-400 dark:border-zinc-600 pb-0.5 inline-block min-w-[220px]">
-                                    <strong className="font-bold text-stone-900 dark:text-zinc-100">
-                                      Author:
-                                    </strong>{" "}
-                                    <span>{config.authorName || "Author / Researcher"}</span>
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="border-b border-stone-400 dark:border-zinc-600 pb-0.5 inline-block min-w-[220px]">
-                                    <strong className="font-bold text-stone-900 dark:text-zinc-100">
-                                      Date:
-                                    </strong>{" "}
-                                    <span>{config.dateStr || "October 2026"}</span>
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="border-b border-stone-400 dark:border-zinc-600 pb-0.5 inline-block min-w-[280px]">
-                                    <strong className="font-bold text-stone-900 dark:text-zinc-100">
-                                      Institution:
-                                    </strong>{" "}
-                                    <span>
-                                      {config.institution || "Academic / Professional Department"}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="pt-2 border-b border-stone-300 dark:border-zinc-700 pb-1 text-[11px] text-stone-500 dark:text-zinc-400 font-sans">
-                                  <span>
-                                    DocuMind Research · Technical Report Series DocuMind Executive Technical Report Series
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
                           {sec.level === 1 && (
-                            <div className="pt-2">
-                              <h1
-                                className={`text-2xl font-bold tracking-tight pb-2 flex items-baseline gap-2 ${
-                                  config.headingDivider
-                                    ? paperMode === "dark"
-                                      ? "border-b border-zinc-800"
-                                      : "border-b border-stone-300"
-                                    : "border-b border-stone-200 dark:border-zinc-800"
-                                } ${paperMode === "dark" ? "text-zinc-50" : "text-stone-900"}`}
-                              >
+                            <div className="pt-4 mb-2">
+                              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-baseline gap-2">
                                 {sec.numberStr && (
-                                  <span className="font-mono text-lg text-primary font-bold shrink-0">
+                                  <span className="font-mono text-base text-primary font-bold shrink-0">
                                     {sec.numberStr}
                                   </span>
                                 )}
                                 <span>{sec.title}</span>
-                              </h1>
+                              </h2>
                             </div>
                           )}
                           {sec.level === 2 && (
-                            <h2
-                              className={`text-lg font-semibold tracking-tight pt-3 flex items-baseline gap-2 ${
-                                paperMode === "dark" ? "text-zinc-100" : "text-stone-900"
-                              }`}
-                            >
-                              {sec.numberStr && (
-                                <span className="font-mono text-sm text-primary font-semibold shrink-0">
-                                  {sec.numberStr}
-                                </span>
-                              )}
-                              <span>{sec.title}</span>
-                            </h2>
+                            <div className="pt-3 mb-1">
+                              <h3 className="text-base sm:text-lg font-semibold tracking-tight text-foreground flex items-baseline gap-2">
+                                {sec.numberStr && (
+                                  <span className="font-mono text-xs sm:text-sm text-primary font-semibold shrink-0">
+                                    {sec.numberStr}
+                                  </span>
+                                )}
+                                <span>{sec.title}</span>
+                              </h3>
+                            </div>
                           )}
                           {sec.level === 3 && (
-                            <h3
-                              className={`text-sm font-semibold pt-2 italic flex items-baseline gap-2 ${
-                                paperMode === "dark" ? "text-zinc-300" : "text-stone-800"
-                              }`}
-                            >
-                              {sec.numberStr && (
-                                <span className="font-mono text-xs text-muted-foreground shrink-0">
-                                  {sec.numberStr}
-                                </span>
-                              )}
-                              <span>{sec.title}</span>
-                            </h3>
+                            <div className="pt-2">
+                              <h4 className="text-xs sm:text-sm font-semibold italic text-foreground/90 flex items-baseline gap-2">
+                                {sec.numberStr && (
+                                  <span className="font-mono text-xs text-muted-foreground shrink-0">
+                                    {sec.numberStr}
+                                  </span>
+                                )}
+                                <span>{sec.title}</span>
+                              </h4>
+                            </div>
                           )}
 
                           {/* Render styled blocks if in executive / creative / tech-spec mode */}
@@ -2463,21 +2452,16 @@ export function DocumentFormattingWorkflow({
                     </div>
                   </div>
 
-                  {/* Page Footer */}
+                  {/* Document Footer (Clean, no horizontal line) */}
                   <div
-                    className={`mt-10 pt-4 border-t font-mono text-xs ${
-                      paperMode === "dark"
-                        ? "border-zinc-800 text-zinc-400"
-                        : "border-stone-200 text-stone-500"
-                    } ${
-                      config.pageNumberPosition === "bottom-center"
-                        ? "text-center"
-                        : config.pageNumberPosition === "bottom-right"
-                          ? "text-right"
-                          : "text-left"
+                    className={`mt-10 pt-4 font-mono text-xs flex items-center justify-between ${
+                      paperMode === "dark" ? "text-zinc-400" : "text-stone-500"
                     }`}
                   >
-                    {config.pageNumberFormat === "page-x-of-y" ? "Page 3 of 12" : "3"}
+                    <span>DocuMind Studio · Formatted Document</span>
+                    <span>
+                      {config.pageNumberFormat === "page-x-of-y" ? "Continuous Reading View" : "1"}
+                    </span>
                   </div>
                 </div>
               )}
@@ -2526,7 +2510,7 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
     .map((sec) => {
       let secHtml = "";
       if (sec.level === 1) {
-        secHtml += `<h1 style="font-size: 1.6rem; font-weight: bold; margin-top: 2rem; margin-bottom: 0.8rem; border-bottom: 1px solid #cbd5e1; padding-bottom: 0.4rem; color: #0f172a;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h1>`;
+        secHtml += `<h1 style="font-size: 1.6rem; font-weight: bold; margin-top: 2rem; margin-bottom: 0.8rem; color: #0f172a;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h1>`;
       } else if (sec.level === 2) {
         secHtml += `<h2 style="font-size: 1.25rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.6rem; color: #1e293b;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h2>`;
       } else {
@@ -2620,19 +2604,18 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
   }
   .cover {
     page-break-after: always;
-    min-height: 80vh;
+    min-height: 70vh;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     text-align: left;
-    border-bottom: 2px solid #333;
-    padding-bottom: 3rem;
+    padding-bottom: 2rem;
   }
   .title { font-size: 2.4rem; font-weight: bold; margin-bottom: 0.5rem; }
   .subtitle { font-size: 1.2rem; color: #555; font-style: italic; margin-bottom: 2rem; }
   .meta { font-size: 0.9rem; color: #444; }
   .toc { page-break-after: always; margin-top: 2rem; }
-  .header-rule { border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 24px; font-size: 9pt; color: #777; display: flex; justify-content: space-between; }
+  .header-rule { padding-bottom: 6px; margin-bottom: 24px; font-size: 9pt; color: #777; display: flex; justify-content: space-between; }
 </style>
 </head>
 <body>
