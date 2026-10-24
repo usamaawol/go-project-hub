@@ -465,7 +465,7 @@ function TemplatesCatalogPage() {
                       {/* Gamma-style Thumbnail Preview Frame */}
                       <div
                         onClick={() => openPreview(template)}
-                        className="relative aspect-16/10 w-full overflow-hidden rounded-xl border border-border/80 cursor-pointer group-hover:scale-[1.02] transition-transform duration-200 bg-surface-2"
+                        className="relative aspect-video w-full overflow-hidden rounded-xl border border-border/80 cursor-pointer group-hover:scale-[1.02] transition-transform duration-200 bg-surface-2"
                       >
                         <ThemeThumb kind={template.kind} slide={0} />
 
@@ -700,7 +700,7 @@ function TemplatesCatalogPage() {
 
             {/* Interactive Card Canvas with Gamma Stepper Controls */}
             <div className="mt-4 relative">
-              <div className="aspect-16/10 w-full overflow-hidden rounded-2xl border border-border bg-surface-2 shadow-inner">
+              <div className="aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface-2 shadow-inner">
                 <ThemeThumb kind={previewTemplate.kind} slide={previewSlideIdx} />
               </div>
 

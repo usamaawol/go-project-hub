@@ -948,7 +948,7 @@ export function PresentationWorkflow({
                   >
                     <div>
                       {/* Mini Thumbnail */}
-                      <div className="relative aspect-16/10 w-full rounded-lg overflow-hidden border border-border/80">
+                      <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-border/80">
                         <ThemeThumb kind={t.kind} slide={0} />
                         <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
                           <span className="rounded-full bg-emerald-600/90 px-1.5 py-0.2 font-mono text-[9px] font-bold text-white uppercase">
@@ -1336,7 +1336,7 @@ export function PresentationWorkflow({
 
             {/* Slide Preview Viewer */}
             <div className="mt-4 space-y-4">
-              <div className="relative aspect-16/10 w-full rounded-2xl overflow-hidden border border-border shadow-inner">
+              <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-border shadow-inner">
                 <ThemeThumb kind={previewTemplate.kind} slide={previewSlideIdx} />
               </div>
 

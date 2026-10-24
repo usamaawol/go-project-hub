@@ -587,26 +587,31 @@ export function PresentationPreviewPage() {
                     key={s.id}
                     type="button"
                     onClick={() => setCurrentSlideIdx(idx)}
-                    className={`group relative text-left rounded-xl border p-2.5 transition-all shrink-0 w-44 lg:w-full ${
+                    className={`group relative text-left rounded-xl border p-2.5 transition-all shrink-0 w-48 lg:w-full h-[76px] flex flex-col justify-between ${
                       isActive
                         ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary"
                         : "border-border bg-surface-2/40 hover:bg-surface-2 hover:border-primary/40"
                     }`}
                   >
-                    <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
-                      <span className="font-bold">Slide {s.slideNumber}</span>
-                      <span className="uppercase">{s.layout}</span>
+                    <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
+                      <span className="font-bold flex items-center gap-1.5">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-primary" : "bg-muted-foreground/40"}`}
+                        />
+                        Slide {s.slideNumber}
+                      </span>
+                      <span className="uppercase text-[9px] px-1.5 py-0.5 rounded bg-muted/40 font-mono">
+                        {s.layout}
+                      </span>
                     </div>
 
                     <div className="text-xs font-semibold text-foreground line-clamp-1">
                       {s.title}
                     </div>
 
-                    {s.subtitle && (
-                      <div className="text-[10px] text-muted-foreground line-clamp-1 italic mt-0.5">
-                        {s.subtitle}
-                      </div>
-                    )}
+                    <div className="text-[10px] text-muted-foreground line-clamp-1 italic">
+                      {s.subtitle || "Standard 16:9 Slide"}
+                    </div>
                   </button>
                 );
               })}
@@ -618,15 +623,18 @@ export function PresentationPreviewPage() {
               <div
                 ref={canvasContainerRef}
                 className={`relative overflow-hidden rounded-2xl border border-border shadow-lift flex flex-col justify-between ${
-                  isFullscreen ? "bg-black p-6" : "bg-card p-4 sm:p-6"
+                  isFullscreen
+                    ? "fixed inset-0 z-50 h-screen w-screen bg-black/95 p-4 sm:p-6 items-center justify-between"
+                    : "bg-card p-4 sm:p-6"
                 }`}
-                style={{
-                  minHeight: isFullscreen ? "100vh" : "500px",
-                }}
               >
-                {/* 16:9 Slide Canvas */}
+                {/* Fixed Uniform 16:9 Widescreen Slide Canvas (Guaranteed Equal Size for All Slides) */}
                 <div
-                  className="relative aspect-16/9 w-full rounded-xl overflow-hidden border border-border/80 shadow-inner flex flex-col justify-between p-6 sm:p-10 transition-all select-text"
+                  className={`relative aspect-video w-full rounded-xl overflow-hidden border border-border/80 shadow-inner flex flex-col justify-between transition-all select-text shrink-0 ${
+                    isFullscreen
+                      ? "max-w-[calc((100vh-140px)*16/9)] max-h-[calc(100vh-140px)] mx-auto my-auto p-5 sm:p-8"
+                      : "max-w-full p-5 sm:p-7 md:p-8"
+                  }`}
                   style={{
                     backgroundColor: bgColor,
                     color: primaryColor,
@@ -641,7 +649,7 @@ export function PresentationPreviewPage() {
 
                   {/* Header / Layout Badge with Quick Edit Action */}
                   <div
-                    className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase pb-3 border-b"
+                    className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase pb-2.5 border-b shrink-0"
                     style={{ borderColor: tokens.dividerColor }}
                   >
                     <div className="flex items-center gap-2">
@@ -675,8 +683,8 @@ export function PresentationPreviewPage() {
                     </div>
                   </div>
 
-                  {/* Dynamic Slide Body Layouts */}
-                  <div className="my-auto py-4">
+                  {/* Dynamic Slide Body Layouts - strictly constrained with min-h-0 so all slides maintain equal size */}
+                  <div className="flex-1 min-h-0 overflow-y-auto my-auto py-3 pr-1 scrollbar-thin">
                     {/* 1. TITLE / COVER */}
                     {currentSlide.layout === "title" && (
                       <div className="max-w-4xl space-y-4">
@@ -1312,7 +1320,7 @@ export function PresentationPreviewPage() {
 
                   {/* Slide Footer with Watermark at Bottom Right Corner */}
                   <div
-                    className="flex items-center justify-between text-[10px] font-mono pt-3 border-t mt-auto"
+                    className="flex items-center justify-between text-[10px] font-mono pt-2.5 border-t mt-auto shrink-0"
                     style={{ borderColor: tokens.dividerColor, color: tokens.textMuted }}
                   >
                     <span>DocuMind Studio | {tokens.name}</span>
@@ -1336,7 +1344,11 @@ export function PresentationPreviewPage() {
                 </div>
 
                 {/* Viewport Control Bar */}
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/80 pt-3 text-xs">
+                <div
+                  className={`mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/80 pt-3 text-xs shrink-0 ${
+                    isFullscreen ? "w-full max-w-4xl mx-auto" : "w-full"
+                  }`}
+                >
                   {/* Left: Slide navigation buttons */}
                   <div data-tour="tour-preview-nav" className="flex items-center gap-2">
                     <Button

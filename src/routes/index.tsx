@@ -375,7 +375,7 @@ function Index() {
                     >
                       <div>
                         {/* Thumbnail */}
-                        <div className="relative aspect-16/10 w-full overflow-hidden rounded-xl border border-border/80">
+                        <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border/80">
                           <ThemeThumb kind={theme.kind} slide={0} />
                           <div className="absolute top-2 left-2 flex items-center gap-1.5">
                             <span className="rounded-full bg-emerald-600/90 backdrop-blur-xs px-2 py-0.5 font-mono text-[9px] font-bold text-white uppercase">

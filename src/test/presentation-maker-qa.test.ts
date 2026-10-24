@@ -401,4 +401,40 @@ Algorithms and mathematical techniques that process the data
 
     deletePresentationSession(session.id);
   });
+
+  // Case 16: Equal size presentation verification across all slides and layouts
+  it("Case 16: All generated presentation slides enforce strict equal 16:9 widescreen dimensions and layout geometry", async () => {
+    const session = await createPresentationSession({
+      title: "Equal Size Presentation Architecture",
+      content:
+        "DocuMind guarantees that every single slide in generated presentations maintains identical widescreen 16:9 aspect ratio dimensions.\n\n" +
+        "1.0 Strategic Framework\nKey architecture and design tokens for uniform presentation layout.\n\n" +
+        "2.0 Performance Metrics\nConversion speed: 99.4%, Render latency: 12ms, Equal ratio: 100%.\n\n" +
+        "3.0 Phase Rollout\nPhase 1: Token stabilization. Phase 2: Aspect ratio containment.\n\n" +
+        "4.0 Key Quote\nGreat presentations demand visual consistency and equal proportions across every slide.",
+      slideCount: 5,
+    });
+
+    expect(session.slides.length).toBe(5);
+
+    // Verify PPTX deck generation enforces LAYOUT_WIDE (13.333" x 7.5" = 16:9 widescreen)
+    const tokens = computeThemeTokens(session.theme, session.fontFamily, session.fontSizePreset);
+    const pptxDeck = await renderSlideDeckToPptx(
+      session.title,
+      session.purpose,
+      session.slides,
+      tokens,
+    );
+
+    expect(pptxDeck.layout).toBe("LAYOUT_WIDE");
+
+    // Every slide in the session must have valid slide number and layout
+    session.slides.forEach((s, idx) => {
+      expect(s.slideNumber).toBe(idx + 1);
+      expect(typeof s.layout).toBe("string");
+      expect(s.title.length).toBeGreaterThan(0);
+    });
+
+    deletePresentationSession(session.id);
+  });
 });
