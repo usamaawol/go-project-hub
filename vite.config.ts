@@ -6,6 +6,11 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Enforce production mode for builds so SSR does not emit development JSX (jsxDEV)
+if (process.argv.some((arg) => arg === "build") && !process.argv.some((arg) => arg.includes("dev"))) {
+  process.env.NODE_ENV = "production";
+}
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
