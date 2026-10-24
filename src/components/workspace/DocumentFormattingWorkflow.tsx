@@ -971,8 +971,8 @@ export function paginateSectionsIntoA4Pages(
     currentPageNumber++;
   }
 
-  // 2. Dedicated Table of Contents page if Cover Page exists or many sections (>6)
-  const isDedicatedToc = config.includeToc && (config.hasCoverPage || sections.filter((s) => Boolean(s.title)).length > 6);
+  // 2. Dedicated Table of Contents page ONLY if Cover Page is explicitly enabled
+  const isDedicatedToc = config.includeToc && config.hasCoverPage;
   if (isDedicatedToc) {
     pages.push({
       pageNumber: currentPageNumber,
@@ -985,6 +985,11 @@ export function paginateSectionsIntoA4Pages(
 
   // 3. Paginate body sections
   let currentHeight = 0;
+  // If TOC is integrated on the first body page, budget its height
+  if (config.includeToc && !isDedicatedToc) {
+    const tocCount = sections.filter((s) => Boolean(s.title)).length;
+    currentHeight += Math.min(260, 45 + tocCount * 22);
+  }
   let currentSectionsOnPage: DocA4SectionItem[] = [];
 
   const startNewPage = () => {
@@ -2210,9 +2215,7 @@ export function DocumentFormattingWorkflow({
           {(() => {
             const sections = parseDocumentSections(rawText, config.headingNumbering);
             const a4Pages = paginateSectionsIntoA4Pages(sections, config);
-            const isDedicatedToc =
-              config.includeToc &&
-              (config.hasCoverPage || sections.filter((s) => Boolean(s.title)).length > 6);
+            const isDedicatedToc = config.includeToc && config.hasCoverPage;
             const activePage =
               a4Pages.find((p) => p.pageNumber === activePageNum) ||
               a4Pages[0] || {
@@ -3091,8 +3094,7 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
 
   const sections = parseDocumentSections(rawText, config.headingNumbering);
   const a4Pages = paginateSectionsIntoA4Pages(sections, config);
-  const isDedicatedToc =
-    config.includeToc && (config.hasCoverPage || sections.filter((s) => Boolean(s.title)).length > 6);
+  const isDedicatedToc = config.includeToc && config.hasCoverPage;
 
   // Generate TOC HTML
   let tocHtml = "";
