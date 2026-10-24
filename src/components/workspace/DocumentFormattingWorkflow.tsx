@@ -163,8 +163,13 @@ export interface DocSceneMeta {
   textOverlay?: string;
 }
 
+export interface DocTableData {
+  headers?: string[];
+  rows: string[][];
+}
+
 export interface DocBlock {
-  type: "paragraph" | "lead" | "callout" | "parameter" | "palette" | "scene" | "list";
+  type: "paragraph" | "lead" | "callout" | "parameter" | "palette" | "scene" | "list" | "table" | "image";
   content: string;
   calloutType?: "critical" | "warning" | "note" | "requirement";
   calloutTitle?: string;
@@ -173,6 +178,9 @@ export interface DocBlock {
   listItems?: string[];
   colors?: DocColor[];
   sceneMeta?: DocSceneMeta;
+  tableData?: DocTableData;
+  imageUrl?: string;
+  imageAlt?: string;
 }
 
 export interface DocSection {
@@ -181,38 +189,116 @@ export interface DocSection {
   title: string;
   paragraphs: string[];
   blocks: DocBlock[];
+  pageNumber?: number;
 }
 
 export function renderRichInline(text: string) {
   if (!text) return null;
-  // Splits by markdown bold (**...**), inline code (`...`), or italic (*...*)
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
+
+  // Single standalone markdown link or image check: e.g. [Golden Eagle at Sunrise](https://images.openai.com/...)
+  const singleMatch = text.match(/^!?\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+  if (singleMatch) {
+    const label = singleMatch[1] || "";
+    const url = singleMatch[2] || "";
+    const isImage =
+      text.startsWith("!") ||
+      /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url) ||
+      /images\.openai\.com/i.test(url);
+    if (isImage) {
+      return (
+        <span className="block my-3 text-center">
+          <img
+            src={url}
+            alt={label}
+            className="mx-auto max-h-72 max-w-full rounded-lg object-contain shadow-xs border border-border/40"
+            loading="lazy"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = "none";
+            }}
+          />
+          {label && (
+            <span className="block text-[11px] text-muted-foreground mt-1.5 italic">
+              {label}
+            </span>
+          )}
+        </span>
+      );
+    }
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+      >
+        <span>{label || url}</span>
+      </a>
+    );
+  }
+
+  // Tokenize string with regex for bold, inline code, italic, images, and links
+  const tokens = text.split(
+    /(!?\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g,
+  );
+  return tokens.map((token, i) => {
+    if (!token) return null;
+    const linkMatch = token.match(/^(!)?\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+    if (linkMatch) {
+      const isImg =
+        linkMatch[1] === "!" ||
+        /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(linkMatch[3]!) ||
+        /images\.openai\.com/i.test(linkMatch[3]!);
+      if (isImg) {
+        return (
+          <img
+            key={i}
+            src={linkMatch[3]}
+            alt={linkMatch[2]}
+            className="inline-block max-h-48 max-w-full rounded my-1 shadow-xs"
+            loading="lazy"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = "none";
+            }}
+          />
+        );
+      }
+      return (
+        <a
+          key={i}
+          href={linkMatch[3]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline font-medium break-all"
+        >
+          {linkMatch[2]}
+        </a>
+      );
+    }
+    if (token.startsWith("**") && token.endsWith("**")) {
       return (
         <strong key={i} className="font-bold text-foreground">
-          {part.slice(2, -2)}
+          {token.slice(2, -2)}
         </strong>
       );
     }
-    if (part.startsWith("`") && part.endsWith("`")) {
+    if (token.startsWith("`") && token.endsWith("`")) {
       return (
         <code
           key={i}
-          className="font-mono text-xs px-1.5 py-0.5 rounded bg-stone-200/70 dark:bg-zinc-800 text-primary font-semibold"
+          className="font-mono text-xs px-1.5 py-0.5 rounded bg-surface-2 text-primary font-semibold"
         >
-          {part.slice(1, -1)}
+          {token.slice(1, -1)}
         </code>
       );
     }
-    if (part.startsWith("*") && part.endsWith("*")) {
+    if (token.startsWith("*") && token.endsWith("*")) {
       return (
         <em key={i} className="italic text-foreground/90">
-          {part.slice(1, -1)}
+          {token.slice(1, -1)}
         </em>
       );
     }
-    return part;
+    return token;
   });
 }
 
@@ -412,6 +498,71 @@ export function parseLinesToBlocks(
     const line = lines[i]?.trim();
     if (!line) continue;
 
+    // 0. Markdown table detection (e.g. | Founders | The four people... |)
+    if (/^\s*\|.+?\|\s*$/.test(line)) {
+      flushList();
+      const tableLines: string[] = [];
+      let j = i;
+      while (j < lines.length && /^\s*\|.+?\|\s*$/.test(lines[j]!.trim())) {
+        tableLines.push(lines[j]!.trim());
+        j++;
+      }
+      i = j - 1;
+
+      const rawRows = tableLines.map((tl) =>
+        tl
+          .replace(/^\|\s*/, "")
+          .replace(/\s*\|$/, "")
+          .split("|")
+          .map((c) => c.trim()),
+      );
+
+      let headers: string[] | undefined = undefined;
+      let rows: string[][] = [];
+
+      if (
+        rawRows.length >= 2 &&
+        tableLines[1] &&
+        /^\|?\s*[-:]+[-| :]*\|?$/.test(tableLines[1])
+      ) {
+        headers = rawRows[0];
+        rows = rawRows.slice(2);
+      } else {
+        rows = rawRows;
+      }
+
+      blocks.push({
+        type: "table",
+        content: tableLines.join("\n"),
+        tableData: {
+          headers,
+          rows,
+        },
+      });
+      continue;
+    }
+
+    // 0b. Standalone image or citation check: e.g. [Golden Eagle at Sunrise](https://images.openai.com/...)
+    const imgMatch = line.match(/^!?\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+    if (imgMatch) {
+      flushList();
+      const label = imgMatch[1]!;
+      const url = imgMatch[2]!;
+      const isImg =
+        line.startsWith("!") ||
+        /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url) ||
+        /images\.openai\.com/i.test(url);
+      if (isImg) {
+        blocks.push({
+          type: "image",
+          content: line,
+          imageUrl: url,
+          imageAlt: label,
+        });
+        continue;
+      }
+    }
+
     // 1. Check for bullet list item:
     // Only concise bullet lines (< 120 chars) that start with explicit bullet symbols (- * •)
     // or short numbered items (< 70 chars, without terminal period)
@@ -500,7 +651,7 @@ export function parseLinesToBlocks(
       blocks.push({
         type: "parameter",
         content: line,
-        key: "Visual Cue",
+        key: "Visual",
         value: standaloneVisual[1],
       });
       continue;
@@ -509,7 +660,7 @@ export function parseLinesToBlocks(
       blocks.push({
         type: "parameter",
         content: line,
-        key: "Voiceover / Audio",
+        key: "Audio",
         value: standaloneAudio[1],
       });
       continue;
@@ -522,11 +673,12 @@ export function parseLinesToBlocks(
     if (isCriticalSection || calloutMatch) {
       const isCritical =
         /critical|continuity|warning/i.test(sectionTitle) || /critical|warning/i.test(line);
+      const prefix = line.match(/^(CRITICAL|IMPORTANT|NOTE|WARNING|REQUIREMENT|CONTINUITY REQUIREMENT|GUARDRAIL)/i)?.[1] || "NOTE";
       blocks.push({
         type: "callout",
         content: calloutMatch ? calloutMatch[1] || line : line,
         calloutType: isCritical ? "critical" : "requirement",
-        calloutTitle: isCritical ? "Critical Continuity Guardrail" : "Requirement Specification",
+        calloutTitle: prefix.toUpperCase(),
       });
       continue;
     }
@@ -583,7 +735,7 @@ export function parseLinesToBlocks(
 
 export function parseDocumentSections(
   text: string,
-  headingNumbering: "decimal" | "roman" | "none",
+  headingNumbering: "decimal" | "roman" | "none" = "none",
 ): DocSection[] {
   if (!text || !text.trim()) {
     return [
@@ -616,20 +768,20 @@ export function parseDocumentSections(
   let subSubCounter = 0;
 
   const isHeader = (line: string): { isHeader: boolean; level: 1 | 2 | 3; cleanTitle: string } => {
-    if (!line || line.length > 120) return { isHeader: false, level: 1, cleanTitle: "" };
+    if (!line || line.length > 140) return { isHeader: false, level: 1, cleanTitle: "" };
 
     // Markdown headers
     if (line.startsWith("###")) {
-      return { isHeader: true, level: 3, cleanTitle: line.replace(/^###\s*/, "") };
+      return { isHeader: true, level: 3, cleanTitle: line.replace(/^###\s*/, "").trim() };
     }
     if (line.startsWith("##")) {
-      return { isHeader: true, level: 2, cleanTitle: line.replace(/^##\s*/, "") };
+      return { isHeader: true, level: 2, cleanTitle: line.replace(/^##\s*/, "").trim() };
     }
     if (line.startsWith("#")) {
-      return { isHeader: true, level: 1, cleanTitle: line.replace(/^#\s*/, "") };
+      return { isHeader: true, level: 1, cleanTitle: line.replace(/^#\s*/, "").trim() };
     }
 
-    // Numbered headings like "1.0 Title", "1. Title", "2.1 Subtitle", "2.1.1 Detail"
+    // Numbered headings like "1.0 Title", "1. Title", "2.1 Subtitle", "2.1.1 Detail", "4. The six-chapter structure"
     const numMatch = line.match(/^(\d+(?:\.\d+)*)\s*[:.]?\s+(.*)$/);
     if (numMatch && numMatch[2] && numMatch[2].length > 2 && !numMatch[2].endsWith(".")) {
       const parts = numMatch[1].split(".");
@@ -641,9 +793,17 @@ export function parseDocumentSections(
       } else {
         lvl = 3;
       }
-      // Strip any nested numbering prefix so we NEVER duplicate e.g. "2.1 1. Purpose" -> "2.1 Purpose"
+      if (headingNumbering === "none") {
+        return { isHeader: true, level: lvl, cleanTitle: line.trim() };
+      }
       const clean = numMatch[2].replace(/^(\d+[\s.)-]+\s*|[A-Z]\.[\s.)-]+\s*)/, "").trim();
       return { isHeader: true, level: lvl, cleanTitle: clean || numMatch[2].trim() };
+    }
+
+    // Chapter or Section heading: e.g. "Chapter 1 — Our Identity and Foundation"
+    const chapterMatch = line.match(/^(?:Chapter\s+\d+|Section\s+\d+)\b/i);
+    if (chapterMatch && line.length < 90 && !line.endsWith(".")) {
+      return { isHeader: true, level: 2, cleanTitle: line.trim() };
     }
 
     // SCENE header format: "SCENE 1 — 0–10 SECONDS: THE FRICTION"
@@ -658,7 +818,7 @@ export function parseDocumentSections(
       !line.includes(",") &&
       !/^(visual|audio|format|duration|note|on-screen)/i.test(line)
     ) {
-      return { isHeader: true, level: 2, cleanTitle: line.replace(/:$/, "") };
+      return { isHeader: true, level: 2, cleanTitle: line.replace(/:$/, "").trim() };
     }
 
     return { isHeader: false, level: 1, cleanTitle: "" };
@@ -684,15 +844,18 @@ export function parseDocumentSections(
     if (!isFirstHeaderMajor) {
       const preamble = lines.slice(0, firstHeaderIdx).filter(Boolean);
       if (preamble.length > 0) {
-        const pBlocks = parseLinesToBlocks(preamble, "Overview & Context", true);
+        const isVideoSpec = text.toLowerCase().includes("promotional video");
+        const pBlocks = parseLinesToBlocks(preamble, isVideoSpec ? "Introduction & Context" : "", true);
         sections.push({
           level: 1,
-          numberStr: headingNumbering === "decimal" ? "1.0 " : headingNumbering === "roman" ? "I. " : "",
-          title: "Overview & Context",
+          numberStr: headingNumbering === "decimal" && isVideoSpec ? "1.0 " : "",
+          title: isVideoSpec ? "Introduction & Context" : "",
           paragraphs: preamble,
           blocks: pBlocks,
         });
-        sectionCounter = 1;
+        if (isVideoSpec) {
+          sectionCounter = 1;
+        }
       }
     }
   }
@@ -722,20 +885,28 @@ export function parseDocumentSections(
         subSubCounter++;
       }
 
-      const numStr =
-        headingNumbering === "decimal"
-          ? check.level === 1
-            ? `${sectionCounter}.0 `
-            : check.level === 2
-              ? `${sectionCounter}.${subSectionCounter} `
-              : `${sectionCounter}.${subSectionCounter}.${subSubCounter} `
-          : headingNumbering === "roman"
-            ? check.level === 1
+      let numStr = "";
+      if (headingNumbering === "decimal") {
+        const alreadyHasNumber = /^(\d+[\s.)-]|Chapter\s+\d+|Section\s+\d+)/i.test(check.cleanTitle);
+        if (!alreadyHasNumber) {
+          numStr =
+            check.level === 1
+              ? `${sectionCounter}.0 `
+              : check.level === 2
+                ? `${sectionCounter}.${subSectionCounter} `
+                : `${sectionCounter}.${subSectionCounter}.${subSubCounter} `;
+        }
+      } else if (headingNumbering === "roman") {
+        const alreadyHasNumber = /^(\d+[\s.)-]|[IVXLCDM]+[\s.)-]|Chapter\s+\d+)/i.test(check.cleanTitle);
+        if (!alreadyHasNumber) {
+          numStr =
+            check.level === 1
               ? `${["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"][sectionCounter - 1] || sectionCounter}. `
               : check.level === 2
                 ? `${String.fromCharCode(64 + subSectionCounter)}. `
-                : `${subSubCounter}. `
-            : "";
+                : `${subSubCounter}. `;
+        }
+      }
 
       currentSec = {
         level: check.level,
@@ -746,12 +917,11 @@ export function parseDocumentSections(
     } else {
       if (!currentSec) {
         sectionCounter = 1;
-        const numStr =
-          headingNumbering === "decimal" ? "1.0 " : headingNumbering === "roman" ? "I. " : "";
+        const isVideoSpec = text.toLowerCase().includes("promotional video");
         currentSec = {
           level: 1,
-          numberStr: numStr,
-          title: "Introduction & Context",
+          numberStr: headingNumbering === "decimal" && isVideoSpec ? "1.0 " : "",
+          title: isVideoSpec ? "Introduction & Context" : "",
           lines: [],
         };
       }
@@ -762,6 +932,155 @@ export function parseDocumentSections(
   pushCurrentSec();
 
   return sections;
+}
+
+export interface DocA4SectionItem {
+  sectionIndex: number;
+  title: string;
+  level: 1 | 2 | 3;
+  numberStr: string;
+  renderHeading: boolean;
+  blocks: DocBlock[];
+}
+
+export interface DocA4Page {
+  pageNumber: number;
+  totalPages: number;
+  isCover?: boolean;
+  isToc?: boolean;
+  sections: DocA4SectionItem[];
+}
+
+export function paginateSectionsIntoA4Pages(
+  sections: DocSection[],
+  config: FormattingConfig,
+): DocA4Page[] {
+  const PAGE_CAPACITY = 820; // Standard A4 printable height budget
+
+  const pages: DocA4Page[] = [];
+  let currentPageNumber = 1;
+
+  // 1. Cover Page
+  if (config.hasCoverPage) {
+    pages.push({
+      pageNumber: currentPageNumber,
+      totalPages: 1,
+      isCover: true,
+      sections: [],
+    });
+    currentPageNumber++;
+  }
+
+  // 2. Dedicated Table of Contents page if Cover Page exists or many sections (>6)
+  const isDedicatedToc = config.includeToc && (config.hasCoverPage || sections.filter((s) => Boolean(s.title)).length > 6);
+  if (isDedicatedToc) {
+    pages.push({
+      pageNumber: currentPageNumber,
+      totalPages: 1,
+      isToc: true,
+      sections: [],
+    });
+    currentPageNumber++;
+  }
+
+  // 3. Paginate body sections
+  let currentHeight = 0;
+  let currentSectionsOnPage: DocA4SectionItem[] = [];
+
+  const startNewPage = () => {
+    pages.push({
+      pageNumber: currentPageNumber,
+      totalPages: 1,
+      sections: currentSectionsOnPage,
+    });
+    currentPageNumber++;
+    currentSectionsOnPage = [];
+    currentHeight = 0;
+  };
+
+  for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+    const sec = sections[sIdx]!;
+    // Assign page number to section for TOC display
+    sec.pageNumber = currentPageNumber;
+
+    const headingHeight = sec.title ? (sec.level === 1 ? 65 : sec.level === 2 ? 45 : 35) : 0;
+
+    if (headingHeight > 0 && currentHeight + headingHeight > PAGE_CAPACITY - 80 && currentSectionsOnPage.length > 0) {
+      startNewPage();
+      sec.pageNumber = currentPageNumber;
+    }
+
+    currentHeight += headingHeight;
+
+    let secItem: DocA4SectionItem = {
+      sectionIndex: sIdx,
+      title: sec.title,
+      level: sec.level,
+      numberStr: sec.numberStr,
+      renderHeading: Boolean(sec.title),
+      blocks: [],
+    };
+
+    for (let bIdx = 0; bIdx < sec.blocks.length; bIdx++) {
+      const block = sec.blocks[bIdx]!;
+      let blockHeight = 40;
+
+      if (block.type === "paragraph" || block.type === "lead") {
+        blockHeight = Math.max(35, Math.ceil((block.content?.length || 40) / 90) * 22);
+      } else if (block.type === "list") {
+        blockHeight = 20 + (block.listItems?.length || 2) * 24;
+      } else if (block.type === "table") {
+        blockHeight = 45 + (block.tableData?.rows?.length || 2) * 32;
+      } else if (block.type === "callout") {
+        blockHeight = 65 + Math.ceil((block.content?.length || 40) / 80) * 20;
+      } else if (block.type === "image") {
+        blockHeight = 220;
+      } else if (block.type === "scene") {
+        blockHeight = 150;
+      } else if (block.type === "palette") {
+        blockHeight = 100;
+      } else if (block.type === "parameter") {
+        blockHeight = 35;
+      }
+
+      if (currentHeight + blockHeight > PAGE_CAPACITY && (currentSectionsOnPage.length > 0 || secItem.blocks.length > 0)) {
+        if (secItem.blocks.length > 0 || secItem.renderHeading) {
+          currentSectionsOnPage.push(secItem);
+        }
+        startNewPage();
+        secItem = {
+          sectionIndex: sIdx,
+          title: sec.title,
+          level: sec.level,
+          numberStr: sec.numberStr,
+          renderHeading: false,
+          blocks: [],
+        };
+      }
+
+      secItem.blocks.push(block);
+      currentHeight += blockHeight;
+    }
+
+    if (secItem.blocks.length > 0 || secItem.renderHeading) {
+      currentSectionsOnPage.push(secItem);
+    }
+  }
+
+  if (currentSectionsOnPage.length > 0 || pages.length === 0) {
+    pages.push({
+      pageNumber: currentPageNumber,
+      totalPages: 1,
+      sections: currentSectionsOnPage,
+    });
+  }
+
+  const total = pages.length;
+  pages.forEach((p) => {
+    p.totalPages = total;
+  });
+
+  return pages;
 }
 
 export function DocumentFormattingWorkflow({
@@ -817,7 +1136,7 @@ export function DocumentFormattingWorkflow({
     lineSpacing: "1.5",
     paragraphSpacing: "normal",
 
-    headingNumbering: "decimal",
+    headingNumbering: "none",
     headingCase: "title",
     headingDivider: false,
 
@@ -837,7 +1156,8 @@ export function DocumentFormattingWorkflow({
   });
 
   // Active preview tab in Step 3
-  const [previewPage, setPreviewPage] = useState<"full" | "body" | "toc" | "cover">("full");
+  const [previewPage, setPreviewPage] = useState<"all" | "single" | "toc" | "cover">("all");
+  const [activePageNum, setActivePageNum] = useState<number>(1);
   const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
 
   // File handling
@@ -1886,587 +2206,308 @@ export function DocumentFormattingWorkflow({
             </div>
           </div>
 
-          {/* Preview Viewport Switcher & Paper Mode */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            {/* Document View Switcher */}
-            <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
-              <button
-                type="button"
-                onClick={() => setPreviewPage("full")}
-                className={`rounded-md px-3 py-1 transition-all ${
-                  previewPage === "full"
-                    ? "bg-card text-foreground shadow-xs font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Full Document
-              </button>
-              <button
-                type="button"
-                onClick={() => setPreviewPage("body")}
-                className={`rounded-md px-3 py-1 transition-all ${
-                  previewPage === "body"
-                    ? "bg-card text-foreground shadow-xs font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Body Only
-              </button>
-              {config.includeToc && (
-                <button
-                  type="button"
-                  onClick={() => setPreviewPage("toc")}
-                  className={`rounded-md px-3 py-1 transition-all ${
-                    previewPage === "toc"
-                      ? "bg-card text-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Table of Contents
-                </button>
-              )}
-              {config.hasCoverPage && (
-                <button
-                  type="button"
-                  onClick={() => setPreviewPage("cover")}
-                  className={`rounded-md px-3 py-1 transition-all ${
-                    previewPage === "cover"
-                      ? "bg-card text-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Cover Page
-                </button>
-              )}
-            </div>
+          {/* Preview Viewport Switcher & Multi-Page A4 Canvas */}
+          {(() => {
+            const sections = parseDocumentSections(rawText, config.headingNumbering);
+            const a4Pages = paginateSectionsIntoA4Pages(sections, config);
+            const isDedicatedToc =
+              config.includeToc &&
+              (config.hasCoverPage || sections.filter((s) => Boolean(s.title)).length > 6);
+            const activePage =
+              a4Pages.find((p) => p.pageNumber === activePageNum) ||
+              a4Pages[0] || {
+                pageNumber: 1,
+                totalPages: 1,
+                sections: [],
+              };
 
-            {/* Layout Archetype Switcher on Preview Stage */}
-            <div className="flex items-center gap-2">
-              <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
-                {[
-                  { id: "executive", label: "Executive Styled" },
-                  { id: "creative", label: "Production Brief" },
-                  { id: "academic", label: "Classic Academic" },
-                ].map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        layoutArchetype: a.id as FormattingConfig["layoutArchetype"],
-                      }))
-                    }
-                    className={`rounded-md px-2.5 py-1 transition-all ${
-                      config.layoutArchetype === a.id
-                        ? "bg-card text-foreground shadow-xs font-semibold"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {a.label}
-                  </button>
-                ))}
-              </div>
+            return (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* Document View Switcher */}
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPage("all")}
+                      className={`rounded-md px-3 py-1 transition-all ${
+                        previewPage === "all"
+                          ? "bg-card text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      All Pages (A4)
+                    </button>
 
-              <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
-                <button
-                  type="button"
-                  onClick={() => setPaperMode("standard")}
-                  className={`rounded-md px-2.5 py-1 transition-all ${
-                    paperMode === "standard"
-                      ? "bg-card text-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Print White Paper
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaperMode("dark")}
-                  className={`rounded-md px-2.5 py-1 transition-all ${
-                    paperMode === "dark"
-                      ? "bg-card text-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Dark Canvas
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPage("single")}
+                      className={`rounded-md px-3 py-1 transition-all ${
+                        previewPage === "single"
+                          ? "bg-card text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Single Page View
+                    </button>
 
-              <Button
-                variant="glass"
-                size="sm"
-                onClick={autoPolishText}
-                className="text-xs h-7 gap-1 text-primary"
-                title="Optimize titles, headings, and hierarchy"
-              >
-                <Wand2 className="h-3 w-3" /> Auto-Polish
-              </Button>
-            </div>
-          </div>
-
-          {/* Fluid Modern Document Reading Canvas (Responsive, not rigid A4) */}
-          <div className="flex justify-center py-2 bg-surface-2/30 rounded-2xl border border-border p-3 sm:p-6 lg:p-8">
-            <div
-              className={`w-full max-w-4xl min-h-0 rounded-2xl border border-border bg-card p-6 sm:p-10 md:p-14 shadow-paper flex flex-col justify-between transition-all ${
-                paperMode === "dark"
-                  ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-black/50"
-                  : "bg-white border-stone-200 text-stone-900 shadow-paper"
-              } ${
-                config.fontFamily === "serif"
-                  ? "font-serif"
-                  : config.fontFamily === "mono"
-                    ? "font-mono"
-                    : "font-sans"
-              }`}
-              style={{
-                lineHeight: config.lineSpacing,
-              }}
-            >
-              {/* ================= COVER PAGE PREVIEW ================= */}
-              {previewPage === "cover" && (
-                <div className="flex-1 flex flex-col justify-between py-8 text-center sm:text-left space-y-6">
-                  <div className="space-y-3 pb-6">
-                    {config.institution && config.institution !== "Academic / Professional Department" && (
-                      <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
-                        {config.institution}
-                      </p>
+                    {config.includeToc && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewPage("toc")}
+                        className={`rounded-md px-3 py-1 transition-all ${
+                          previewPage === "toc"
+                            ? "bg-card text-foreground shadow-xs font-semibold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Table of Contents
+                      </button>
                     )}
-                    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-tight text-foreground">
-                      {config.docTitle}
-                    </h1>
-                    {config.docSubtitle && (
-                      <p className="text-base sm:text-lg font-normal italic mt-2 text-muted-foreground">
-                        {config.docSubtitle}
-                      </p>
+
+                    {config.hasCoverPage && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewPage("cover")}
+                        className={`rounded-md px-3 py-1 transition-all ${
+                          previewPage === "cover"
+                            ? "bg-card text-foreground shadow-xs font-semibold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Cover Page
+                      </button>
                     )}
                   </div>
 
-                  <div className="my-8 space-y-3">
-                    <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
-                      Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
-                    </div>
-                  </div>
-
-                  <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
-                    {config.authorName && config.authorName !== "Author / Researcher" && (
-                      <p>
-                        <strong className="text-foreground">Author:</strong> {config.authorName}
-                      </p>
-                    )}
-                    {config.institution && config.institution !== "Academic / Professional Department" && (
-                      <p>
-                        <strong className="text-foreground">Institution:</strong> {config.institution}
-                      </p>
-                    )}
-                    <p>
-                      <strong className="text-foreground">Date:</strong> {config.dateStr}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* ================= TABLE OF CONTENTS PREVIEW ================= */}
-              {previewPage === "toc" && (
-                <div className="flex-1 flex flex-col">
-                  {/* Running Header */}
-                  {config.headerText && (
-                    <div className="flex items-center justify-between text-[11px] pb-2 mb-6 font-sans text-muted-foreground">
-                      <span>{config.headerText}</span>
-                      <span>Preliminary Section</span>
+                  {/* Single Page Stepper Controls */}
+                  {previewPage === "single" && (
+                    <div className="flex items-center gap-1.5 bg-surface-2 border border-border rounded-lg p-1">
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        disabled={activePageNum <= 1}
+                        onClick={() => setActivePageNum((prev) => Math.max(1, prev - 1))}
+                        className="h-7 px-2 text-xs"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5 mr-0.5" /> Prev
+                      </Button>
+                      <select
+                        value={activePageNum}
+                        onChange={(e) => setActivePageNum(Number(e.target.value))}
+                        className="bg-card text-foreground border border-border rounded px-2 py-0.5 text-xs font-mono font-medium focus:outline-hidden"
+                      >
+                        {a4Pages.map((p) => (
+                          <option key={p.pageNumber} value={p.pageNumber}>
+                            Page {p.pageNumber} of {p.totalPages}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        disabled={activePageNum >= a4Pages.length}
+                        onClick={() => setActivePageNum((prev) => Math.min(a4Pages.length, prev + 1))}
+                        className="h-7 px-2 text-xs"
+                      >
+                        Next <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
+                      </Button>
                     </div>
                   )}
 
-                  <h2 className="text-2xl font-bold mb-6 tracking-tight text-foreground">
-                    Table of Contents
-                  </h2>
+                  {/* Layout Archetype Switcher & Paper Mode */}
+                  <div className="flex items-center gap-2">
+                    <span className="hidden md:inline-flex rounded-full bg-surface-2 border border-border px-2.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                      {a4Pages.length} A4 Pages (210 × 297 mm)
+                    </span>
 
-                  <div className="space-y-3 text-sm">
-                    {parseDocumentSections(rawText, config.headingNumbering)
-                      .slice(0, 10)
-                      .map((item, idx) => (
-                        <div
-                          key={idx}
-                          className={`flex items-baseline justify-between ${
-                            item.level > 1
-                              ? "pl-6 text-xs text-muted-foreground"
-                              : "font-semibold text-foreground"
-                          }`}
-                        >
-                          <div className="flex items-baseline gap-2 max-w-[80%] truncate">
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {item.numberStr.trim() || `0${idx + 1}`}
-                            </span>
-                            <span className="text-foreground">
-                              {item.title}
-                            </span>
-                          </div>
-                          {config.tocDotLeaders && (
-                            <div className="flex-1 mx-3 border-b border-dotted border-border/40" />
-                          )}
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {3 + idx}
+                    <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setPaperMode("standard")}
+                        className={`rounded-md px-2.5 py-1 transition-all ${
+                          paperMode === "standard"
+                            ? "bg-card text-foreground shadow-xs font-semibold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        White Paper
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaperMode("dark")}
+                        className={`rounded-md px-2.5 py-1 transition-all ${
+                          paperMode === "dark"
+                            ? "bg-card text-foreground shadow-xs font-semibold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Dark Paper
+                      </button>
+                    </div>
+
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={autoPolishText}
+                      className="text-xs h-7 gap-1 text-primary"
+                      title="Optimize titles, headings, and hierarchy"
+                    >
+                      <Wand2 className="h-3 w-3" /> Auto-Polish
+                    </Button>
+                  </div>
+                </div>
+
+                {/* A4 Pages Canvas Container */}
+                <div className="flex flex-col items-center py-6 bg-surface-2/40 rounded-2xl border border-border p-3 sm:p-6 lg:p-8 overflow-x-auto">
+                  {/* VIEW MODE 1: ALL A4 PAGES STACKED */}
+                  {previewPage === "all" && (
+                    <div className="w-full space-y-8 flex flex-col items-center">
+                      {a4Pages.map((page) => (
+                        <A4PageCard
+                          key={page.pageNumber}
+                          page={page}
+                          config={config}
+                          paperMode={paperMode}
+                          sections={sections}
+                          isDedicatedToc={isDedicatedToc}
+                          onNavigatePage={(p) => setActivePageNum(p)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* VIEW MODE 2: SINGLE PAGE FLIPPER */}
+                  {previewPage === "single" && (
+                    <div className="w-full flex justify-center">
+                      <A4PageCard
+                        page={activePage}
+                        config={config}
+                        paperMode={paperMode}
+                        sections={sections}
+                        isDedicatedToc={isDedicatedToc}
+                        onNavigatePage={(p) => setActivePageNum(p)}
+                      />
+                    </div>
+                  )}
+
+                  {/* VIEW MODE 3: DEDICATED TOC VIEW */}
+                  {previewPage === "toc" && (
+                    <div className="w-full flex justify-center">
+                      <div
+                        className={`w-full max-w-[794px] min-h-[1123px] mx-auto rounded-sm border p-8 sm:p-12 md:p-16 flex flex-col justify-between transition-all ${
+                          paperMode === "dark"
+                            ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-2xl shadow-black/60"
+                            : "bg-white border-stone-200 text-stone-900 shadow-xl"
+                        } ${
+                          config.fontFamily === "serif"
+                            ? "font-serif"
+                            : config.fontFamily === "mono"
+                              ? "font-mono"
+                              : "font-sans"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-4 mb-4 select-none">
+                          <span className="truncate max-w-[70%] font-medium">
+                            {config.headerText || config.docTitle}
+                          </span>
+                          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                            Table of Contents
                           </span>
                         </div>
-                      ))}
-                  </div>
-
-                  <div className="mt-auto pt-6 text-center font-mono text-xs text-muted-foreground">
-                    ii
-                  </div>
-                </div>
-              )}
-
-              {/* ================= BODY & HEADINGS / FULL DOCUMENT PREVIEW ================= */}
-              {(previewPage === "body" || previewPage === "full") && (
-                <div className="flex-1 flex flex-col justify-between">
-                  <div>
-                    {/* Running Header */}
-                    {config.headerText && (
-                      <div className="flex items-center justify-between text-[11px] mb-6 font-sans text-muted-foreground">
-                        <span className="truncate max-w-[60%]">{config.headerText}</span>
-                        <span>
-                          {config.layoutArchetype === "creative"
-                            ? "Production Specification"
-                            : config.layoutArchetype === "tech-spec"
-                              ? "Architecture RFC"
-                              : "Document Workspace"}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Document Header (Clean, modern, NO horizontal lines) */}
-                    <div className="mb-8 space-y-3">
-                      {config.institution &&
-                        config.institution !== "Academic / Professional Department" && (
-                          <div className="mb-2">
-                            <span className="font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-primary/10 text-primary">
-                              {config.institution}
-                            </span>
-                          </div>
-                        )}
-
-                      <h1 className="font-serif text-2xl sm:text-4xl font-bold tracking-tight leading-tight text-foreground">
-                        {config.docTitle}
-                      </h1>
-
-                      {config.docSubtitle &&
-                        config.docSubtitle !== "Executive Analysis and Implementation Report" && (
-                          <p className="text-sm sm:text-base text-muted-foreground font-normal">
-                            {config.docSubtitle}
-                          </p>
-                        )}
-
-                      {/* Clean metadata chip row only if real author or date provided */}
-                      {((config.authorName && config.authorName !== "Author / Researcher") ||
-                        (config.dateStr && config.dateStr !== "October 2026")) && (
-                        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground font-sans">
-                          {config.authorName && config.authorName !== "Author / Researcher" && (
-                            <span className="font-medium text-foreground">By {config.authorName}</span>
-                          )}
-                          {config.dateStr && <span>{config.dateStr}</span>}
+                        <div className="flex-1 space-y-6">
+                          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+                            Table of Contents
+                          </h2>
+                          <TableOfContentsCard
+                            sections={sections}
+                            config={config}
+                            onNavigatePage={(p) => {
+                              setActivePageNum(p);
+                              setPreviewPage("single");
+                            }}
+                          />
                         </div>
-                      )}
+                        <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
+                          <span>DocuMind Studio · A4 Document</span>
+                          <span>ii</span>
+                        </div>
+                      </div>
                     </div>
+                  )}
 
-                    {/* Integrated Table of Contents in Full Document mode */}
-                    {previewPage === "full" && config.includeToc && (
-                      <div className="mb-8 rounded-xl bg-surface-2/40 border border-border/60 p-5 text-sm space-y-2.5">
-                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-2">
-                          Table of Contents
-                        </span>
-                        {parseDocumentSections(rawText, config.headingNumbering).map((sec, idx) => (
-                          <div
-                            key={idx}
-                            className={`flex items-baseline justify-between ${
-                              sec.level > 1
-                                ? "pl-4 text-xs text-muted-foreground"
-                                : "font-semibold text-foreground text-xs sm:text-sm"
-                            }`}
-                          >
-                            <div className="flex items-baseline gap-2">
-                              {sec.numberStr && (
-                                <span className="font-mono text-xs text-primary font-bold">
-                                  {sec.numberStr}
-                                </span>
-                              )}
-                              <span>{sec.title}</span>
+                  {/* VIEW MODE 4: DEDICATED COVER PAGE VIEW */}
+                  {previewPage === "cover" && (
+                    <div className="w-full flex justify-center">
+                      <div
+                        className={`w-full max-w-[794px] min-h-[1123px] mx-auto rounded-sm border p-8 sm:p-12 md:p-16 flex flex-col justify-between transition-all ${
+                          paperMode === "dark"
+                            ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-2xl shadow-black/60"
+                            : "bg-white border-stone-200 text-stone-900 shadow-xl"
+                        } ${
+                          config.fontFamily === "serif"
+                            ? "font-serif"
+                            : config.fontFamily === "mono"
+                              ? "font-mono"
+                              : "font-sans"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-4 mb-4 select-none">
+                          <span className="truncate max-w-[70%] font-medium">
+                            {config.headerText || config.docTitle}
+                          </span>
+                          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                            Cover Page
+                          </span>
+                        </div>
+                        <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">
+                          <div className="space-y-4">
+                            {config.institution && (
+                              <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
+                                {config.institution}
+                              </p>
+                            )}
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight text-foreground">
+                              {config.docTitle}
+                            </h1>
+                            {config.docSubtitle && (
+                              <p className="text-base sm:text-lg font-normal italic text-muted-foreground">
+                                {config.docSubtitle}
+                              </p>
+                            )}
+                          </div>
+                          <div className="my-10">
+                            <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
+                              Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Body content with heading hierarchy and executive editorial blocks */}
-                    <div className="space-y-6">
-                      {parseDocumentSections(rawText, config.headingNumbering).map((sec, sIdx) => (
-                        <div key={sIdx} className="space-y-3">
-                          {sec.level === 1 && (
-                            <div className="pt-4 mb-2">
-                              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-baseline gap-2">
-                                {sec.numberStr && (
-                                  <span className="font-mono text-base text-primary font-bold shrink-0">
-                                    {sec.numberStr}
-                                  </span>
-                                )}
-                                <span>{sec.title}</span>
-                              </h2>
-                            </div>
-                          )}
-                          {sec.level === 2 && (
-                            <div className="pt-3 mb-1">
-                              <h3 className="text-base sm:text-lg font-semibold tracking-tight text-foreground flex items-baseline gap-2">
-                                {sec.numberStr && (
-                                  <span className="font-mono text-xs sm:text-sm text-primary font-semibold shrink-0">
-                                    {sec.numberStr}
-                                  </span>
-                                )}
-                                <span>{sec.title}</span>
-                              </h3>
-                            </div>
-                          )}
-                          {sec.level === 3 && (
-                            <div className="pt-2">
-                              <h4 className="text-xs sm:text-sm font-semibold italic text-foreground/90 flex items-baseline gap-2">
-                                {sec.numberStr && (
-                                  <span className="font-mono text-xs text-muted-foreground shrink-0">
-                                    {sec.numberStr}
-                                  </span>
-                                )}
-                                <span>{sec.title}</span>
-                              </h4>
-                            </div>
-                          )}
-
-                          {/* Render styled blocks if in executive / creative / tech-spec mode */}
-                          {config.layoutArchetype !== "academic" ? (
-                            <div className="space-y-2.5">
-                              {sec.blocks.map((block, bIdx) => (
-                                <div key={bIdx}>
-                                  {block.type === "lead" && (
-                                    <p
-                                      className={`text-sm sm:text-base font-medium leading-relaxed my-2 ${
-                                        paperMode === "dark" ? "text-zinc-100" : "text-stone-900"
-                                      }`}
-                                    >
-                                      {block.content}
-                                    </p>
-                                  )}
-
-                                  {block.type === "callout" && (
-                                    <div
-                                      className={`my-3 rounded-xl border p-4 transition-all ${
-                                        paperMode === "dark"
-                                          ? block.calloutType === "critical"
-                                            ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
-                                            : "border-blue-500/40 bg-blue-500/10 text-blue-100"
-                                          : block.calloutType === "critical"
-                                            ? "border-amber-300 bg-amber-50/90 text-amber-950 shadow-xs"
-                                            : "border-primary/20 bg-primary/5 text-foreground shadow-xs"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2 mb-1.5 font-semibold text-xs uppercase tracking-wider">
-                                        {block.calloutType === "critical" ? (
-                                          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                                        ) : (
-                                          <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
-                                        )}
-                                        <span>{block.calloutTitle || "Requirement Guardrail"}</span>
-                                      </div>
-                                      <p className="text-xs sm:text-sm leading-relaxed">{block.content}</p>
-                                    </div>
-                                  )}
-
-                                  {block.type === "palette" && (
-                                    <div
-                                      className={`my-3 rounded-xl border p-4 ${
-                                        paperMode === "dark"
-                                          ? "border-zinc-800 bg-zinc-900/60"
-                                          : "border-stone-200 bg-stone-50"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
-                                        <Palette className="h-3.5 w-3.5 text-primary" />
-                                        <span>Brand & Design Color Tokens</span>
-                                      </div>
-                                      <div className="flex flex-wrap gap-2.5">
-                                        {block.colors?.map((c, cIdx) => (
-                                          <div
-                                            key={cIdx}
-                                            className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-mono shadow-xs ${
-                                              paperMode === "dark"
-                                                ? "border-zinc-700 bg-zinc-800"
-                                                : "border-stone-200 bg-white"
-                                            }`}
-                                          >
-                                            <span
-                                              className="h-4 w-4 rounded-full border border-black/20 shadow-xs shrink-0"
-                                              style={{ backgroundColor: c.hex }}
-                                            />
-                                            <div className="flex flex-col text-left">
-                                              <span className="font-sans font-semibold text-[11px] leading-tight text-foreground">
-                                                {c.name}
-                                              </span>
-                                              <span className="text-[10px] text-muted-foreground">
-                                                {c.hex}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                      {block.content && (
-                                        <p className="text-xs text-muted-foreground mt-2 italic">
-                                          {block.content}
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {block.type === "scene" && (
-                                    <div
-                                      className={`my-4 rounded-xl border overflow-hidden ${
-                                        paperMode === "dark"
-                                          ? "border-zinc-800 bg-zinc-900/80"
-                                          : "border-stone-200 bg-white shadow-xs"
-                                      }`}
-                                    >
-                                      <div
-                                        className={`flex items-center justify-between px-4 py-2.5 border-b ${
-                                          paperMode === "dark"
-                                            ? "border-zinc-800 bg-zinc-800/50"
-                                            : "border-stone-100 bg-stone-50/80"
-                                        }`}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <span className="rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 font-mono text-[10px] font-bold">
-                                            SCENE {block.sceneMeta?.sceneNumber || "1"}
-                                          </span>
-                                          <span className="font-semibold text-xs sm:text-sm text-foreground">
-                                            {block.sceneMeta?.title || "Storyboard Scene"}
-                                          </span>
-                                        </div>
-                                        {block.sceneMeta?.timestamp && (
-                                          <span className="rounded-full bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground border border-border flex items-center gap-1">
-                                            <Clock className="h-3 w-3 text-primary" />
-                                            <span>{block.sceneMeta.timestamp}</span>
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="p-4 space-y-3 text-xs sm:text-sm">
-                                        {block.sceneMeta?.visual && (
-                                          <div className="flex items-start gap-2.5">
-                                            <span className="mt-0.5 rounded p-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
-                                              <Video className="h-3.5 w-3.5" />
-                                            </span>
-                                            <div>
-                                              <strong className="text-foreground">Visual Cue: </strong>
-                                              <span className="text-muted-foreground">
-                                                {block.sceneMeta.visual}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {block.sceneMeta?.audio && (
-                                          <div className="flex items-start gap-2.5">
-                                            <span className="mt-0.5 rounded p-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
-                                              <Volume2 className="h-3.5 w-3.5" />
-                                            </span>
-                                            <div>
-                                              <strong className="text-foreground">Audio / Voiceover: </strong>
-                                              <span className="italic text-muted-foreground">
-                                                "{block.sceneMeta.audio}"
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {block.sceneMeta?.textOverlay && (
-                                          <div className="flex items-start gap-2.5">
-                                            <span className="mt-0.5 rounded p-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
-                                              <Type className="h-3.5 w-3.5" />
-                                            </span>
-                                            <div>
-                                              <strong className="text-foreground">On-Screen Text: </strong>
-                                              <span className="font-mono text-xs text-muted-foreground">
-                                                {block.sceneMeta.textOverlay}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {block.type === "parameter" && (
-                                    <div
-                                      className={`my-1.5 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs shadow-xs ${
-                                        paperMode === "dark"
-                                          ? "border-zinc-800 bg-zinc-800/60"
-                                          : "border-stone-200 bg-stone-50"
-                                      }`}
-                                    >
-                                      <span className="font-semibold text-primary">{block.key}:</span>
-                                      <span className="text-foreground">{block.value}</span>
-                                    </div>
-                                  )}
-
-                                  {block.type === "list" && (
-                                    <ul className="my-2.5 space-y-1.5 pl-2">
-                                      {block.listItems?.map((li, lIdx) => (
-                                        <li key={lIdx} className="flex items-start gap-2 text-xs sm:text-sm">
-                                          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                                          <span className="leading-relaxed text-foreground">{li}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-
-                                  {block.type === "paragraph" && (
-                                    <p
-                                      className={`text-sm leading-relaxed text-justify ${
-                                        paperMode === "dark" ? "text-zinc-200" : "text-stone-800"
-                                      }`}
-                                    >
-                                      {renderRichInline(block.content)}
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            /* Academic manuscript mode: formatted standard paragraphs */
-                            <div className="space-y-3">
-                              {sec.paragraphs.map((p, pIdx) => (
-                                <p
-                                  key={pIdx}
-                                  className={`text-sm leading-relaxed text-justify ${
-                                    paperMode === "dark" ? "text-zinc-200" : "text-stone-800"
-                                  }`}
-                                >
-                                  {renderRichInline(p)}
-                                </p>
-                              ))}
-                            </div>
-                          )}
+                          <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
+                            {config.authorName && (
+                              <p>
+                                <strong className="text-foreground">Author:</strong> {config.authorName}
+                              </p>
+                            )}
+                            {config.institution && (
+                              <p>
+                                <strong className="text-foreground">Institution:</strong>{" "}
+                                {config.institution}
+                              </p>
+                            )}
+                            <p>
+                              <strong className="text-foreground">Date:</strong> {config.dateStr}
+                            </p>
+                          </div>
                         </div>
-                      ))}
+                        <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
+                          <span>DocuMind Studio · A4 Document</span>
+                          <span>Cover</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Document Footer (Clean, no horizontal line) */}
-                  <div
-                    className={`mt-10 pt-4 font-mono text-xs flex items-center justify-between ${
-                      paperMode === "dark" ? "text-zinc-400" : "text-stone-500"
-                    }`}
-                  >
-                    <span>DocuMind Studio · Formatted Document</span>
-                    <span>
-                      {config.pageNumberFormat === "page-x-of-y" ? "Continuous Reading View" : "1"}
-                    </span>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            );
+          })()}
 
           {/* Export Action Card */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-paper flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -2475,15 +2516,18 @@ export function DocumentFormattingWorkflow({
                 Ready to download your formatted document?
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Export directly to editable Word (.doc) with full styling tokens or invoke print-to-PDF with clean vector typography.
+                Export directly to editable Word (.doc) or invoke print-to-PDF with clean vector A4 typography.
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <Button variant="glass" onClick={handlePrintPreview} className="gap-1.5 text-xs">
+                <Printer className="h-3.5 w-3.5" /> Print / Save PDF
+              </Button>
               <Button variant="glass" onClick={handleCopyFormattedText} className="gap-1.5 text-xs">
                 <Copy className="h-3.5 w-3.5" /> Copy Text
               </Button>
               <Button variant="hero" onClick={handleExportDocx} className="gap-2 text-xs">
-                <Download className="h-4 w-4" /> Download Editable Document
+                <Download className="h-4 w-4" /> Download Editable (.DOC)
               </Button>
             </div>
           </div>
@@ -2494,7 +2538,548 @@ export function DocumentFormattingWorkflow({
 }
 
 /**
- * Generates clean, standalone styled HTML document suitable for Word or Print-to-PDF
+ * Table of Contents Card with Dot Leaders and exact Page Numbers
+ */
+function TableOfContentsCard({
+  sections,
+  config,
+  onNavigatePage,
+}: {
+  sections: DocSection[];
+  config: FormattingConfig;
+  onNavigatePage?: (pageNum: number) => void;
+}) {
+  const tocSections = sections.filter((s) => Boolean(s.title));
+  if (tocSections.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-surface-2/40 p-5 sm:p-6 space-y-3.5 shadow-xs">
+      <div className="flex items-center justify-between pb-2 border-b border-border/50">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+          <span>Table of Contents</span>
+          <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">
+            {tocSections.length} Topics
+          </span>
+        </h3>
+        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+          Page
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {tocSections.map((sec, idx) => (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => {
+              if (onNavigatePage && sec.pageNumber) {
+                onNavigatePage(sec.pageNumber);
+              }
+              const el =
+                document.getElementById(`sec-${idx}`) ||
+                document.getElementById(`page-${sec.pageNumber}`);
+              el?.scrollIntoView({ behavior: "smooth" });
+            }}
+            className={`w-full group flex items-baseline justify-between text-left transition-colors hover:text-primary ${
+              sec.level > 1
+                ? "pl-4 text-xs text-muted-foreground hover:text-foreground"
+                : "font-semibold text-foreground text-xs sm:text-sm"
+            }`}
+          >
+            <span className="truncate max-w-[75%] group-hover:underline">
+              {sec.numberStr && (
+                <span className="font-mono text-primary font-bold mr-1.5">{sec.numberStr}</span>
+              )}
+              <span>{sec.title}</span>
+            </span>
+            {config.tocDotLeaders && (
+              <span className="flex-1 mx-3 border-b border-dotted border-border/60 group-hover:border-primary/50" />
+            )}
+            <span className="font-mono text-xs font-semibold text-primary shrink-0">
+              Page {sec.pageNumber || 1}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Individual A4 Sheet Component
+ */
+function A4PageCard({
+  page,
+  config,
+  paperMode,
+  sections,
+  isDedicatedToc,
+  onNavigatePage,
+}: {
+  page: DocA4Page;
+  config: FormattingConfig;
+  paperMode: "standard" | "dark";
+  sections: DocSection[];
+  isDedicatedToc: boolean;
+  onNavigatePage?: (pageNum: number) => void;
+}) {
+  return (
+    <div
+      id={`page-${page.pageNumber}`}
+      className={`w-full max-w-[794px] min-h-[1123px] mx-auto rounded-sm border p-8 sm:p-12 md:p-16 flex flex-col justify-between transition-all ${
+        paperMode === "dark"
+          ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-2xl shadow-black/60"
+          : "bg-white border-stone-200 text-stone-900 shadow-xl"
+      } ${
+        config.fontFamily === "serif"
+          ? "font-serif"
+          : config.fontFamily === "mono"
+            ? "font-mono"
+            : "font-sans"
+      }`}
+      style={{ lineHeight: config.lineSpacing }}
+    >
+      {/* Running Page Top Header */}
+      <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-4 mb-4 select-none">
+        <span className="truncate max-w-[70%] font-medium">
+          {config.headerText || config.docTitle || "Document"}
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+          {page.isCover ? "Cover Page" : page.isToc ? "Table of Contents" : `A4 Page ${page.pageNumber}`}
+        </span>
+      </div>
+
+      {/* Page Content Body */}
+      <div className="flex-1 space-y-4">
+        {/* Cover Page */}
+        {page.isCover && (
+          <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">
+            <div className="space-y-4">
+              {config.institution && (
+                <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
+                  {config.institution}
+                </p>
+              )}
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight text-foreground">
+                {config.docTitle}
+              </h1>
+              {config.docSubtitle && (
+                <p className="text-base sm:text-lg font-normal italic text-muted-foreground">
+                  {config.docSubtitle}
+                </p>
+              )}
+            </div>
+            <div className="my-10">
+              <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
+                Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
+              </div>
+            </div>
+            <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
+              {config.authorName && (
+                <p>
+                  <strong className="text-foreground">Author:</strong> {config.authorName}
+                </p>
+              )}
+              {config.institution && (
+                <p>
+                  <strong className="text-foreground">Institution:</strong>{" "}
+                  {config.institution}
+                </p>
+              )}
+              <p>
+                <strong className="text-foreground">Date:</strong> {config.dateStr}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Dedicated Table of Contents Page */}
+        {page.isToc && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">
+              Table of Contents
+            </h2>
+            <TableOfContentsCard
+              sections={sections}
+              config={config}
+              onNavigatePage={onNavigatePage}
+            />
+          </div>
+        )}
+
+        {/* Regular Content Page */}
+        {!page.isCover && !page.isToc && (
+          <div className="space-y-6">
+            {/* If Page 1 (or Page 2 after Cover), render Document Header */}
+            {page.pageNumber === (config.hasCoverPage ? 2 : 1) && !page.isToc && (
+              <div className="mb-8 space-y-3">
+                {config.institution && (
+                  <div className="mb-2">
+                    <span className="font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-primary/10 text-primary">
+                      {config.institution}
+                    </span>
+                  </div>
+                )}
+                <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight leading-tight text-foreground">
+                  {config.docTitle}
+                </h1>
+                {config.docSubtitle && (
+                  <p className="text-sm sm:text-base text-muted-foreground font-normal">
+                    {config.docSubtitle}
+                  </p>
+                )}
+                {(config.authorName || config.dateStr) && (
+                  <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground font-sans">
+                    {config.authorName && (
+                      <span className="font-medium text-foreground">By {config.authorName}</span>
+                    )}
+                    {config.dateStr && <span>{config.dateStr}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Embedded Table of Contents on first content page when not dedicated */}
+            {page.pageNumber === (config.hasCoverPage ? 2 : 1) &&
+              config.includeToc &&
+              !isDedicatedToc && (
+                <div className="mb-8">
+                  <TableOfContentsCard
+                    sections={sections}
+                    config={config}
+                    onNavigatePage={onNavigatePage}
+                  />
+                </div>
+              )}
+
+            {/* Section items on this page */}
+            <div className="space-y-6">
+              {page.sections.map((secItem, sIdx) => (
+                <div
+                  key={sIdx}
+                  id={secItem.renderHeading ? `sec-${secItem.sectionIndex}` : undefined}
+                  className="space-y-3"
+                >
+                  {secItem.renderHeading && secItem.title && (
+                    <div>
+                      {secItem.level === 1 && (
+                        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-baseline gap-2 pt-3 mb-2">
+                          {secItem.numberStr && (
+                            <span className="font-mono text-base text-primary font-bold shrink-0">
+                              {secItem.numberStr}
+                            </span>
+                          )}
+                          <span>{secItem.title}</span>
+                        </h2>
+                      )}
+                      {secItem.level === 2 && (
+                        <h3 className="text-base sm:text-lg font-semibold tracking-tight text-foreground flex items-baseline gap-2 pt-2 mb-1">
+                          {secItem.numberStr && (
+                            <span className="font-mono text-xs sm:text-sm text-primary font-semibold shrink-0">
+                              {secItem.numberStr}
+                            </span>
+                          )}
+                          <span>{secItem.title}</span>
+                        </h3>
+                      )}
+                      {secItem.level === 3 && (
+                        <h4 className="text-xs sm:text-sm font-semibold italic text-foreground/90 flex items-baseline gap-2 pt-1">
+                          {secItem.numberStr && (
+                            <span className="font-mono text-xs text-muted-foreground shrink-0">
+                              {secItem.numberStr}
+                            </span>
+                          )}
+                          <span>{secItem.title}</span>
+                        </h4>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Section Blocks */}
+                  <div className="space-y-2.5">
+                    {secItem.blocks.map((block, bIdx) =>
+                      renderDocBlock(block, bIdx, paperMode, config.lineSpacing),
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Running Page Bottom Footer */}
+      <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
+        <span>DocuMind Studio · A4 Document</span>
+        <span>
+          {config.pageNumberFormat === "page-x-of-y"
+            ? `Page ${page.pageNumber} of ${page.totalPages}`
+            : `${page.pageNumber}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Renders an individual document block faithfully preserving original content
+ */
+function renderDocBlock(
+  block: DocBlock,
+  bIdx: number,
+  paperMode: "standard" | "dark",
+  lineSpacing: string,
+) {
+  if (block.type === "lead") {
+    return (
+      <p
+        key={bIdx}
+        className={`text-sm sm:text-base font-medium leading-relaxed my-2 ${
+          paperMode === "dark" ? "text-zinc-100" : "text-stone-900"
+        }`}
+      >
+        {renderRichInline(block.content)}
+      </p>
+    );
+  }
+
+  if (block.type === "table" && block.tableData) {
+    return (
+      <div key={bIdx} className="my-4 overflow-x-auto rounded-lg border border-border/80 shadow-xs">
+        <table className="w-full text-left text-xs sm:text-sm border-collapse">
+          {block.tableData.headers && block.tableData.headers.length > 0 && (
+            <thead className="bg-surface-2/70 font-semibold text-foreground border-b border-border">
+              <tr>
+                {block.tableData.headers.map((h, i) => (
+                  <th key={i} className="px-3.5 py-2.5 font-semibold text-foreground">
+                    {renderRichInline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody className="divide-y divide-border/40">
+            {block.tableData.rows.map((row, rIdx) => (
+              <tr key={rIdx} className={rIdx % 2 === 1 ? "bg-surface-2/20" : "bg-card"}>
+                {row.map((cell, cIdx) => (
+                  <td key={cIdx} className="px-3.5 py-2 text-foreground/90 align-top">
+                    {renderRichInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (block.type === "image" && block.imageUrl) {
+    return (
+      <figure key={bIdx} className="my-4 text-center">
+        <img
+          src={block.imageUrl}
+          alt={block.imageAlt || "Document Image"}
+          className="mx-auto max-h-72 max-w-full rounded-lg object-contain shadow-xs border border-border/40"
+          loading="lazy"
+          onError={(e) => {
+            (e.currentTarget as HTMLElement).style.display = "none";
+          }}
+        />
+        {block.imageAlt && (
+          <figcaption className="text-[11px] text-muted-foreground mt-1.5 italic">
+            {block.imageAlt}
+          </figcaption>
+        )}
+      </figure>
+    );
+  }
+
+  if (block.type === "callout") {
+    return (
+      <div
+        key={bIdx}
+        className={`my-3 rounded-xl border p-4 transition-all ${
+          paperMode === "dark"
+            ? block.calloutType === "critical"
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+              : "border-blue-500/40 bg-blue-500/10 text-blue-100"
+            : block.calloutType === "critical"
+              ? "border-amber-300 bg-amber-50/90 text-amber-950 shadow-xs"
+              : "border-primary/20 bg-primary/5 text-foreground shadow-xs"
+        }`}
+      >
+        <div className="flex items-center gap-2 mb-1.5 font-semibold text-xs uppercase tracking-wider">
+          {block.calloutType === "critical" ? (
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          ) : (
+            <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
+          )}
+          <span>{block.calloutTitle || "Note"}</span>
+        </div>
+        <p className="text-xs sm:text-sm leading-relaxed">{renderRichInline(block.content)}</p>
+      </div>
+    );
+  }
+
+  if (block.type === "palette") {
+    return (
+      <div
+        key={bIdx}
+        className={`my-3 rounded-xl border p-4 ${
+          paperMode === "dark"
+            ? "border-zinc-800 bg-zinc-900/60"
+            : "border-stone-200 bg-stone-50"
+        }`}
+      >
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
+          <Palette className="h-3.5 w-3.5 text-primary" />
+          <span>Brand & Design Color Tokens</span>
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          {block.colors?.map((c, cIdx) => (
+            <div
+              key={cIdx}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-mono shadow-xs ${
+                paperMode === "dark"
+                  ? "border-zinc-700 bg-zinc-800"
+                  : "border-stone-200 bg-white"
+              }`}
+            >
+              <span
+                className="h-4 w-4 rounded-full border border-black/20 shadow-xs shrink-0"
+                style={{ backgroundColor: c.hex }}
+              />
+              <div className="flex flex-col text-left">
+                <span className="font-sans font-semibold text-[11px] leading-tight text-foreground">
+                  {c.name}
+                </span>
+                <span className="text-[10px] text-muted-foreground">{c.hex}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "scene") {
+    return (
+      <div
+        key={bIdx}
+        className={`my-4 rounded-xl border overflow-hidden ${
+          paperMode === "dark"
+            ? "border-zinc-800 bg-zinc-900/80"
+            : "border-stone-200 bg-white shadow-xs"
+        }`}
+      >
+        <div
+          className={`flex items-center justify-between px-4 py-2.5 border-b ${
+            paperMode === "dark"
+              ? "border-zinc-800 bg-zinc-800/50"
+              : "border-stone-100 bg-stone-50/80"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 font-mono text-[10px] font-bold">
+              SCENE {block.sceneMeta?.sceneNumber || "1"}
+            </span>
+            <span className="font-semibold text-xs sm:text-sm text-foreground">
+              {block.sceneMeta?.title || "Storyboard Scene"}
+            </span>
+          </div>
+          {block.sceneMeta?.timestamp && (
+            <span className="rounded-full bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground border border-border flex items-center gap-1">
+              <Clock className="h-3 w-3 text-primary" />
+              <span>{block.sceneMeta.timestamp}</span>
+            </span>
+          )}
+        </div>
+        <div className="p-4 space-y-3 text-xs sm:text-sm">
+          {block.sceneMeta?.visual && (
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 rounded p-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+                <Video className="h-3.5 w-3.5" />
+              </span>
+              <div>
+                <strong className="text-foreground">Visual Cue: </strong>
+                <span className="text-muted-foreground">{block.sceneMeta.visual}</span>
+              </div>
+            </div>
+          )}
+          {block.sceneMeta?.audio && (
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 rounded p-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                <Volume2 className="h-3.5 w-3.5" />
+              </span>
+              <div>
+                <strong className="text-foreground">Audio / Voiceover: </strong>
+                <span className="italic text-muted-foreground">"{block.sceneMeta.audio}"</span>
+              </div>
+            </div>
+          )}
+          {block.sceneMeta?.textOverlay && (
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 rounded p-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                <Type className="h-3.5 w-3.5" />
+              </span>
+              <div>
+                <strong className="text-foreground">On-Screen Text: </strong>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {block.sceneMeta.textOverlay}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "parameter") {
+    return (
+      <div
+        key={bIdx}
+        className={`my-1.5 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs shadow-xs ${
+          paperMode === "dark"
+            ? "border-zinc-800 bg-zinc-800/60"
+            : "border-stone-200 bg-stone-50"
+        }`}
+      >
+        <span className="font-semibold text-primary">{block.key}:</span>
+        <span className="text-foreground">{block.value}</span>
+      </div>
+    );
+  }
+
+  if (block.type === "list") {
+    return (
+      <ul key={bIdx} className="my-2.5 space-y-1.5 pl-2">
+        {block.listItems?.map((li, lIdx) => (
+          <li key={lIdx} className="flex items-start gap-2 text-xs sm:text-sm">
+            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+            <span className="leading-relaxed text-foreground">{renderRichInline(li)}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <p
+      key={bIdx}
+      className={`text-sm leading-relaxed text-justify ${
+        paperMode === "dark" ? "text-zinc-200" : "text-stone-800"
+      }`}
+      style={{ lineHeight }}
+    >
+      {renderRichInline(block.content)}
+    </p>
+  );
+}
+
+/**
+ * Generates clean, standalone styled HTML document suitable for Word or Print-to-PDF with A4 pagination
  */
 function generateFormattedHtml(rawText: string, config: FormattingConfig): string {
   const fontCss =
@@ -2505,80 +3090,173 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
         : "'Manrope', 'Helvetica Neue', sans-serif";
 
   const sections = parseDocumentSections(rawText, config.headingNumbering);
+  const a4Pages = paginateSectionsIntoA4Pages(sections, config);
+  const isDedicatedToc =
+    config.includeToc && (config.hasCoverPage || sections.filter((s) => Boolean(s.title)).length > 6);
 
-  const bodyHtml = sections
-    .map((sec) => {
-      let secHtml = "";
-      if (sec.level === 1) {
-        secHtml += `<h1 style="font-size: 1.6rem; font-weight: bold; margin-top: 2rem; margin-bottom: 0.8rem; color: #0f172a;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h1>`;
-      } else if (sec.level === 2) {
-        secHtml += `<h2 style="font-size: 1.25rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.6rem; color: #1e293b;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h2>`;
-      } else {
-        secHtml += `<h3 style="font-size: 1.05rem; font-style: italic; margin-top: 1.2rem; margin-bottom: 0.4rem; color: #334155;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h3>`;
-      }
+  // Generate TOC HTML
+  let tocHtml = "";
+  if (config.includeToc) {
+    const tocItems = sections.filter((s) => Boolean(s.title));
+    tocHtml = `<div style="margin: 20px 0; padding: 18px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <div style="font-weight: bold; font-size: 11pt; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; margin-bottom: 12px; display: flex; justify-content: space-between;">
+        <span>Table of Contents</span>
+        <span style="font-size: 9pt; color: #64748b;">Page</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${tocItems
+          .map(
+            (sec) => `
+          <div style="display: flex; align-items: baseline; justify-content: space-between; font-size: 10pt;">
+            <span style="font-weight: ${sec.level === 1 ? '600' : '400'}; color: #1e293b; padding-left: ${sec.level > 1 ? '16px' : '0'};">
+              ${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}
+            </span>
+            <span style="flex: 1; margin: 0 10px; border-bottom: 1px dotted #cbd5e1;"></span>
+            <span style="font-family: monospace; font-size: 9pt; font-weight: bold; color: #0284c7;">
+              Page ${sec.pageNumber || 1}
+            </span>
+          </div>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+  }
 
-      if (config.layoutArchetype === "academic") {
-        for (const p of sec.paragraphs) {
-          secHtml += `<p style="margin-bottom: 0.9rem; text-indent: 1.5em; text-align: justify; line-height: ${config.lineSpacing};">${escapeHtml(p)}</p>`;
-        }
+  // Generate HTML for each A4 page
+  const pagesHtml = a4Pages
+    .map((page) => {
+      let content = "";
+
+      if (page.isCover) {
+        content = `<div style="min-height: 230mm; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10pt; color: #0284c7; font-weight: bold;">${escapeHtml(config.institution)}</p>` : ""}
+            <h1 style="font-size: 2.4rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #0f172a;">${escapeHtml(config.docTitle)}</h1>
+            ${config.docSubtitle ? `<p style="font-size: 1.2rem; color: #64748b; font-style: italic; margin-bottom: 2rem;">${escapeHtml(config.docSubtitle)}</p>` : ""}
+          </div>
+          <div style="margin: 2rem 0; padding: 10px 16px; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 6px; font-family: monospace; font-size: 9pt; color: #64748b; display: inline-block;">
+            Standardized Format Blueprint · ${escapeHtml(config.coverStyle.toUpperCase())} SPEC
+          </div>
+          <div style="font-size: 9.5pt; color: #475569; line-height: 1.6;">
+            ${config.authorName ? `<p><strong>Author:</strong> ${escapeHtml(config.authorName)}</p>` : ""}
+            ${config.institution ? `<p><strong>Institution:</strong> ${escapeHtml(config.institution)}</p>` : ""}
+            <p><strong>Date:</strong> ${escapeHtml(config.dateStr)}</p>
+          </div>
+        </div>`;
+      } else if (page.isToc) {
+        content = `<div style="min-height: 230mm;">
+          <h2 style="font-size: 1.8rem; font-weight: bold; color: #0f172a; margin-bottom: 1.5rem;">Table of Contents</h2>
+          ${tocHtml}
+        </div>`;
       } else {
-        for (const block of sec.blocks) {
-          if (block.type === "lead") {
-            secHtml += `<p style="font-size: 1.15rem; font-weight: 500; line-height: 1.6; margin-bottom: 0.9rem; color: #0f172a;">${escapeHtml(block.content)}</p>`;
-          } else if (block.type === "callout") {
-            const isCrit = block.calloutType === "critical";
-            const borderCol = isCrit ? "#f59e0b" : "#0284c7";
-            const bgCol = isCrit ? "#fffbeb" : "#f0f9ff";
-            const titleCol = isCrit ? "#b45309" : "#0369a1";
-            secHtml += `<div style="margin: 14px 0; padding: 12px 16px; border-left: 4px solid ${borderCol}; background-color: ${bgCol}; border-radius: 6px;">
-              <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: ${titleCol}; margin-bottom: 4px;">
-                ${escapeHtml(block.calloutTitle || "Requirement Guardrail")}
-              </div>
-              <p style="margin: 0; font-size: 10.5pt; line-height: 1.5; color: #1e293b;">${escapeHtml(block.content)}</p>
-            </div>`;
-          } else if (block.type === "palette") {
-            secHtml += `<div style="margin: 14px 0; padding: 12px 16px; border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px;">
-              <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #64748b; letter-spacing: 1px; margin-bottom: 8px;">
-                Brand & Design Color Tokens
-              </div>
-              <div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
-            for (const c of block.colors || []) {
-              secHtml += `<div style="display: inline-flex; align-items: center; border: 1px solid #cbd5e1; background: #fff; padding: 4px 10px; border-radius: 6px; font-size: 9pt; margin-right: 6px; margin-bottom: 6px;">
-                <span style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background-color: ${c.hex}; border: 1px solid rgba(0,0,0,0.2); margin-right: 6px;"></span>
-                <span><strong>${escapeHtml(c.name)}</strong> <span style="color: #64748b; font-family: monospace;">(${c.hex})</span></span>
-              </div>`;
-            }
-            secHtml += `</div>
-              ${block.content ? `<p style="margin: 8px 0 0 0; font-size: 9.5pt; color: #64748b; font-style: italic;">${escapeHtml(block.content)}</p>` : ""}
-            </div>`;
-          } else if (block.type === "scene") {
-            secHtml += `<div style="margin: 16px 0; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background-color: #fff;">
-              <div style="background-color: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11pt; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between;">
-                <span>SCENE ${escapeHtml(block.sceneMeta?.sceneNumber || "1")}: ${escapeHtml(block.sceneMeta?.title || "Storyboard Scene")}</span>
-                ${block.sceneMeta?.timestamp ? `<span style="font-size: 9pt; color: #64748b; font-family: monospace;">⏱ ${escapeHtml(block.sceneMeta.timestamp)}</span>` : ""}
-              </div>
-              <div style="padding: 12px; font-size: 10.5pt; line-height: 1.5;">
-                ${block.sceneMeta?.visual ? `<div style="margin-bottom: 6px;"><strong style="color: #0284c7;">Visual:</strong> ${escapeHtml(block.sceneMeta.visual)}</div>` : ""}
-                ${block.sceneMeta?.audio ? `<div style="margin-bottom: 6px;"><strong style="color: #d97706;">Audio:</strong> <span style="font-style: italic;">"${escapeHtml(block.sceneMeta.audio)}"</span></div>` : ""}
-                ${block.sceneMeta?.textOverlay ? `<div><strong style="color: #059669;">On-Screen Text:</strong> <span style="font-family: monospace;">${escapeHtml(block.sceneMeta.textOverlay)}</span></div>` : ""}
-              </div>
-            </div>`;
-          } else if (block.type === "parameter") {
-            secHtml += `<div style="display: inline-block; margin: 4px 6px 4px 0; padding: 4px 10px; background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 9.5pt;">
-              <strong style="color: #0284c7;">${escapeHtml(block.key)}:</strong> ${escapeHtml(block.value)}
-            </div>`;
-          } else if (block.type === "list") {
-            secHtml += `<ul style="margin: 8px 0; padding-left: 20px;">`;
-            for (const item of block.listItems || []) {
-              secHtml += `<li style="margin-bottom: 4px; line-height: 1.5;">${escapeHtml(item)}</li>`;
-            }
-            secHtml += `</ul>`;
-          } else {
-            secHtml += `<p style="margin-bottom: 0.9rem; text-align: justify; line-height: ${config.lineSpacing};">${escapeHtml(block.content)}</p>`;
+        let bodyInner = "";
+
+        if (page.pageNumber === (config.hasCoverPage ? 2 : 1) && !page.isToc) {
+          bodyInner += `<div style="margin-bottom: 2rem;">
+            ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 1px; font-size: 9.5pt; color: #0284c7; font-weight: bold; margin-bottom: 6px;">${escapeHtml(config.institution)}</p>` : ""}
+            <h1 style="font-size: 2rem; font-weight: bold; color: #0f172a; margin-bottom: 0.5rem;">${escapeHtml(config.docTitle)}</h1>
+            ${config.docSubtitle ? `<p style="font-size: 1.1rem; color: #64748b; font-style: italic; margin-bottom: 0.8rem;">${escapeHtml(config.docSubtitle)}</p>` : ""}
+            ${config.authorName || config.dateStr ? `<p style="font-size: 9pt; color: #64748b; margin-top: 4px;">${config.authorName ? `By ${escapeHtml(config.authorName)} · ` : ""}${escapeHtml(config.dateStr)}</p>` : ""}
+          </div>`;
+
+          if (config.includeToc && !isDedicatedToc) {
+            bodyInner += tocHtml;
           }
         }
+
+        for (const sec of page.sections) {
+          if (sec.renderHeading && sec.title) {
+            if (sec.level === 1) {
+              bodyInner += `<h2 style="font-size: 1.45rem; font-weight: bold; margin-top: 1.8rem; margin-bottom: 0.6rem; color: #0f172a;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h2>`;
+            } else if (sec.level === 2) {
+              bodyInner += `<h3 style="font-size: 1.2rem; font-weight: 600; margin-top: 1.4rem; margin-bottom: 0.5rem; color: #1e293b;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h3>`;
+            } else {
+              bodyInner += `<h4 style="font-size: 1.05rem; font-style: italic; margin-top: 1.1rem; margin-bottom: 0.4rem; color: #334155;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h4>`;
+            }
+          }
+
+          for (const block of sec.blocks) {
+            if (block.type === "lead") {
+              bodyInner += `<p style="font-size: 1.1rem; font-weight: 500; line-height: 1.6; margin-bottom: 0.9rem; color: #0f172a;">${escapeHtml(block.content)}</p>`;
+            } else if (block.type === "table" && block.tableData) {
+              bodyInner += `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt;">
+                ${block.tableData.headers ? `<thead><tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1;">${block.tableData.headers.map((h) => `<th style="padding: 8px 12px; text-align: left; font-weight: bold; color: #0f172a;">${escapeHtml(h)}</th>`).join("")}</tr></thead>` : ""}
+                <tbody>
+                  ${block.tableData.rows.map((row, rIdx) => `<tr style="${rIdx % 2 === 1 ? 'background-color: #f8fafc;' : ''} border-bottom: 1px solid #e2e8f0;">${row.map((cell) => `<td style="padding: 8px 12px; vertical-align: top; color: #1e293b;">${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}
+                </tbody>
+              </table>`;
+            } else if (block.type === "image" && block.imageUrl) {
+              bodyInner += `<figure style="margin: 16px 0; text-align: center;">
+                <img src="${escapeHtml(block.imageUrl)}" alt="${escapeHtml(block.imageAlt || '')}" style="max-height: 280px; max-width: 100%; border-radius: 6px; border: 1px solid #e2e8f0;" />
+                ${block.imageAlt ? `<figcaption style="font-size: 9pt; color: #64748b; font-style: italic; margin-top: 6px;">${escapeHtml(block.imageAlt)}</figcaption>` : ""}
+              </figure>`;
+            } else if (block.type === "callout") {
+              const isCrit = block.calloutType === "critical";
+              const borderCol = isCrit ? "#f59e0b" : "#0284c7";
+              const bgCol = isCrit ? "#fffbeb" : "#f0f9ff";
+              const titleCol = isCrit ? "#b45309" : "#0369a1";
+              bodyInner += `<div style="margin: 14px 0; padding: 12px 16px; border-left: 4px solid ${borderCol}; background-color: ${bgCol}; border-radius: 6px;">
+                <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: ${titleCol}; margin-bottom: 4px;">
+                  ${escapeHtml(block.calloutTitle || "Note")}
+                </div>
+                <p style="margin: 0; font-size: 10.5pt; line-height: 1.5; color: #1e293b;">${escapeHtml(block.content)}</p>
+              </div>`;
+            } else if (block.type === "palette") {
+              bodyInner += `<div style="margin: 14px 0; padding: 12px 16px; border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px;">
+                <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #64748b; letter-spacing: 1px; margin-bottom: 8px;">
+                  Brand & Design Color Tokens
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
+              for (const c of block.colors || []) {
+                bodyInner += `<div style="display: inline-flex; align-items: center; border: 1px solid #cbd5e1; background: #fff; padding: 4px 10px; border-radius: 6px; font-size: 9pt; margin-right: 6px; margin-bottom: 6px;">
+                  <span style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background-color: ${c.hex}; border: 1px solid rgba(0,0,0,0.2); margin-right: 6px;"></span>
+                  <span><strong>${escapeHtml(c.name)}</strong> <span style="color: #64748b; font-family: monospace;">(${c.hex})</span></span>
+                </div>`;
+              }
+              bodyInner += `</div></div>`;
+            } else if (block.type === "scene") {
+              bodyInner += `<div style="margin: 16px 0; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background-color: #fff;">
+                <div style="background-color: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11pt; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between;">
+                  <span>SCENE ${escapeHtml(block.sceneMeta?.sceneNumber || "1")}: ${escapeHtml(block.sceneMeta?.title || "Storyboard Scene")}</span>
+                  ${block.sceneMeta?.timestamp ? `<span style="font-size: 9pt; color: #64748b; font-family: monospace;">⏱ ${escapeHtml(block.sceneMeta.timestamp)}</span>` : ""}
+                </div>
+                <div style="padding: 12px; font-size: 10.5pt; line-height: 1.5;">
+                  ${block.sceneMeta?.visual ? `<div style="margin-bottom: 6px;"><strong style="color: #0284c7;">Visual:</strong> ${escapeHtml(block.sceneMeta.visual)}</div>` : ""}
+                  ${block.sceneMeta?.audio ? `<div style="margin-bottom: 6px;"><strong style="color: #d97706;">Audio:</strong> <span style="font-style: italic;">"${escapeHtml(block.sceneMeta.audio)}"</span></div>` : ""}
+                  ${block.sceneMeta?.textOverlay ? `<div><strong style="color: #059669;">On-Screen Text:</strong> <span style="font-family: monospace;">${escapeHtml(block.sceneMeta.textOverlay)}</span></div>` : ""}
+                </div>
+              </div>`;
+            } else if (block.type === "parameter") {
+              bodyInner += `<div style="display: inline-block; margin: 4px 6px 4px 0; padding: 4px 10px; background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 9.5pt;">
+                <strong style="color: #0284c7;">${escapeHtml(block.key || '')}:</strong> ${escapeHtml(block.value || '')}
+              </div>`;
+            } else if (block.type === "list") {
+              bodyInner += `<ul style="margin: 8px 0; padding-left: 20px;">`;
+              for (const item of block.listItems || []) {
+                bodyInner += `<li style="margin-bottom: 4px; line-height: 1.5;">${escapeHtml(item)}</li>`;
+              }
+              bodyInner += `</ul>`;
+            } else {
+              bodyInner += `<p style="margin-bottom: 0.9rem; text-align: justify; line-height: ${config.lineSpacing};">${escapeHtml(block.content)}</p>`;
+            }
+          }
+        }
+        content = bodyInner;
       }
-      return secHtml;
+
+      return `<div class="a4-sheet" style="width: 210mm; min-height: 297mm; padding: 20mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always;">
+        <div style="font-size: 9pt; color: #94a3b8; display: flex; justify-content: space-between; padding-bottom: 12px; margin-bottom: 16px;">
+          <span>${escapeHtml(config.headerText || config.docTitle || "Document")}</span>
+          <span style="font-family: monospace;">A4 Page ${page.pageNumber}</span>
+        </div>
+        <div style="flex: 1;">
+          ${content}
+        </div>
+        <div style="font-size: 9pt; font-family: monospace; color: #94a3b8; display: flex; justify-content: space-between; padding-top: 12px; margin-top: auto;">
+          <span>DocuMind Studio</span>
+          <span>Page ${page.pageNumber} of ${page.totalPages}</span>
+        </div>
+      </div>`;
     })
     .join("\n");
 
@@ -2589,61 +3267,37 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
 <title>${escapeHtml(config.docTitle)}</title>
 <style>
   @page {
-    margin: 1in;
-    @top-right { content: "${escapeHtml(config.headerText)}"; font-size: 9pt; }
-    @bottom-center { content: counter(page); font-size: 9pt; }
+    size: A4 portrait;
+    margin: 0;
+  }
+  @media print {
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #fff !important;
+    }
+    .a4-sheet {
+      margin: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      page-break-after: always !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
   }
   body {
     font-family: ${fontCss};
     font-size: ${config.baseFontSize};
     line-height: ${config.lineSpacing};
-    color: #1a1a1a;
-    max-width: 7.5in;
-    margin: 0 auto;
-    padding: 2rem 1rem;
+    color: #1e293b;
+    background: #f1f5f9;
+    margin: 0;
+    padding: 20px 0;
   }
-  .cover {
-    page-break-after: always;
-    min-height: 70vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    text-align: left;
-    padding-bottom: 2rem;
-  }
-  .title { font-size: 2.4rem; font-weight: bold; margin-bottom: 0.5rem; }
-  .subtitle { font-size: 1.2rem; color: #555; font-style: italic; margin-bottom: 2rem; }
-  .meta { font-size: 0.9rem; color: #444; }
-  .toc { page-break-after: always; margin-top: 2rem; }
-  .header-rule { padding-bottom: 6px; margin-bottom: 24px; font-size: 9pt; color: #777; display: flex; justify-content: space-between; }
 </style>
 </head>
 <body>
-  ${
-    config.hasCoverPage
-      ? `<div class="cover">
-    <div>
-      <p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10pt; color: #666;">${escapeHtml(config.institution)}</p>
-      <h1 class="title">${escapeHtml(config.docTitle)}</h1>
-      <p class="subtitle">${escapeHtml(config.docSubtitle)}</p>
-    </div>
-    <div class="meta">
-      <p><strong>Author:</strong> ${escapeHtml(config.authorName)}</p>
-      <p><strong>Date:</strong> ${escapeHtml(config.dateStr)}</p>
-      <p><strong>Institution:</strong> ${escapeHtml(config.institution)}</p>
-    </div>
-  </div>`
-      : ""
-  }
-
-  <div class="header-rule">
-    <span>${escapeHtml(config.headerText)}</span>
-    <span>DocuMind Executive Technical Report Series</span>
-  </div>
-
-  <div class="body-content">
-    ${bodyHtml}
-  </div>
+  ${pagesHtml}
 </body>
 </html>`;
 }

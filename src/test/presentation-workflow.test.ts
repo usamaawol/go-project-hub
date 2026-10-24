@@ -576,4 +576,104 @@ Motto: Smart Solutions. Real Impact.`;
     expect(identitySec?.title).toBe("Company identity");
     expect(identitySec?.numberStr.trim()).toBe("2.3");
   });
+
+  it("Scenario 23: Document Studio preserves original content without adding fake numbers/text, parses markdown tables and images, and calculates exact page numbers for Table of Contents", async () => {
+    const {
+      parseDocumentSections,
+      paginateSectionsIntoA4Pages,
+    } = await import("../components/workspace/DocumentFormattingWorkflow");
+
+    const pastedContent = `| Founders | The four people developing the company. |
+| Team | Founders and future employees, contractors, and collaborators. |
+| Client | An individual or organization engaging Eagle Technology for services. |
+| Proposed policy | A suggested rule that has not yet been formally approved. |
+| Shall / must | A requirement within a formally approved policy. |
+| May | An option or permission, depending on context. |
+
+The book must distinguish between current facts, future intentions, proposals, and long-term ambitions.
+
+### 4. The six-chapter structure
+[Golden Eagle at Sunrise](https://images.openai.com/static-rsc-4/v_J2lMJFYhEZH5fwHZp9Pb7eDhe9t5U5RjLMIUGFVp8N7M7LyCHErAqEi_eoDubIQ7syvh_0uKJCtZcGldvzlbi1GDIJECw0kPmvzmNYNVXCAsNbXu3rePg-sztFPV9RRPdf410UrdzSvszAF0L7ZLyVkXI706DyDZpm4k-i90Aw51yMm9RCIhx4mNBiKJkB?purpose=inline)
+
+### Chapter 1 — Our Identity and Foundation
+The founding story, meaning of the eagle, company purpose, vision, mission, motto, core values, Ethiopian identity, and long-term ambition.
+
+### Chapter 2 — Our Business and Solutions
+Target customers, website development, custom software, business systems, technology education, practical AI, pricing principles, and intended business model.`;
+
+    // 1. By default ("none"), original headings are preserved 100% without adding "7.2 ", "7.3 ", "7.4 "
+    const sections = parseDocumentSections(pastedContent, "none");
+    expect(sections.length).toBeGreaterThanOrEqual(3);
+
+    const sixChapterSec = sections.find((s) => s.title.includes("The six-chapter structure"));
+    expect(sixChapterSec).toBeDefined();
+    expect(sixChapterSec?.title).toBe("4. The six-chapter structure");
+    expect(sixChapterSec?.numberStr).toBe(""); // NEVER add "7.2 "!
+
+    const chap1Sec = sections.find((s) => s.title.includes("Our Identity"));
+    expect(chap1Sec).toBeDefined();
+    expect(chap1Sec?.title).toBe("Chapter 1 — Our Identity and Foundation");
+    expect(chap1Sec?.numberStr).toBe(""); // NEVER add "7.3 "!
+
+    const chap2Sec = sections.find((s) => s.title.includes("Our Business"));
+    expect(chap2Sec).toBeDefined();
+    expect(chap2Sec?.title).toBe("Chapter 2 — Our Business and Solutions");
+    expect(chap2Sec?.numberStr).toBe(""); // NEVER add "7.4 "!
+
+    // 2. Markdown tables are parsed into table blocks with rows and cells
+    const firstSec = sections[0];
+    const tableBlock = firstSec?.blocks.find((b) => b.type === "table");
+    expect(tableBlock).toBeDefined();
+    expect(tableBlock?.tableData?.rows.length).toBe(6);
+    expect(tableBlock?.tableData?.rows[0]?.[0]).toBe("Founders");
+    expect(tableBlock?.tableData?.rows[0]?.[1]).toBe("The four people developing the company.");
+
+    // 3. Standalone markdown images are parsed into image blocks
+    const imageBlock = sixChapterSec?.blocks.find((b) => b.type === "image");
+    expect(imageBlock).toBeDefined();
+    expect(imageBlock?.imageUrl).toContain("images.openai.com");
+    expect(imageBlock?.imageAlt).toBe("Golden Eagle at Sunrise");
+
+    // 4. Paginate into A4 pages and verify Table of Contents page references
+    const config = {
+      layoutArchetype: "executive" as const,
+      hasCoverPage: false,
+      coverStyle: "modern" as const,
+      docTitle: "Eagle Technology Reference Book",
+      docSubtitle: "",
+      authorName: "",
+      institution: "",
+      dateStr: "October 2026",
+      fontFamily: "serif" as const,
+      baseFontSize: "11pt" as const,
+      lineSpacing: "1.5" as const,
+      paragraphSpacing: "normal" as const,
+      headingNumbering: "none" as const,
+      headingCase: "title" as const,
+      headingDivider: false,
+      margins: "academic" as const,
+      headerText: "Eagle Technology",
+      headerAlign: "right" as const,
+      headerRule: false,
+      pageNumberPosition: "bottom-center" as const,
+      pageNumberFormat: "page-x-of-y" as const,
+      firstPageUnnumbered: true,
+      includeToc: true,
+      tocLevels: 2,
+      tocDotLeaders: true,
+    };
+
+    const pages = paginateSectionsIntoA4Pages(sections, config);
+    expect(pages.length).toBeGreaterThanOrEqual(1);
+    expect(pages[0]?.totalPages).toBe(pages.length);
+
+    // Each section has an exact pageNumber assigned for the Table of Contents
+    for (const sec of sections) {
+      if (sec.title) {
+        expect(sec.pageNumber).toBeDefined();
+        expect(sec.pageNumber).toBeGreaterThanOrEqual(1);
+        expect(sec.pageNumber).toBeLessThanOrEqual(pages.length);
+      }
+    }
+  });
 });
