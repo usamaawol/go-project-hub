@@ -141,13 +141,13 @@ export async function renderSlideDeckToPptx(
         });
       }
 
-      // Slide Footer
+      // Slide Footer (left & middle)
       slide.addText(
-        `DocuMind Studio  |  ${tokens.name}  |  ${fontTitle}  |  Slide ${s.slideNumber} of ${slides.length}`,
+        `DocuMind Studio  |  ${tokens.name}  |  Slide ${s.slideNumber} of ${slides.length}`,
         {
           x: 1.0,
           y: 6.9,
-          w: 11.333,
+          w: 7.5,
           h: 0.3,
           fontSize: sizes.caption,
           color: tokens.textMutedHex,
@@ -155,6 +155,19 @@ export async function renderSlideDeckToPptx(
         },
       );
     }
+
+    // Watermark at the right corner at the bottom of each generated slide
+    slide.addText("Created with DocuMind", {
+      x: 8.8,
+      y: 6.9,
+      w: 3.533,
+      h: 0.3,
+      align: "right",
+      fontSize: sizes.caption,
+      bold: true,
+      color: tokens.textMutedHex,
+      fontFace: fontBody,
+    });
 
     // Render Layout Specific Content
     switch (s.layout) {
