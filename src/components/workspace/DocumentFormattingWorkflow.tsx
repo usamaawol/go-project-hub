@@ -1177,6 +1177,12 @@ export function DocumentFormattingWorkflow({
 }) {
   // Step navigation: 1: Source Content, 2: Style & Layout Rules, 3: Preview & Download
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const goToStep = (newStep: 1 | 2 | 3) => {
+    setStep(newStep);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   // Content state
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
@@ -1247,6 +1253,29 @@ export function DocumentFormattingWorkflow({
   const [activePageNum, setActivePageNum] = useState<number>(1);
   const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
   const [documentZoom, setDocumentZoom] = useState<number>(100);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState<number>(850);
+
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      if (el.clientWidth > 0) {
+        setCanvasWidth(el.clientWidth);
+      }
+    };
+
+    updateWidth();
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(el);
+    window.addEventListener("resize", updateWidth);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateWidth);
+    };
+  }, [step]);
 
   // Academic Assignment Mode State
   const [assignmentMode, setAssignmentMode] = useState<boolean>(false);
@@ -1383,7 +1412,7 @@ export function DocumentFormattingWorkflow({
       }));
     }
 
-    setStep(2);
+    goToStep(2);
   };
 
   const autoPolishText = () => {
@@ -1533,7 +1562,7 @@ export function DocumentFormattingWorkflow({
               onClick={() => {
                 // allow navigating to previous steps
                 if (s.num <= step || (step === 1 && rawText.trim())) {
-                  setStep(s.num as 1 | 2 | 3);
+                  goToStep(s.num as 1 | 2 | 3);
                 }
               }}
               className={`flex flex-col items-start rounded-xl border p-3.5 text-left transition-all ${
@@ -1919,7 +1948,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 size="sm"
                 onClick={() => {
                   autoPolishText();
-                  setStep(3);
+                  goToStep(3);
                 }}
                 className="gap-1.5 text-xs text-primary"
               >
@@ -2609,7 +2638,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
 
           {/* Action Row */}
           <div className="flex items-center justify-between border-t border-border pt-6">
-            <Button variant="glass" onClick={() => setStep(1)} className="gap-2">
+            <Button variant="glass" onClick={() => goToStep(1)} className="gap-2">
               <ChevronLeft className="h-4 w-4" /> Back to Content
             </Button>
             <Button
@@ -2623,7 +2652,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                     assignmentMetadata: { ...assignmentMetadata, isAssignment: true },
                   }));
                 }
-                setStep(3);
+                goToStep(3);
               }}
               className="gap-2 px-6"
             >
@@ -2666,7 +2695,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                   <Edit3 className="h-3.5 w-3.5" /> Edit Cover Details
                 </Button>
               )}
-              <Button variant="glass" size="sm" onClick={() => setStep(2)} className="text-xs">
+              <Button variant="glass" size="sm" onClick={() => goToStep(2)} className="text-xs">
                 <Sliders className="h-3.5 w-3.5 mr-1" /> Adjust Styles
               </Button>
               <Button variant="glass" size="sm" onClick={handlePrintPreview} className="text-xs">
@@ -2695,6 +2724,15 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 totalPages: 1,
                 sections: [],
               };
+
+            const BASE_A4_WIDTH = 794;
+            const BASE_A4_HEIGHT = 1123;
+            // Responsive auto-fit scale so the A4 sheet fills the available width gracefully without clipping
+            const availableWidth = Math.max(300, canvasWidth - 48);
+            const fitScale = Math.min(1.0, availableWidth / BASE_A4_WIDTH);
+            const effectiveScale = Number((fitScale * (documentZoom / 100)).toFixed(4));
+            const currentDisplayWidth = Math.round(BASE_A4_WIDTH * effectiveScale);
+            const currentDisplayHeight = Math.round(BASE_A4_HEIGHT * effectiveScale);
 
             return (
               <div className="space-y-6">
@@ -2809,20 +2847,36 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                       <button
                         type="button"
                         onClick={() => setDocumentZoom(100)}
-                        className="px-1.5 py-0.5 font-mono text-[11px] font-semibold text-foreground hover:bg-card rounded transition-colors cursor-pointer"
-                        title="Reset Zoom to 100%"
+                        className="px-2 py-0.5 font-mono text-[11px] font-semibold text-foreground hover:bg-card rounded transition-colors cursor-pointer"
+                        title={fitScale < 1 && documentZoom === 100 ? "Fit to Screen" : "Reset Zoom to 100%"}
                       >
-                        {documentZoom}%
+                        {fitScale < 1 && documentZoom === 100 ? "Fit" : `${documentZoom}%`}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDocumentZoom((prev) => Math.min(150, prev + 10))}
+                        onClick={() => setDocumentZoom((prev) => Math.min(200, prev + 10))}
                         className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground transition-colors cursor-pointer"
                         title="Zoom In (+10%)"
-                        disabled={documentZoom >= 150}
+                        disabled={documentZoom >= 200}
                       >
                         <ZoomIn className="h-3.5 w-3.5" />
                       </button>
+                      {fitScale < 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (documentZoom === 100) {
+                              setDocumentZoom(Math.round((1 / fitScale) * 100));
+                            } else {
+                              setDocumentZoom(100);
+                            }
+                          }}
+                          className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded border border-border/60 hover:bg-card text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Toggle between Fit and 100% Print Size"
+                        >
+                          {documentZoom === 100 ? "100%" : "Fit"}
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
@@ -2863,30 +2917,24 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </div>
 
                 {/* A4 Pages Canvas Container */}
-                <div className="flex flex-col items-center py-8 bg-slate-100/90 dark:bg-zinc-950/90 rounded-2xl border border-border p-3 sm:p-6 lg:p-8 overflow-x-auto shadow-inner">
-                  <div
-                    className="flex flex-col items-center transition-transform duration-150 origin-top"
-                    style={{
-                      transform: documentZoom !== 100 ? `scale(${documentZoom / 100})` : undefined,
-                      transformOrigin: "top center",
-                      width: "794px",
-                      minWidth: "794px",
-                      maxWidth: "794px",
-                    }}
-                  >
+                <div
+                  ref={canvasContainerRef}
+                  className="flex flex-col items-center py-8 bg-slate-100/90 dark:bg-zinc-950/90 rounded-2xl border border-border p-3 sm:p-6 lg:p-8 overflow-x-auto shadow-inner w-full"
+                >
+                  <div className="flex flex-col items-center">
                     {/* VIEW MODE 1: ALL A4 PAGES STACKED */}
                     {previewPage === "all" && (
-                      <div className="space-y-10 flex flex-col items-center w-[794px] shrink-0">
+                      <div className="space-y-10 flex flex-col items-center shrink-0">
                         {a4Pages.map((page) => (
                           <div
                             key={page.pageNumber}
-                            className="flex flex-col items-center shrink-0 w-[794px]"
-                            style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                            className="flex flex-col items-center shrink-0"
+                            style={{ width: `${currentDisplayWidth}px` }}
                           >
                             {/* Page Sheet Label Bar */}
                             <div
                               className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
-                              style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                              style={{ width: `${currentDisplayWidth}px` }}
                             >
                               <span className="font-semibold tracking-wider uppercase text-primary">
                                 A4 Sheet {page.pageNumber} of {page.totalPages}
@@ -2900,13 +2948,33 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                               </span>
                             </div>
 
-                            <A4PageCard
-                              page={page}
-                              config={config}
-                              paperMode={paperMode}
-                              sections={sections}
-                              onNavigatePage={(p) => setActivePageNum(p)}
-                            />
+                            <div
+                              className="relative shrink-0 overflow-hidden rounded-xs shadow-paper"
+                              style={{
+                                width: `${currentDisplayWidth}px`,
+                                height: `${currentDisplayHeight}px`,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: "794px",
+                                  height: "1123px",
+                                  transform: `scale(${effectiveScale})`,
+                                  transformOrigin: "top left",
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                }}
+                              >
+                                <A4PageCard
+                                  page={page}
+                                  config={config}
+                                  paperMode={paperMode}
+                                  sections={sections}
+                                  onNavigatePage={(p) => setActivePageNum(p)}
+                                />
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2915,12 +2983,12 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                     {/* VIEW MODE 2: SINGLE PAGE FLIPPER */}
                     {previewPage === "single" && (
                       <div
-                        className="flex flex-col items-center shrink-0 w-[794px]"
-                        style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                        className="flex flex-col items-center shrink-0"
+                        style={{ width: `${currentDisplayWidth}px` }}
                       >
                         <div
                           className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
-                          style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                          style={{ width: `${currentDisplayWidth}px` }}
                         >
                           <span className="font-semibold tracking-wider uppercase text-primary">
                             A4 Sheet {activePage.pageNumber} of {activePage.totalPages}
@@ -2929,30 +2997,50 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                             210 × 297 mm
                           </span>
                         </div>
-                        <A4PageCard
-                          page={activePage}
-                          config={config}
-                          paperMode={paperMode}
-                          sections={sections}
-                          onNavigatePage={(p) => setActivePageNum(p)}
-                        />
+                        <div
+                          className="relative shrink-0 overflow-hidden rounded-xs shadow-paper"
+                          style={{
+                            width: `${currentDisplayWidth}px`,
+                            height: `${currentDisplayHeight}px`,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "794px",
+                              height: "1123px",
+                              transform: `scale(${effectiveScale})`,
+                              transformOrigin: "top left",
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                            }}
+                          >
+                            <A4PageCard
+                              page={activePage}
+                              config={config}
+                              paperMode={paperMode}
+                              sections={sections}
+                              onNavigatePage={(p) => setActivePageNum(p)}
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
 
                     {/* VIEW MODE 3: DEDICATED TOC VIEW */}
                     {previewPage === "toc" && (
-                      <div className="space-y-10 flex flex-col items-center w-[794px] shrink-0">
+                      <div className="space-y-10 flex flex-col items-center shrink-0">
                         {a4Pages
                           .filter((p) => p.isToc)
                           .map((tocPage) => (
                             <div
                               key={tocPage.pageNumber}
-                              className="flex flex-col items-center shrink-0 w-[794px]"
-                              style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                              className="flex flex-col items-center shrink-0"
+                              style={{ width: `${currentDisplayWidth}px` }}
                             >
                               <div
                                 className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
-                                style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                                style={{ width: `${currentDisplayWidth}px` }}
                               >
                                 <span className="font-semibold tracking-wider uppercase text-primary">
                                   Table of Contents · A4 Page {tocPage.pageNumber}
@@ -2963,16 +3051,36 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                     : "210 × 297 mm"}
                                 </span>
                               </div>
-                              <A4PageCard
-                                page={tocPage}
-                                config={config}
-                                paperMode={paperMode}
-                                sections={sections}
-                                onNavigatePage={(p) => {
-                                  setActivePageNum(p);
-                                  setPreviewPage("single");
+                              <div
+                                className="relative shrink-0 overflow-hidden rounded-xs shadow-paper"
+                                style={{
+                                  width: `${currentDisplayWidth}px`,
+                                  height: `${currentDisplayHeight}px`,
                                 }}
-                              />
+                              >
+                                <div
+                                  style={{
+                                    width: "794px",
+                                    height: "1123px",
+                                    transform: `scale(${effectiveScale})`,
+                                    transformOrigin: "top left",
+                                    position: "absolute",
+                                    top: 0,
+                                    left: 0,
+                                  }}
+                                >
+                                  <A4PageCard
+                                    page={tocPage}
+                                    config={config}
+                                    paperMode={paperMode}
+                                    sections={sections}
+                                    onNavigatePage={(p) => {
+                                      setActivePageNum(p);
+                                      setPreviewPage("single");
+                                    }}
+                                  />
+                                </div>
+                              </div>
                             </div>
                           ))}
                       </div>
@@ -2980,18 +3088,18 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
 
                     {/* VIEW MODE 4: DEDICATED COVER PAGE VIEW */}
                     {previewPage === "cover" && (
-                      <div className="space-y-10 flex flex-col items-center w-[794px] shrink-0">
+                      <div className="space-y-10 flex flex-col items-center shrink-0">
                         {a4Pages
                           .filter((p) => p.isCover)
                           .map((coverPage) => (
                             <div
                               key={coverPage.pageNumber}
-                              className="flex flex-col items-center shrink-0 w-[794px]"
-                              style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                              className="flex flex-col items-center shrink-0"
+                              style={{ width: `${currentDisplayWidth}px` }}
                             >
                               <div
                                 className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
-                                style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                                style={{ width: `${currentDisplayWidth}px` }}
                               >
                                 <span className="font-semibold tracking-wider uppercase text-primary">
                                   Cover Page · A4 Sheet 1
@@ -3000,16 +3108,36 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                   210 × 297 mm
                                 </span>
                               </div>
-                              <A4PageCard
-                                page={coverPage}
-                                config={config}
-                                paperMode={paperMode}
-                                sections={sections}
-                                onNavigatePage={(p) => {
-                                  setActivePageNum(p);
-                                  setPreviewPage("single");
+                              <div
+                                className="relative shrink-0 overflow-hidden rounded-xs shadow-paper"
+                                style={{
+                                  width: `${currentDisplayWidth}px`,
+                                  height: `${currentDisplayHeight}px`,
                                 }}
-                              />
+                              >
+                                <div
+                                  style={{
+                                    width: "794px",
+                                    height: "1123px",
+                                    transform: `scale(${effectiveScale})`,
+                                    transformOrigin: "top left",
+                                    position: "absolute",
+                                    top: 0,
+                                    left: 0,
+                                  }}
+                                >
+                                  <A4PageCard
+                                    page={coverPage}
+                                    config={config}
+                                    paperMode={paperMode}
+                                    sections={sections}
+                                    onNavigatePage={(p) => {
+                                      setActivePageNum(p);
+                                      setPreviewPage("single");
+                                    }}
+                                  />
+                                </div>
+                              </div>
                             </div>
                           ))}
                       </div>
@@ -3871,18 +3999,18 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
         content = bodyInner;
       }
 
-      return `<div class="a4-sheet" style="width: 210mm; height: 297mm; max-height: 297mm; overflow: hidden; padding: 20mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; page-break-inside: avoid;">
-        <div style="font-size: 9pt; color: #94a3b8; display: flex; justify-content: space-between; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
+      return `<div class="a4-sheet" style="width: 210mm; height: 297mm; max-height: 297mm; overflow: hidden; padding: ${page.isCover ? "0" : "20mm"}; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid;">
+        ${!page.isCover ? `<div style="font-size: 9pt; color: #94a3b8; display: flex; justify-content: space-between; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
           <span>${escapeHtml(config.headerText || config.docTitle || "Document")}</span>
-          <span style="font-family: monospace;">${page.isCover ? "Cover Page" : page.isToc ? "Table of Contents" : `A4 Page ${page.pageNumber}`}</span>
-        </div>
-        <div style="flex: 1; overflow: hidden;">
+          <span style="font-family: monospace;">${page.isToc ? "Table of Contents" : `A4 Page ${page.pageNumber}`}</span>
+        </div>` : ""}
+        <div style="flex: 1; overflow: hidden; ${page.isCover ? 'height: 100%;' : ''}">
           ${content}
         </div>
-        <div style="font-size: 9pt; font-family: monospace; color: #94a3b8; display: flex; justify-content: space-between; padding-top: 12px; margin-top: auto; border-top: 1px solid #e2e8f0;">
+        ${!page.isCover ? `<div style="font-size: 9pt; font-family: monospace; color: #94a3b8; display: flex; justify-content: space-between; padding-top: 12px; margin-top: auto; border-top: 1px solid #e2e8f0;">
           <span>DocuMind Studio · A4 Document</span>
           <span>Page ${page.pageNumber} of ${page.totalPages}</span>
-        </div>
+        </div>` : ""}
       </div>`;
     })
     .join("\n");
@@ -3908,12 +4036,18 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
       border: none !important;
       box-shadow: none !important;
       page-break-after: always !important;
+      break-after: page !important;
       page-break-inside: avoid !important;
+      break-inside: avoid !important;
       width: 210mm !important;
-      height: 297mm !important;
+      height: 296mm !important;
       max-height: 297mm !important;
       overflow: hidden !important;
       box-sizing: border-box !important;
+    }
+    .a4-sheet:last-child {
+      page-break-after: auto !important;
+      break-after: auto !important;
     }
   }
   body {
