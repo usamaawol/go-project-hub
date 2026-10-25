@@ -8,11 +8,11 @@
 
 import React from "react";
 import type { AssignmentMetadata } from "@/lib/assignment-types";
-import { COVER_TEMPLATES } from "@/lib/assignment-types";
+import { COVER_TEMPLATES, getDefaultAssignmentMetadata } from "@/lib/assignment-types";
 import { GraduationCap, Users, User, Calendar, BookOpen, Building, Award } from "lucide-react";
 
 interface AssignmentCoverRendererProps {
-  metadata: AssignmentMetadata;
+  metadata?: AssignmentMetadata | null;
   aspectRatio?: "16:9" | "a4" | "thumbnail";
   className?: string;
   isThumbnail?: boolean;
@@ -24,34 +24,35 @@ export function AssignmentCoverRenderer({
   className = "",
   isThumbnail = false,
 }: AssignmentCoverRendererProps) {
-  const templateId = metadata.coverTemplateId || "classic-university";
-  const accent = metadata.accentColor || "#1E3A8A";
-  const isGroup = metadata.assignmentType === "group";
+  const safeMeta = metadata || getDefaultAssignmentMetadata();
+  const templateId = safeMeta.coverTemplateId || "classic-university";
+  const accent = safeMeta.accentColor || "#1E3A8A";
+  const isGroup = safeMeta.assignmentType === "group";
 
   // Fallbacks for display
   const title =
-    metadata.assignmentTitle?.trim() ||
-    metadata.courseName?.trim() ||
+    safeMeta.assignmentTitle?.trim() ||
+    safeMeta.courseName?.trim() ||
     (isGroup ? "Group Assignment Submission" : "Individual Course Assignment");
 
-  const course = metadata.courseName?.trim() || "Course Name Not Specified";
-  const instructor = metadata.instructorName?.trim() || "Instructor Name";
-  const university = metadata.universityName?.trim() || "";
-  const department = metadata.department?.trim() || "";
-  const faculty = metadata.collegeOrFaculty?.trim() || "";
-  const courseCode = metadata.courseCode?.trim() || "";
-  const academicYear = metadata.academicYear?.trim() || "";
-  const semester = metadata.semester?.trim() || "";
-  const date = metadata.submissionDate?.trim() || "";
-  const logo = metadata.logoDataUrl;
+  const course = safeMeta.courseName?.trim() || "Course Name Not Specified";
+  const instructor = safeMeta.instructorName?.trim() || "Instructor Name";
+  const university = safeMeta.universityName?.trim() || "";
+  const department = safeMeta.department?.trim() || "";
+  const faculty = safeMeta.collegeOrFaculty?.trim() || "";
+  const courseCode = safeMeta.courseCode?.trim() || "";
+  const academicYear = safeMeta.academicYear?.trim() || "";
+  const semester = safeMeta.semester?.trim() || "";
+  const date = safeMeta.submissionDate?.trim() || "";
+  const logo = safeMeta.logoDataUrl;
 
   const members =
-    isGroup && metadata.groupMembers && metadata.groupMembers.length > 0
-      ? metadata.groupMembers.filter((m) => m.fullName.trim() || m.studentId.trim())
+    isGroup && Array.isArray(safeMeta.groupMembers) && safeMeta.groupMembers.length > 0
+      ? safeMeta.groupMembers.filter((m) => m && (m.fullName?.trim() || m.studentId?.trim()))
       : [];
 
-  const studentName = metadata.studentName?.trim() || (isGroup ? "Group Project" : "Student Name");
-  const studentId = metadata.studentId?.trim() || (isGroup ? "" : "Student ID");
+  const studentName = safeMeta.studentName?.trim() || (isGroup ? "Group Project" : "Student Name");
+  const studentId = safeMeta.studentId?.trim() || (isGroup ? "" : "Student ID");
 
   // Container styling depending on aspect ratio
   const containerStyle: React.CSSProperties = {

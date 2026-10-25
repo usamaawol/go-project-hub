@@ -5,6 +5,7 @@
  */
 
 import type { AssignmentMetadata } from "./assignment-types";
+import { getDefaultAssignmentMetadata } from "./assignment-types";
 
 function escapeHtml(str: string): string {
   if (!str) return "";
@@ -16,37 +17,38 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
-export function generateAssignmentCoverHtml(metadata: AssignmentMetadata): string {
-  const templateId = metadata.coverTemplateId || "classic-university";
-  const accent = metadata.accentColor || "#1E3A8A";
-  const isGroup = metadata.assignmentType === "group";
+export function generateAssignmentCoverHtml(metadata?: AssignmentMetadata | null): string {
+  const safeMeta = metadata || getDefaultAssignmentMetadata();
+  const templateId = safeMeta.coverTemplateId || "classic-university";
+  const accent = safeMeta.accentColor || "#1E3A8A";
+  const isGroup = safeMeta.assignmentType === "group";
 
   const title = escapeHtml(
-    metadata.assignmentTitle?.trim() ||
-      metadata.courseName?.trim() ||
+    safeMeta.assignmentTitle?.trim() ||
+      safeMeta.courseName?.trim() ||
       (isGroup ? "Group Assignment Submission" : "Individual Course Assignment"),
   );
 
-  const course = escapeHtml(metadata.courseName?.trim() || "");
-  const courseCode = escapeHtml(metadata.courseCode?.trim() || "");
-  const instructor = escapeHtml(metadata.instructorName?.trim() || "Instructor Name");
-  const university = escapeHtml(metadata.universityName?.trim() || "");
-  const department = escapeHtml(metadata.department?.trim() || "");
-  const faculty = escapeHtml(metadata.collegeOrFaculty?.trim() || "");
-  const academicYear = escapeHtml(metadata.academicYear?.trim() || "");
-  const semester = escapeHtml(metadata.semester?.trim() || "");
-  const submissionDate = escapeHtml(metadata.submissionDate?.trim() || "");
-  const instructions = escapeHtml(metadata.additionalInstructions?.trim() || "");
-  const logo = metadata.logoDataUrl;
+  const course = escapeHtml(safeMeta.courseName?.trim() || "");
+  const courseCode = escapeHtml(safeMeta.courseCode?.trim() || "");
+  const instructor = escapeHtml(safeMeta.instructorName?.trim() || "Instructor Name");
+  const university = escapeHtml(safeMeta.universityName?.trim() || "");
+  const department = escapeHtml(safeMeta.department?.trim() || "");
+  const faculty = escapeHtml(safeMeta.collegeOrFaculty?.trim() || "");
+  const academicYear = escapeHtml(safeMeta.academicYear?.trim() || "");
+  const semester = escapeHtml(safeMeta.semester?.trim() || "");
+  const submissionDate = escapeHtml(safeMeta.submissionDate?.trim() || "");
+  const instructions = escapeHtml(safeMeta.additionalInstructions?.trim() || "");
+  const logo = safeMeta.logoDataUrl;
 
   const studentName = escapeHtml(
-    metadata.studentName?.trim() || (isGroup ? "Group Project" : "Student Name"),
+    safeMeta.studentName?.trim() || (isGroup ? "Group Project" : "Student Name"),
   );
-  const studentId = escapeHtml(metadata.studentId?.trim() || "");
+  const studentId = escapeHtml(safeMeta.studentId?.trim() || "");
 
   const members =
-    isGroup && metadata.groupMembers && metadata.groupMembers.length > 0
-      ? metadata.groupMembers.filter((m) => m.fullName.trim() || m.studentId.trim())
+    isGroup && Array.isArray(safeMeta.groupMembers) && safeMeta.groupMembers.length > 0
+      ? safeMeta.groupMembers.filter((m) => m && (m.fullName?.trim() || m.studentId?.trim()))
       : [];
 
   const logoMarkup = logo

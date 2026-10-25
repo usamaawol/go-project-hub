@@ -82,4 +82,14 @@ describe("Document Studio Verification", () => {
       expect(t.category).toBeDefined();
     }
   });
+
+  it("safely generates assignment cover HTML with undefined or partial metadata", async () => {
+    const { generateAssignmentCoverHtml } = await import("@/lib/assignment-document-renderer");
+    const html1 = generateAssignmentCoverHtml(undefined);
+    expect(html1).toContain("Individual Course Assignment");
+    expect(html1).toContain("Submitted By");
+
+    const html2 = generateAssignmentCoverHtml({} as any);
+    expect(html2).toContain("Individual Course Assignment");
+  });
 });

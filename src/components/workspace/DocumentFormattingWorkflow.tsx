@@ -1114,17 +1114,7 @@ export function DocumentFormattingWorkflow({
 
   // Content state
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
-  const [rawText, setRawText] = useState(() => {
-    try {
-      if (typeof window !== "undefined" && window.sessionStorage) {
-        const stored = window.sessionStorage.getItem("documind_template_doc_content");
-        if (stored) return stored;
-      }
-    } catch {
-      // Ignore storage access errors
-    }
-    return "";
-  });
+  const [rawText, setRawText] = useState("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [detectedFormat, setDetectedFormat] = useState<string | null>(null);
@@ -1137,6 +1127,8 @@ export function DocumentFormattingWorkflow({
         const storedDoc = window.sessionStorage.getItem("documind_template_doc_content");
         const storedTitle = window.sessionStorage.getItem("documind_template_doc_title");
         if (storedDoc) {
+          setRawText(storedDoc);
+          deriveTitleFromContent(storedDoc);
           toast.success(`Template loaded: "${storedTitle || "Document Template"}"`, {
             description: "Structured sections and design tokens applied to Document Studio.",
           });
@@ -3164,7 +3156,7 @@ function A4PageCard({
         {page.isCover && (
           config.assignmentMetadata?.isAssignment ? (
             <div className="flex-1 flex flex-col justify-between py-2 w-full">
-              <AssignmentCoverRenderer metadata={config.assignmentMetadata} aspectRatio="a4" />
+              <AssignmentCoverRenderer metadata={config.assignmentMetadata || assignmentMetadata} aspectRatio="a4" />
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">

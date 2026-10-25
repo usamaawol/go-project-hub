@@ -5,13 +5,18 @@
  */
 
 import React, { useState } from "react";
-import { COVER_TEMPLATES, type CoverTemplateDefinition, type AssignmentMetadata } from "@/lib/assignment-types";
+import {
+  COVER_TEMPLATES,
+  type CoverTemplateDefinition,
+  type AssignmentMetadata,
+  getDefaultAssignmentMetadata,
+} from "@/lib/assignment-types";
 import { AssignmentCoverRenderer } from "./AssignmentCoverRenderer";
 import { Check, Sparkles, Palette, Eye, Layout } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface CoverTemplateGalleryProps {
-  metadata: AssignmentMetadata;
+  metadata?: AssignmentMetadata | null;
   mode: "presentation" | "document";
   onSelectTemplate: (templateId: string, defaultAccent?: string) => void;
   onUpdateAccentColor?: (color: string) => void;
@@ -35,8 +40,9 @@ export function CoverTemplateGallery({
   onSelectTemplate,
   onUpdateAccentColor,
 }: CoverTemplateGalleryProps) {
+  const safeMeta = metadata || getDefaultAssignmentMetadata();
   const [activeCategory, setActiveCategory] = useState<string>("All");
-  const selectedTemplateId = metadata?.coverTemplateId || "classic-university";
+  const selectedTemplateId = safeMeta?.coverTemplateId || "classic-university";
   const selectedTemplate =
     COVER_TEMPLATES.find((t) => t.id === selectedTemplateId) || COVER_TEMPLATES[0]!;
 
@@ -73,7 +79,7 @@ export function CoverTemplateGallery({
           <div className="flex items-center gap-1">
             {ACCENT_PALETTE.map((c) => {
               const isCurrent =
-                ((metadata?.accentColor || selectedTemplate?.defaultAccent || "#1E3A8A")).toLowerCase() ===
+                ((safeMeta?.accentColor || selectedTemplate?.defaultAccent || "#1E3A8A")).toLowerCase() ===
                 c.hex.toLowerCase();
               return (
                 <button
@@ -115,9 +121,9 @@ export function CoverTemplateGallery({
         {filtered.map((tpl) => {
           const isSelected = selectedTemplateId === tpl.id;
           const previewMeta: AssignmentMetadata = {
-            ...metadata,
+            ...safeMeta,
             coverTemplateId: tpl.id,
-            accentColor: metadata.accentColor || tpl.defaultAccent,
+            accentColor: safeMeta?.accentColor || tpl.defaultAccent,
           };
 
           return (
