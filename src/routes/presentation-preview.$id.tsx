@@ -272,23 +272,14 @@ export function PresentationPreviewPage() {
         const data = await fetchPresentationPreviewApi(sessionId);
         if (isMounted) {
           setSession(data);
-          const remaining = Math.max(0, Math.floor((data.expiresAt - Date.now()) / 1000));
-          setSecondsRemaining(remaining);
-          if (remaining <= 0) {
-            setIsExpired(true);
-          }
+          setSecondsRemaining(999999);
         }
       } catch (err: unknown) {
         if (!isMounted) return;
         const errObj = err as { code?: string; message?: string };
-        if (errObj.code === "SESSION_EXPIRED") {
-          setIsExpired(true);
-        } else {
-          toast.error("Failed to load presentation preview", {
-            description: errObj.message || "Session not found or server offline.",
-          });
-          setIsExpired(true);
-        }
+        toast.error("Failed to load presentation preview", {
+          description: errObj.message || "Session not found or server offline.",
+        });
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -300,27 +291,6 @@ export function PresentationPreviewPage() {
       isMounted = false;
     };
   }, [sessionId]);
-
-  // Real 1-second interval timer for 10-minute expiration
-  useEffect(() => {
-    if (isExpired || !session) return;
-
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000));
-      setSecondsRemaining(remaining);
-
-      if (remaining <= 0) {
-        setIsExpired(true);
-        clearInterval(interval);
-        toast.warning("Preview Session Expired", {
-          description:
-            "Temporary files have been deleted from the server in accordance with our privacy policy.",
-        });
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [session, isExpired]);
 
   // Slide navigation handlers
   const slides = session?.slides || [];
@@ -618,19 +588,15 @@ export function PresentationPreviewPage() {
               </div>
             </div>
 
-            {/* Countdown Badge & Download PPTX Button */}
+            {/* Live Session Badge & Download PPTX Button */}
             <div className="flex items-center gap-3">
-              {/* 15-Minute Expiration Badge */}
+              {/* Active Session Indicator */}
               <div
-                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-mono font-medium shadow-xs ${
-                  secondsRemaining < 120
-                    ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 animate-pulse"
-                    : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                }`}
-                title="Temporary presentation expires 15 minutes after generation for zero-retention privacy."
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs font-mono font-medium text-emerald-700 dark:text-emerald-400 shadow-xs"
+                title="Your presentation stays active in your browser until you refresh or leave the page."
               >
-                <Clock className="h-3.5 w-3.5" />
-                <span>Expires in {formatTime(secondsRemaining)}</span>
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live Editor Session</span>
               </div>
 
               {/* Download PPTX Button */}
@@ -638,7 +604,7 @@ export function PresentationPreviewPage() {
                 data-tour="tour-preview-download"
                 variant="hero"
                 className="min-h-[46px] px-5 text-xs font-semibold gap-2 shadow-xs"
-                disabled={downloading || isExpired}
+                disabled={downloading || !session}
                 onClick={handleDownloadPptx}
               >
                 {downloading ? (
@@ -1558,14 +1524,13 @@ export function PresentationPreviewPage() {
                 )}
               </div>
 
-              {/* Realism & Privacy Notice Card */}
+              {/* Realism & Session Persistence Card */}
               <div className="rounded-2xl border border-border/80 bg-surface-2/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-muted-foreground">
                 <div className="flex items-center gap-2.5">
                   <Shield className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>
                     <strong>Accurate In-Browser Viewer:</strong> Layouts, colors, and font pairings
-                    match the generated PowerPoint binary. Files will self-delete in{" "}
-                    {formatTime(secondsRemaining)}.
+                    match the generated PowerPoint binary. Your presentation stays active in your browser until you refresh or close this page.
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

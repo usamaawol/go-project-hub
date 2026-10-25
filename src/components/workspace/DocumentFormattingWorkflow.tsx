@@ -33,6 +33,8 @@ import {
   GraduationCap,
   Edit3,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -993,31 +995,22 @@ export function paginateSectionsIntoA4Pages(
   }
 
   // 2. Dedicated Table of Contents Page(s)
-  // When TOC is enabled, paginate TOC into dedicated A4 page(s)
-  // Max ~22 items on TOC Part 1 (has title header) and ~24 items on subsequent TOC pages
+  // When TOC is enabled, paginate TOC evenly into dedicated A4 page(s) (approx 24 topics per sheet)
   if (config.includeToc) {
     const tocItems = sections.filter(
       (s) => Boolean(s.title) && (s.level <= (config.tocLevels || 3)),
     );
     if (tocItems.length > 0) {
-      const TOC_FIRST_PAGE_LIMIT = 22;
-      const TOC_SUBSEQUENT_PAGE_LIMIT = 24;
+      const targetItemsPerPage = 24;
+      const totalTocPages = Math.max(1, Math.ceil(tocItems.length / targetItemsPerPage));
+      const itemsPerPage = Math.ceil(tocItems.length / totalTocPages);
 
       let remaining = [...tocItems];
       let tocPart = 1;
 
-      // Calculate total TOC pages
-      let tempCount = tocItems.length;
-      let totalTocPages = 1;
-      if (tempCount > TOC_FIRST_PAGE_LIMIT) {
-        tempCount -= TOC_FIRST_PAGE_LIMIT;
-        totalTocPages += Math.ceil(tempCount / TOC_SUBSEQUENT_PAGE_LIMIT);
-      }
-
       while (remaining.length > 0) {
-        const pageSize = tocPart === 1 ? TOC_FIRST_PAGE_LIMIT : TOC_SUBSEQUENT_PAGE_LIMIT;
-        const pageItems = remaining.slice(0, pageSize);
-        remaining = remaining.slice(pageSize);
+        const pageItems = remaining.slice(0, itemsPerPage);
+        remaining = remaining.slice(itemsPerPage);
 
         pages.push({
           pageNumber: currentPageNumber,
@@ -1253,6 +1246,7 @@ export function DocumentFormattingWorkflow({
   const [previewPage, setPreviewPage] = useState<"all" | "single" | "toc" | "cover">("all");
   const [activePageNum, setActivePageNum] = useState<number>(1);
   const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
+  const [documentZoom, setDocumentZoom] = useState<number>(100);
 
   // Academic Assignment Mode State
   const [assignmentMode, setAssignmentMode] = useState<boolean>(false);
@@ -2795,11 +2789,41 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                     </div>
                   )}
 
-                  {/* Layout Archetype Switcher & Paper Mode */}
-                  <div className="flex items-center gap-2">
+                  {/* Layout Archetype Switcher, Paper Mode & Zoom */}
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="hidden md:inline-flex rounded-full bg-surface-2 border border-border px-2.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                       {a4Pages.length} A4 Pages (210 × 297 mm)
                     </span>
+
+                    {/* Zoom Controls */}
+                    <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-2 p-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setDocumentZoom((prev) => Math.max(50, prev - 10))}
+                        className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground transition-colors cursor-pointer"
+                        title="Zoom Out (-10%)"
+                        disabled={documentZoom <= 50}
+                      >
+                        <ZoomOut className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDocumentZoom(100)}
+                        className="px-1.5 py-0.5 font-mono text-[11px] font-semibold text-foreground hover:bg-card rounded transition-colors cursor-pointer"
+                        title="Reset Zoom to 100%"
+                      >
+                        {documentZoom}%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDocumentZoom((prev) => Math.min(150, prev + 10))}
+                        className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground transition-colors cursor-pointer"
+                        title="Zoom In (+10%)"
+                        disabled={documentZoom >= 150}
+                      >
+                        <ZoomIn className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
 
                     <div className="flex rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
                       <button
@@ -2840,119 +2864,157 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
 
                 {/* A4 Pages Canvas Container */}
                 <div className="flex flex-col items-center py-8 bg-slate-100/90 dark:bg-zinc-950/90 rounded-2xl border border-border p-3 sm:p-6 lg:p-8 overflow-x-auto shadow-inner">
-                  {/* VIEW MODE 1: ALL A4 PAGES STACKED */}
-                  {previewPage === "all" && (
-                    <div className="w-full space-y-10 flex flex-col items-center">
-                      {a4Pages.map((page) => (
-                        <div key={page.pageNumber} className="flex flex-col items-center w-full max-w-[794px]">
-                          {/* Page Sheet Label Bar */}
-                          <div className="w-full flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
-                            <span className="font-semibold tracking-wider uppercase text-primary">
-                              A4 Sheet {page.pageNumber} of {page.totalPages}
-                            </span>
-                            <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
-                              {page.isCover
-                                ? "Cover Page"
-                                : page.isToc
-                                  ? `Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` (${page.tocPart}/${page.tocTotalParts})` : ""}`
-                                  : "210 × 297 mm"}
-                            </span>
+                  <div
+                    className="flex flex-col items-center transition-transform duration-150 origin-top"
+                    style={{
+                      transform: documentZoom !== 100 ? `scale(${documentZoom / 100})` : undefined,
+                      transformOrigin: "top center",
+                      width: "794px",
+                      minWidth: "794px",
+                      maxWidth: "794px",
+                    }}
+                  >
+                    {/* VIEW MODE 1: ALL A4 PAGES STACKED */}
+                    {previewPage === "all" && (
+                      <div className="space-y-10 flex flex-col items-center w-[794px] shrink-0">
+                        {a4Pages.map((page) => (
+                          <div
+                            key={page.pageNumber}
+                            className="flex flex-col items-center shrink-0 w-[794px]"
+                            style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                          >
+                            {/* Page Sheet Label Bar */}
+                            <div
+                              className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
+                              style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                            >
+                              <span className="font-semibold tracking-wider uppercase text-primary">
+                                A4 Sheet {page.pageNumber} of {page.totalPages}
+                              </span>
+                              <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                                {page.isCover
+                                  ? "Cover Page"
+                                  : page.isToc
+                                    ? `Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` (${page.tocPart}/${page.tocTotalParts})` : ""}`
+                                    : "210 × 297 mm"}
+                              </span>
+                            </div>
+
+                            <A4PageCard
+                              page={page}
+                              config={config}
+                              paperMode={paperMode}
+                              sections={sections}
+                              onNavigatePage={(p) => setActivePageNum(p)}
+                            />
                           </div>
-
-                          <A4PageCard
-                            page={page}
-                            config={config}
-                            paperMode={paperMode}
-                            sections={sections}
-                            onNavigatePage={(p) => setActivePageNum(p)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* VIEW MODE 2: SINGLE PAGE FLIPPER */}
-                  {previewPage === "single" && (
-                    <div className="w-full flex flex-col items-center">
-                      <div className="w-full max-w-[794px] flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
-                        <span className="font-semibold tracking-wider uppercase text-primary">
-                          A4 Sheet {activePage.pageNumber} of {activePage.totalPages}
-                        </span>
-                        <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
-                          210 × 297 mm
-                        </span>
+                        ))}
                       </div>
-                      <A4PageCard
-                        page={activePage}
-                        config={config}
-                        paperMode={paperMode}
-                        sections={sections}
-                        onNavigatePage={(p) => setActivePageNum(p)}
-                      />
-                    </div>
-                  )}
+                    )}
 
-                  {/* VIEW MODE 3: DEDICATED TOC VIEW */}
-                  {previewPage === "toc" && (
-                    <div className="w-full space-y-10 flex flex-col items-center">
-                      {a4Pages
-                        .filter((p) => p.isToc)
-                        .map((tocPage) => (
-                          <div key={tocPage.pageNumber} className="flex flex-col items-center w-full max-w-[794px]">
-                            <div className="w-full flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
-                              <span className="font-semibold tracking-wider uppercase text-primary">
-                                Table of Contents · A4 Page {tocPage.pageNumber}
-                              </span>
-                              <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
-                                {tocPage.tocTotalParts && tocPage.tocTotalParts > 1
-                                  ? `Part ${tocPage.tocPart} of ${tocPage.tocTotalParts}`
-                                  : "210 × 297 mm"}
-                              </span>
-                            </div>
-                            <A4PageCard
-                              page={tocPage}
-                              config={config}
-                              paperMode={paperMode}
-                              sections={sections}
-                              onNavigatePage={(p) => {
-                                setActivePageNum(p);
-                                setPreviewPage("single");
-                              }}
-                            />
-                          </div>
-                        ))}
-                    </div>
-                  )}
+                    {/* VIEW MODE 2: SINGLE PAGE FLIPPER */}
+                    {previewPage === "single" && (
+                      <div
+                        className="flex flex-col items-center shrink-0 w-[794px]"
+                        style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                      >
+                        <div
+                          className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
+                          style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                        >
+                          <span className="font-semibold tracking-wider uppercase text-primary">
+                            A4 Sheet {activePage.pageNumber} of {activePage.totalPages}
+                          </span>
+                          <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                            210 × 297 mm
+                          </span>
+                        </div>
+                        <A4PageCard
+                          page={activePage}
+                          config={config}
+                          paperMode={paperMode}
+                          sections={sections}
+                          onNavigatePage={(p) => setActivePageNum(p)}
+                        />
+                      </div>
+                    )}
 
-                  {/* VIEW MODE 4: DEDICATED COVER PAGE VIEW */}
-                  {previewPage === "cover" && (
-                    <div className="w-full space-y-10 flex flex-col items-center">
-                      {a4Pages
-                        .filter((p) => p.isCover)
-                        .map((coverPage) => (
-                          <div key={coverPage.pageNumber} className="flex flex-col items-center w-full max-w-[794px]">
-                            <div className="w-full flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
-                              <span className="font-semibold tracking-wider uppercase text-primary">
-                                Cover Page · A4 Sheet 1
-                              </span>
-                              <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
-                                210 × 297 mm
-                              </span>
+                    {/* VIEW MODE 3: DEDICATED TOC VIEW */}
+                    {previewPage === "toc" && (
+                      <div className="space-y-10 flex flex-col items-center w-[794px] shrink-0">
+                        {a4Pages
+                          .filter((p) => p.isToc)
+                          .map((tocPage) => (
+                            <div
+                              key={tocPage.pageNumber}
+                              className="flex flex-col items-center shrink-0 w-[794px]"
+                              style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                            >
+                              <div
+                                className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
+                                style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                              >
+                                <span className="font-semibold tracking-wider uppercase text-primary">
+                                  Table of Contents · A4 Page {tocPage.pageNumber}
+                                </span>
+                                <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                                  {tocPage.tocTotalParts && tocPage.tocTotalParts > 1
+                                    ? `Part ${tocPage.tocPart} of ${tocPage.tocTotalParts}`
+                                    : "210 × 297 mm"}
+                                </span>
+                              </div>
+                              <A4PageCard
+                                page={tocPage}
+                                config={config}
+                                paperMode={paperMode}
+                                sections={sections}
+                                onNavigatePage={(p) => {
+                                  setActivePageNum(p);
+                                  setPreviewPage("single");
+                                }}
+                              />
                             </div>
-                            <A4PageCard
-                              page={coverPage}
-                              config={config}
-                              paperMode={paperMode}
-                              sections={sections}
-                              onNavigatePage={(p) => {
-                                setActivePageNum(p);
-                                setPreviewPage("single");
-                              }}
-                            />
-                          </div>
-                        ))}
-                    </div>
-                  )}
+                          ))}
+                      </div>
+                    )}
+
+                    {/* VIEW MODE 4: DEDICATED COVER PAGE VIEW */}
+                    {previewPage === "cover" && (
+                      <div className="space-y-10 flex flex-col items-center w-[794px] shrink-0">
+                        {a4Pages
+                          .filter((p) => p.isCover)
+                          .map((coverPage) => (
+                            <div
+                              key={coverPage.pageNumber}
+                              className="flex flex-col items-center shrink-0 w-[794px]"
+                              style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                            >
+                              <div
+                                className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none shrink-0"
+                                style={{ width: "794px", minWidth: "794px", maxWidth: "794px" }}
+                              >
+                                <span className="font-semibold tracking-wider uppercase text-primary">
+                                  Cover Page · A4 Sheet 1
+                                </span>
+                                <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                                  210 × 297 mm
+                                </span>
+                              </div>
+                              <A4PageCard
+                                page={coverPage}
+                                config={config}
+                                paperMode={paperMode}
+                                sections={sections}
+                                onNavigatePage={(p) => {
+                                  setActivePageNum(p);
+                                  setPreviewPage("single");
+                                }}
+                              />
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -3177,7 +3239,9 @@ function A4PageCard({
   return (
     <div
       id={`page-${page.pageNumber}`}
-      className={`w-full max-w-[794px] min-h-[1123px] md:h-[1123px] md:max-h-[1123px] overflow-hidden mx-auto rounded-xs border ${marginPadding} flex flex-col justify-between transition-all select-text ${
+      className={`shrink-0 overflow-hidden mx-auto rounded-xs border flex flex-col justify-between transition-all select-text ${
+        page.isCover && config.assignmentMetadata?.isAssignment ? "p-0" : marginPadding
+      } ${
         paperMode === "dark"
           ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-[0_12px_36px_rgba(0,0,0,0.6)]"
           : "bg-white border-stone-200 text-stone-900 shadow-[0_12px_36px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)]"
@@ -3188,31 +3252,46 @@ function A4PageCard({
             ? "font-mono"
             : "font-sans"
       }`}
-      style={{ lineHeight: config.lineSpacing }}
+      style={{
+        width: "794px",
+        minWidth: "794px",
+        maxWidth: "794px",
+        height: "1123px",
+        minHeight: "1123px",
+        maxHeight: "1123px",
+        boxSizing: "border-box",
+        overflow: "hidden",
+        lineHeight: config.lineSpacing,
+      }}
     >
       {/* Running Page Top Header */}
-      <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-3 mb-3 border-b border-border/30 shrink-0 select-none">
-        <span className="truncate max-w-[70%] font-medium">
-          {page.isCover ? "" : config.headerText || config.docTitle || "Document"}
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
-          {page.isCover
-            ? config.assignmentMetadata?.isAssignment
-              ? "Academic Assignment Cover"
-              : "Cover Page"
-            : page.isToc
+      {!page.isCover && (
+        <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-3 mb-3 border-b border-border/30 shrink-0 select-none">
+          <span className="truncate max-w-[70%] font-medium">
+            {config.headerText || config.docTitle || "Document"}
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+            {page.isToc
               ? `Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` (${page.tocPart}/${page.tocTotalParts})` : ""}`
               : `A4 Page ${page.pageNumber}`}
-        </span>
-      </div>
+          </span>
+        </div>
+      )}
 
       {/* Page Content Body */}
-      <div className="flex-1 space-y-4 flex flex-col justify-start overflow-hidden">
+      <div
+        className={`flex-1 flex flex-col justify-start overflow-hidden ${
+          page.isCover && config.assignmentMetadata?.isAssignment ? "h-full w-full" : "space-y-4"
+        }`}
+      >
         {/* Cover Page */}
         {page.isCover && (
           config.assignmentMetadata?.isAssignment ? (
-            <div className="flex-1 flex flex-col justify-between py-2 w-full">
-              <AssignmentCoverRenderer metadata={config.assignmentMetadata || assignmentMetadata} aspectRatio="a4" />
+            <div className="w-full h-full flex flex-col">
+              <AssignmentCoverRenderer
+                metadata={config.assignmentMetadata || getDefaultAssignmentMetadata()}
+                aspectRatio="a4"
+              />
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">

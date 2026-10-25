@@ -556,16 +556,9 @@ export async function fetchPresentationPreviewApi(
   // 1. Check local client session storage first (immediate, works on Vercel without server)
   const localSession = getClientSession(sessionId);
   if (localSession) {
-    const now = Date.now();
-    if (now >= localSession.expiresAt) {
-      removeClientSession(sessionId);
-      const error = new Error("This temporary presentation has expired and was deleted.");
-      (error as unknown as { code: string }).code = "SESSION_EXPIRED";
-      throw error;
-    }
     return {
       ...localSession,
-      secondsRemaining: Math.max(0, Math.floor((localSession.expiresAt - now) / 1000)),
+      secondsRemaining: 999999,
     };
   }
 
