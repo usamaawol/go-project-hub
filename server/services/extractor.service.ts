@@ -16,6 +16,73 @@ export interface ExtractionResult {
 }
 
 /**
+ * Cleans stray OCR artifacts, icon noise, and punctuation debris from screenshot text.
+ */
+function cleanOcrArtifacts(text: string): string {
+  if (!text) return "";
+  const lines = text.split("\n");
+  const cleaned: string[] = [];
+
+  for (let rawLine of lines) {
+    let l = rawLine.trim();
+
+    if (!l) {
+      if (cleaned.length > 0 && cleaned[cleaned.length - 1] !== "") {
+        cleaned.push("");
+      }
+      continue;
+    }
+
+    if (
+      l.length <= 2 &&
+      /^[A-Za-z0-9~_|\^\*\]\)\(\>\<\#\$\@\+\=\-\.\,\;\:\!\?\/\\\{\}]+$/.test(l) &&
+      !/^\d+$/.test(l)
+    ) {
+      continue;
+    }
+
+    if (/^[~_|\^\*\]\)\(\>\<\#\$\@\+\=\-\.\,\;\:\!\?\/\\\{\}\s]{2,}$/.test(l)) {
+      continue;
+    }
+
+    l = l.replace(/^[\~_\*\^\|\>\<#\$@\+\=]+\s*/, "");
+    l = l.replace(/^[\]\)\(\}\s]*\|[\s\]\)]*/, "");
+    l = l.replace(/^[\*_\~\|\s]+/, "");
+    l = l.replace(/^[0-9]\s+(?=[A-Z][a-z])/, "");
+    l = l.replace(/^[JjIil1\)\(\]\[]\s+(?=[A-Z][a-z])/, "");
+    l = l.replace(/^[0-9\)\(\]\[]\s+(?=[a-z])/, "");
+
+    l = l.replace(/\[W\]\$?\s*@?/gi, "");
+    l = l.replace(/^[0-9\(\s]*\(DD\s*/gi, "");
+    l = l.replace(/^[0-9\s]*Leave a comment/i, "Leave a comment");
+    l = l.replace(/\(\s*\)\s*/g, " ");
+    l = l.replace(/\s*#$/g, "");
+
+    if (l.startsWith("[") && !l.includes("]")) {
+      l = l.replace(/^\[\s*/, "");
+    }
+    if (l.endsWith("]") && !l.includes("[")) {
+      l = l.replace(/\s*\]$/, "");
+    }
+
+    const wrappedHeadingMatch = l.match(/^\[\s*([A-Z0-9\s\-\:\!\?]{6,})\s*\]$/);
+    if (wrappedHeadingMatch && wrappedHeadingMatch[1]) {
+      l = wrappedHeadingMatch[1].trim();
+    }
+
+    l = l.replace(/[ \t]{2,}/g, " ").trim();
+
+    if (l) {
+      cleaned.push(l);
+    }
+  }
+
+  let result = cleaned.join("\n");
+  result = result.replace(/(\b[a-zA-Z]{2,})-\n\s*([a-zA-Z]{2,}\b)/g, "$1-$2");
+  return result.trim();
+}
+
+/**
  * Extracts text from an image / screenshot using Google Gemini Vision (if configured)
  * or local Tesseract OCR engine as fallback.
  */
@@ -81,18 +148,33 @@ async function extractTextFromImageBuffer(
   }
 
   // 2. Local Tesseract OCR Fallback (Zero external API, 100% offline & private)
+  const prevWindow = (globalThis as any).window;
+  const prevDoc = (globalThis as any).document;
+  const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
+  if (isNode) {
+    try {
+      delete (globalThis as any).window;
+      delete (globalThis as any).document;
+    } catch {}
+  }
   try {
     const { createWorker } = await import("tesseract.js");
     const worker = await createWorker("eng");
     const ret = await worker.recognize(buffer);
     await worker.terminate();
-    const tesseractText = (ret?.data?.text || "").trim();
-    return { text: tesseractText, engine: "tesseract" };
+    const rawText = (ret?.data?.text || "").trim();
+    const tesseractText = cleanOcrArtifacts(rawText);
+    return { text: tesseractText || rawText, engine: "tesseract" };
   } catch (tErr) {
     console.error("Tesseract OCR fallback failed:", tErr);
     throw new Error(
       "Could not extract text from this image. Please ensure the image contains clear, legible text or try uploading another screenshot.",
     );
+  } finally {
+    if (isNode) {
+      if (prevWindow) (globalThis as any).window = prevWindow;
+      if (prevDoc) (globalThis as any).document = prevDoc;
+    }
   }
 }
 
@@ -152,9 +234,10 @@ export async function extractTextFromBuffer(
       const parser = new PDFParse(new Uint8Array(buffer));
       await parser.load();
       const parsed = await parser.getText();
-      const text = (parsed.text || "").trim();
+      let text = (parsed.text || "").trim();
+      text = text.replace(/--\s*\d+\s*of\s*\d+\s*--/gi, "").trim();
 
-      if (text.length < 15) {
+      if (text.length === 0) {
         return {
           text: "",
           wordCount: 0,

@@ -27,8 +27,9 @@ export async function extractTextFromPdfBytes(
     const parser = new PDFParse(new Uint8Array(bytes));
     await parser.load();
     const parsed = await parser.getText();
-    const text = (parsed.text || "").trim();
-    if (text.length > 5) {
+    let text = (parsed.text || "").trim();
+    text = text.replace(/--\s*\d+\s*of\s*\d+\s*--/gi, "").trim();
+    if (text.length > 0) {
       cleanedText = text;
       pageCount = parsed.total || 1;
       const words = cleanedText.split(/\s+/).filter(Boolean).length;

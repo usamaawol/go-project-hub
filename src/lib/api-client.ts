@@ -32,6 +32,41 @@ export async function checkBackendHealth(): Promise<HealthResponse | null> {
   }
 }
 
+export async function getBytesFromBlobOrFile(file: File | Blob): Promise<Uint8Array> {
+  if (typeof file.arrayBuffer === "function") {
+    try {
+      return new Uint8Array(await file.arrayBuffer());
+    } catch {}
+  }
+  if (typeof (file as any).bytes === "function") {
+    try {
+      return await (file as any).bytes();
+    } catch {}
+  }
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(file)) {
+    return new Uint8Array(file);
+  }
+  if (typeof FileReader !== "undefined") {
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+  return new Uint8Array();
+}
+
+export async function getTextFromBlobOrFile(file: File | Blob): Promise<string> {
+  if (typeof file.text === "function") {
+    try {
+      return await file.text();
+    } catch {}
+  }
+  const bytes = await getBytesFromBlobOrFile(file);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 export async function extractDocumentText(file: File): Promise<{
   text: string;
   wordCount: number;
@@ -40,24 +75,26 @@ export async function extractDocumentText(file: File): Promise<{
   isScannedOrEmpty?: boolean;
   warning?: string;
 }> {
-  // 1. Try backend extraction service if available
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
+  // 1. Try backend extraction service if available in browser
+  if (typeof window !== "undefined") {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    const res = await fetch(`${API_BASE}/documents/extract`, {
-      method: "POST",
-      body: formData,
-    });
+      const res = await fetch(`${API_BASE}/documents/extract`, {
+        method: "POST",
+        body: formData,
+      });
 
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data && json.data.text?.trim()?.length > 0) {
-        return json.data;
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data && json.data.text?.trim()?.length > 0) {
+          return json.data;
+        }
       }
+    } catch (e) {
+      console.warn("Backend extraction unavailable, using in-browser extraction engine:", e);
     }
-  } catch (e) {
-    console.warn("Backend extraction unavailable, using in-browser extraction engine:", e);
   }
 
   // 2. Client-side extraction engine (runs natively on Vercel, client browser, and offline)
@@ -65,7 +102,7 @@ export async function extractDocumentText(file: File): Promise<{
 
   // Plain Text / Markdown / CSV
   if (ext === "txt" || ext === "md" || ext === "csv") {
-    const text = (await file.text()).trim();
+    const text = (await getTextFromBlobOrFile(file)).trim();
     if (text.length === 0) {
       return {
         text: "",
@@ -87,8 +124,7 @@ export async function extractDocumentText(file: File): Promise<{
   // PDF Extraction (handles compressed FlateDecode streams, vector fonts, and scanned pages)
   if (ext === "pdf" || file.type === "application/pdf") {
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
+      const bytes = await getBytesFromBlobOrFile(file);
       const pdfResult = await extractTextFromPdfBytes(bytes);
 
       if (pdfResult.text && pdfResult.text.length > 0) {
@@ -107,9 +143,9 @@ export async function extractDocumentText(file: File): Promise<{
   // Client-side DOCX text extraction
   if (ext === "docx" || ext === "doc" || file.type.includes("wordprocessingml")) {
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const bytes = await getBytesFromBlobOrFile(file);
       const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({ arrayBuffer });
+      const result = await mammoth.extractRawText({ arrayBuffer: bytes.buffer });
       const text = (result.value || "").trim();
       if (text.length > 0) {
         return {
@@ -132,8 +168,11 @@ export async function extractDocumentText(file: File): Promise<{
       const worker = await createWorker("eng");
       const ret = await worker.recognize(file);
       await worker.terminate();
-      const text = (ret?.data?.text || "").trim();
-      if (text.length > 0) {
+      const rawText = (ret?.data?.text || "").trim();
+      if (rawText.length > 0) {
+        const { cleanOcrArtifacts } = await import("./ocr-cleaner");
+        const cleanedText = cleanOcrArtifacts(rawText);
+        const text = cleanedText || rawText;
         return {
           text,
           wordCount: text.split(/\s+/).filter(Boolean).length,

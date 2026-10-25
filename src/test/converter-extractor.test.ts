@@ -31,7 +31,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
       expect(result.mimeType).toBe(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       );
-      expect(result.filename).toBe("project_plan_converted.docx");
+      expect(result.filename).toBe("project_plan.docx");
 
       // Verify that the generated DOCX can be extracted back with full content preserved
       const reExtracted = await extractTextFromBuffer(result.buffer, result.mimeType, result.filename);
@@ -48,7 +48,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
       expect(result.buffer).toBeDefined();
       expect(result.sizeBytes).toBeGreaterThan(500);
       expect(result.mimeType).toBe("application/pdf");
-      expect(result.filename).toBe("project_plan_converted.pdf");
+      expect(result.filename).toBe("project_plan.pdf");
 
       // Verify that the generated PDF has valid PDF magic header (%PDF-)
       const header = result.buffer.subarray(0, 5).toString("utf-8");
@@ -75,7 +75,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
 
       const result = await convertDocumentBuffer(pdfBuffer, "application/pdf", "DOCX", "quarterly_review.pdf");
 
-      expect(result.filename).toBe("quarterly_review_converted.docx");
+      expect(result.filename).toBe("quarterly_review.docx");
       expect(result.mimeType).toBe(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       );
@@ -99,7 +99,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
 
       const result = await convertDocumentBuffer(pdfBuffer, "application/pdf", "TXT", "overview.pdf");
 
-      expect(result.filename).toBe("overview_converted.txt");
+      expect(result.filename).toBe("overview.txt");
       expect(result.mimeType).toBe("text/plain; charset=utf-8");
       const text = result.buffer.toString("utf-8");
       expect(text).toContain("Strategic Overview: Academic Freedom and Digital Literacy.");
@@ -122,7 +122,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
         docxResult.filename,
       );
 
-      expect(pdfResult.filename).toBe("contract_converted_converted.pdf");
+      expect(pdfResult.filename).toBe("contract.pdf");
       expect(pdfResult.mimeType).toBe("application/pdf");
       expect(pdfResult.buffer.subarray(0, 5).toString("utf-8")).toBe("%PDF-");
 
@@ -145,7 +145,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
         docxResult.filename,
       );
 
-      expect(txtResult.filename).toBe("notes_converted_converted.txt");
+      expect(txtResult.filename).toBe("notes.txt");
       const text = txtResult.buffer.toString("utf-8");
       expect(text).toContain("Executive Architecture & Implementation");
       expect(text).toContain("Strategic Pillars");
@@ -208,7 +208,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
       const { convertDocument } = await import("../lib/document-converter");
       const result = await convertDocument(file, "TXT");
 
-      expect(result.filename).toBe("optimized_Internet_Programming_II_Nextjs_Assignment_converted.txt");
+      expect(result.filename).toBe("optimized_Internet_Programming_II_Nextjs_Assignment.txt");
       expect(result.previewText).toContain("Internet Programming II Nextjs Assignment");
       expect(result.wordCount).toBeGreaterThan(0);
     });
@@ -233,7 +233,7 @@ All original topics, main ideas, and structure are preserved with zero data loss
 
       const docxResult = await convertDocument(file, "DOCX");
       expect(docxResult.wordCount).toBeGreaterThan(1500);
-      expect(docxResult.filename).toContain("_converted.docx");
+      expect(docxResult.filename).toBe("Sof Omar Tech Academy - Tech Terminologies Glossary (1).docx");
     });
   });
 });

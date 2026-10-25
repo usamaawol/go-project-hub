@@ -3,12 +3,12 @@ export type ThemeKind =
 
 export type SlideType = 0 | 1 | 2 | 3;
 
-export const SLIDE_LABELS: Record<SlideType, string> = {
-  0: "Cover / Title",
-  1: "Structure & Agenda",
-  2: "Data & Analysis",
-  3: "Summary & Takeaways",
-};
+export const SLIDE_LABELS: Record<SlideType, string> & readonly string[] = [
+  "Cover / Title",
+  "Structure & Agenda",
+  "Data & Analysis",
+  "Summary & Takeaways",
+];
 
 interface ThemeThumbProps {
   kind: ThemeKind;

@@ -252,10 +252,10 @@ export async function handleConvertDocument(
     }
 
     const targetFormat = ((req.body.targetFormat || req.query.targetFormat || "DOCX") as string).toUpperCase() as SupportedFormat;
-    if (!["PDF", "DOCX", "TXT"].includes(targetFormat)) {
+    if (!["PDF", "DOCX", "DOC", "TXT"].includes(targetFormat)) {
       return res.status(400).json({
         success: false,
-        error: { message: "Unsupported target format. Must be PDF, DOCX, or TXT." },
+        error: { message: "Unsupported target format. Must be PDF, DOCX, DOC, or TXT." },
       });
     }
 

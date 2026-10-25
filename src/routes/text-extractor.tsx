@@ -18,12 +18,17 @@ import {
   Eye,
   Columns2,
   Undo2,
+  Eraser,
+  AlignLeft,
+  ArrowRight,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
+import { cleanOcrArtifacts, mergeSentenceWraps } from "@/lib/ocr-cleaner";
 
 export const Route = createFileRoute("/text-extractor")({
   head: () => ({
@@ -45,6 +50,7 @@ const ALLOWED_EXTS = ["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp",
 interface ExtractedTextState {
   text: string;
   originalText: string;
+  rawOcrText?: string;
   wordCount: number;
   lineCount: number;
   charCount: number;
@@ -64,6 +70,7 @@ function TextExtractorPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "preview" | "compare">("editor");
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extractedSectionRef = useRef<HTMLDivElement>(null);
@@ -114,9 +121,13 @@ function TextExtractorPage() {
 
     try {
       const result = await extractDocumentText(file);
-      const text = result.text || "";
-      const wordCount = result.wordCount || text.split(/\s+/).filter(Boolean).length;
-      const lineCount = result.lineCount || (text ? text.split("\n").length : 0);
+      const rawText = result.text || "";
+      // If image OCR, clean stray symbols and icon artifacts automatically
+      const cleaned = isImageFile ? cleanOcrArtifacts(rawText) : rawText;
+      const text = cleaned || rawText;
+
+      const wordCount = text.split(/\s+/).filter(Boolean).length;
+      const lineCount = text ? text.split("\n").length : 0;
       const charCount = text.length;
 
       if (!text || text.trim().length === 0) {
@@ -130,6 +141,7 @@ function TextExtractorPage() {
       setExtractedData({
         text,
         originalText: text,
+        rawOcrText: rawText,
         wordCount,
         lineCount,
         charCount,
@@ -144,8 +156,8 @@ function TextExtractorPage() {
         setActiveTab("editor");
       }
 
-      toast.success(isImageFile ? "Screenshot OCR Complete!" : "Text Extracted!", {
-        description: `Successfully extracted ${wordCount} words verbatim. You can review and edit below before downloading.`,
+      toast.success(isImageFile ? "High-Accuracy OCR Complete!" : "Text Extracted!", {
+        description: `Successfully extracted ${wordCount} words verbatim with OCR noise cleaned.`,
       });
 
       // Automatically scroll smoothly to the extracted text viewer
@@ -160,6 +172,31 @@ function TextExtractorPage() {
     } finally {
       setExtracting(false);
     }
+  };
+
+  const handleCleanOcrNoise = () => {
+    if (!extractedData) return;
+    const cleaned = cleanOcrArtifacts(extractedData.text);
+    if (cleaned === extractedData.text) {
+      toast.info("Text is already clean — no noise symbols detected!");
+      return;
+    }
+    const diff = extractedData.text.length - cleaned.length;
+    handleTextChange(cleaned);
+    toast.success("Stripped OCR noise & unnecessary symbols!", {
+      description: `Removed approximately ${diff} artifact characters and lines.`,
+    });
+  };
+
+  const handleMergeParagraphs = () => {
+    if (!extractedData) return;
+    const merged = mergeSentenceWraps(extractedData.text);
+    if (merged === extractedData.text) {
+      toast.info("Paragraph lines are already formatted!");
+      return;
+    }
+    handleTextChange(merged);
+    toast.success("Merged wrapped lines into smooth paragraphs!");
   };
 
   const handleTextChange = (newText: string) => {
@@ -179,13 +216,14 @@ function TextExtractorPage() {
 
   const handleRevert = () => {
     if (!extractedData) return;
-    const wordCount = extractedData.originalText.split(/\s+/).filter(Boolean).length;
-    const lineCount = extractedData.originalText ? extractedData.originalText.split("\n").length : 0;
-    const charCount = extractedData.originalText.length;
+    const revertTarget = extractedData.originalText;
+    const wordCount = revertTarget.split(/\s+/).filter(Boolean).length;
+    const lineCount = revertTarget ? revertTarget.split("\n").length : 0;
+    const charCount = revertTarget.length;
 
     setExtractedData({
       ...extractedData,
-      text: extractedData.originalText,
+      text: revertTarget,
       wordCount,
       lineCount,
       charCount,
@@ -218,20 +256,66 @@ function TextExtractorPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
+  const handleDownloadTxt = () => {
     if (!extractedData) return;
     const blob = new Blob([extractedData.text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${extractedData.filename.replace(/\.[^/.]+$/, "")}_extracted.txt`;
+    a.download = `${extractedData.filename.replace(/\.[^/.]+$/, "")}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast.success("Downloaded text file!", {
-      description: "File saved with your verified content and edits.",
-    });
+    toast.success("Downloaded verified text file (.txt)!");
+  };
+
+  const handleDownloadDocx = async () => {
+    if (!extractedData) return;
+    setExportingFormat("DOCX");
+    try {
+      const { convertDocument } = await import("@/lib/document-converter");
+      const base = extractedData.filename.replace(/\.[^/.]+$/, "");
+      const fakeFile = new File([extractedData.text], `${base}.txt`, { type: "text/plain" });
+      const res = await convertDocument(fakeFile, "DOCX");
+      const url = URL.createObjectURL(res.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${base}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Exported Word document (.docx)!");
+    } catch (e) {
+      toast.error("Failed to export Word document");
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!extractedData) return;
+    setExportingFormat("PDF");
+    try {
+      const { convertDocument } = await import("@/lib/document-converter");
+      const base = extractedData.filename.replace(/\.[^/.]+$/, "");
+      const fakeFile = new File([extractedData.text], `${base}.txt`, { type: "text/plain" });
+      const res = await convertDocument(fakeFile, "PDF");
+      const url = URL.createObjectURL(res.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${base}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Exported Adobe PDF (.pdf)!");
+    } catch (e) {
+      toast.error("Failed to export PDF document");
+    } finally {
+      setExportingFormat(null);
+    }
   };
 
   const isCurrentFileImage =
@@ -401,6 +485,39 @@ function TextExtractorPage() {
                 <span>{warningMessage}</span>
               </div>
             )}
+
+            {/* Action Bar for Step 1 when file is selected */}
+            {selectedFile && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-border">
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">{selectedFile.name}</span>
+                  <span className="ml-2 font-mono text-[11px] text-primary">
+                    ({isCurrentFileImage ? "Picture / Screenshot" : (selectedFile.name.split(".").pop()?.toUpperCase() || "")} · {(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </span>
+                </div>
+
+                <Button
+                  variant="hero"
+                  size="lg"
+                  disabled={extracting}
+                  onClick={() => executeExtraction(selectedFile, Boolean(isCurrentFileImage), selectedFile.name.split(".").pop()?.toLowerCase() || "")}
+                  className="w-full sm:w-auto px-7 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:via-indigo-700 hover:to-violet-700 text-white font-bold rounded-xl shadow-lg hover:shadow-primary/25 transition-all text-xs gap-2 cursor-pointer"
+                >
+                  {extracting ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Extracting Clean Text...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 text-amber-300 animate-pulse" />
+                      <span>{extractedData ? "Re-Extract & Clean Text" : "Extract Text Now"}</span>
+                      <ArrowRight className="h-4 w-4 ml-0.5 opacity-80" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Step 2: Extracted Text Review & Live In-Browser Editor (Before Download) */}
@@ -412,9 +529,14 @@ function TextExtractorPage() {
               {/* Telemetry Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
                 <div>
-                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-md">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    <span>Step 2: Review & Edit Extracted Text on Website (Before Download)</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-md">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Step 2: Review & Edit Extracted Text on Website</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-md text-[11px] font-semibold">
+                      <Sparkles className="h-3 w-3" /> High-Accuracy OCR
+                    </span>
                   </div>
                   <div className="mt-2 flex items-center gap-2.5">
                     <FileText className="h-5 w-5 text-primary" />
@@ -445,58 +567,105 @@ function TextExtractorPage() {
                 </div>
               </div>
 
-              {/* View Switcher Tabs & In-Page Search */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-surface-2/60 border border-border self-start">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("editor")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                      activeTab === "editor"
-                        ? "bg-background text-foreground shadow-xs font-semibold"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Edit3 className="h-3.5 w-3.5" /> Live Editor
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("preview")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                      activeTab === "preview"
-                        ? "bg-background text-foreground shadow-xs font-semibold"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Eye className="h-3.5 w-3.5" /> Formatted View
-                  </button>
-
-                  {imagePreviewUrl && (
+              {/* View Switcher Tabs & Quick Smart Tools Toolbar */}
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  {/* Segmented Tab Controls */}
+                  <div className="flex items-center gap-1.5 p-1 rounded-xl bg-surface-2/80 border border-border self-start shadow-inner">
                     <button
                       type="button"
-                      onClick={() => setActiveTab("compare")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                        activeTab === "compare"
-                          ? "bg-background text-foreground shadow-xs font-semibold"
+                      onClick={() => setActiveTab("editor")}
+                      className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                        activeTab === "editor"
+                          ? "bg-primary text-primary-foreground shadow-xs"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      <Columns2 className="h-3.5 w-3.5" /> Side-by-Side Compare
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span>Live Editor</span>
                     </button>
-                  )}
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("preview")}
+                      className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                        activeTab === "preview"
+                          ? "bg-primary text-primary-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>Formatted View</span>
+                    </button>
+
+                    {imagePreviewUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("compare")}
+                        className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                          activeTab === "compare"
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Columns2 className="h-3.5 w-3.5" />
+                        <span>Side-by-Side Compare</span>
+                        <span className="rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 text-[10px] font-mono">
+                          Active
+                        </span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Search in text */}
+                  <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Search keywords in text..."
+                      className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
+                    />
+                  </div>
                 </div>
 
-                {/* Search in text */}
-                <div className="relative flex-1 max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search keywords in text..."
-                    className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
-                  />
+                {/* Quick Smart Tools Bar */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/60">
+                  <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+                    <Wand2 className="h-3.5 w-3.5 text-primary" /> Smart Tools:
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleCleanOcrNoise}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 transition-all shadow-xs cursor-pointer active:scale-95"
+                    title="Strip unnecessary OCR symbols, brackets, and icon debris"
+                  >
+                    <Eraser className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Strip OCR Noise & Symbols</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleMergeParagraphs}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 transition-all shadow-xs cursor-pointer active:scale-95"
+                    title="Join wrapped lines into smooth, readable paragraphs"
+                  >
+                    <AlignLeft className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Merge Paragraph Lines</span>
+                  </button>
+
+                  {isEdited && (
+                    <button
+                      type="button"
+                      onClick={handleRevert}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-2 hover:bg-surface-3 text-muted-foreground hover:text-foreground border border-border transition-all cursor-pointer active:scale-95 ml-auto"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      <span>Revert Changes</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -639,38 +808,68 @@ function TextExtractorPage() {
               <div className="border-t border-border pt-6 mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-2/20 -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 p-6 sm:p-8 rounded-b-2xl">
                 <div>
                   <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Step 3: Export & Download Verified Text
+                    Step 3: Export & Download Verified Content
                   </span>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    The downloaded file will include all of your live edits and corrections made above.
+                    Exports retain all your verified text, line breaks, and live corrections made above.
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <Button
                     variant="glass"
-                    size="lg"
+                    size="sm"
                     onClick={handleCopy}
-                    className="text-xs gap-1.5 font-medium"
+                    className="text-xs gap-1.5 font-medium border-border hover:bg-surface-2 shadow-xs cursor-pointer"
                   >
                     {copied ? (
                       <>
-                        <Check className="h-4 w-4 text-emerald-600" /> Copied to Clipboard
+                        <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied
                       </>
                     ) : (
                       <>
-                        <Copy className="h-4 w-4" /> Copy Text
+                        <Copy className="h-3.5 w-3.5" /> Copy Clean Text
                       </>
                     )}
                   </Button>
 
                   <Button
                     variant="hero"
-                    size="lg"
-                    onClick={handleDownload}
-                    className="text-xs gap-2 px-6 font-semibold shadow-md"
+                    size="sm"
+                    onClick={handleDownloadTxt}
+                    className="text-xs gap-1.5 px-4 font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-primary/25 cursor-pointer"
                   >
-                    <Download className="h-4 w-4" /> Download Verified Text (.txt)
+                    <Download className="h-3.5 w-3.5" /> Text (.txt)
+                  </Button>
+
+                  <Button
+                    variant="hero"
+                    size="sm"
+                    onClick={handleDownloadDocx}
+                    disabled={exportingFormat === "DOCX"}
+                    className="text-xs gap-1.5 px-4 font-semibold bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-md hover:shadow-indigo-500/25 cursor-pointer"
+                  >
+                    {exportingFormat === "DOCX" ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="h-3.5 w-3.5" />
+                    )}
+                    <span>Word (.docx)</span>
+                  </Button>
+
+                  <Button
+                    variant="hero"
+                    size="sm"
+                    onClick={handleDownloadPdf}
+                    disabled={exportingFormat === "PDF"}
+                    className="text-xs gap-1.5 px-4 font-semibold bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white shadow-md hover:shadow-violet-500/25 cursor-pointer"
+                  >
+                    {exportingFormat === "PDF" ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    <span>PDF (.pdf)</span>
                   </Button>
                 </div>
               </div>

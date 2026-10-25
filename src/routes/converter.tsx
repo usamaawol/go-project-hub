@@ -54,8 +54,8 @@ function ConverterPage() {
     targetFormat: string;
     blobUrl: string;
     sizeBytes: number;
-    wordCount?: number;
-    previewText?: string;
+    wordCount?: number | undefined;
+    previewText?: string | undefined;
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -95,16 +95,16 @@ function ConverterPage() {
     }
 
     setSelectedFile(file);
-    const upperExt = ext === "doc" ? "DOCX" : ext.toUpperCase();
+    const upperExt = ext === "doc" ? "DOC" : ext.toUpperCase();
     setFileExt(upperExt);
 
     // Default target format:
     // If source is PDF -> default to DOCX
-    // If source is DOCX -> default to PDF
+    // If source is DOCX or DOC -> default to PDF
     // If source is TXT or Image -> default to PDF
     if (upperExt === "PDF") {
       setTargetFormat("DOCX");
-    } else if (upperExt === "DOCX") {
+    } else if (upperExt === "DOCX" || upperExt === "DOC") {
       setTargetFormat("PDF");
     } else {
       setTargetFormat("PDF");
@@ -181,7 +181,9 @@ function ConverterPage() {
     toast.success(`Downloaded ${convertedResult.filename}!`);
   };
 
-  const availableTargets = (["DOCX", "PDF", "TXT"] as const).filter((f) => f !== fileExt);
+  const availableTargets = (["DOCX", "DOC", "PDF", "TXT"] as const).filter(
+    (f) => f !== fileExt,
+  );
 
   const filteredLines = convertedResult?.previewText
     ? searchTerm.trim()
@@ -320,10 +322,12 @@ function ConverterPage() {
                       </div>
                       <span className="mt-1 text-[10px] text-muted-foreground">
                         {target === "DOCX"
-                          ? "Genuine Office OpenXML (.docx)"
-                          : target === "PDF"
-                            ? "Standard Adobe PDF (.pdf)"
-                            : "Clean Plain Text (.txt)"}
+                          ? "Microsoft Word (.docx)"
+                          : target === "DOC"
+                            ? "Word Document (.doc)"
+                            : target === "PDF"
+                              ? "Standard Adobe PDF (.pdf)"
+                              : "Clean Plain Text (.txt)"}
                       </span>
                     </button>
                   ))}
@@ -440,7 +444,7 @@ function ConverterPage() {
                     <Eye className="h-3.5 w-3.5" />
                     {convertedResult.targetFormat === "PDF"
                       ? "In-Browser PDF Document"
-                      : convertedResult.targetFormat === "DOCX"
+                      : convertedResult.targetFormat === "DOCX" || convertedResult.targetFormat === "DOC"
                         ? "Word Editorial Layout"
                         : "Formatted View"}
                   </button>
@@ -502,15 +506,15 @@ function ConverterPage() {
                     </div>
                   )}
 
-                  {/* If DOCX target: Render authentic Word document layout preview */}
-                  {convertedResult.targetFormat === "DOCX" && (
+                  {/* If DOCX or DOC target: Render authentic Word document layout preview */}
+                  {(convertedResult.targetFormat === "DOCX" || convertedResult.targetFormat === "DOC") && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
-                          <BookOpen className="h-3.5 w-3.5 text-primary" /> Word Document (.docx) Editorial Page Preview
+                          <BookOpen className="h-3.5 w-3.5 text-primary" /> Word Document (.{convertedResult.targetFormat.toLowerCase()}) Editorial Page Preview
                         </span>
                         <span className="font-mono text-[11px]">
-                          Office OpenXML Structure Verified
+                          Word Document Structure Verified
                         </span>
                       </div>
 
@@ -521,7 +525,7 @@ function ConverterPage() {
                               Microsoft Word Document · Converted from {fileExt}
                             </span>
                             <h2 className="font-serif font-bold text-xl text-foreground mt-1">
-                              {convertedResult.filename.replace(/\.docx$/i, "")}
+                              {convertedResult.filename.replace(/\.(docx|doc)$/i, "")}
                             </h2>
                           </div>
 
@@ -529,35 +533,11 @@ function ConverterPage() {
                             filteredLines.map((line, idx) => {
                               const trimmed = line.trim();
                               if (!trimmed) return <div key={idx} className="h-2" />;
-                              const isHeading =
-                                /^#+\s+/.test(trimmed) ||
-                                (trimmed.length < 60 &&
-                                  !trimmed.endsWith(".") &&
-                                  !/^[-*•]/.test(trimmed) &&
-                                  /^[A-Z0-9]/.test(trimmed));
-                              const isBullet = /^[-*•\d.]\s+/.test(trimmed);
-
-                              if (isHeading) {
-                                return (
-                                  <h3
-                                    key={idx}
-                                    className="font-serif font-bold text-sm text-foreground pt-3 border-b border-border/40 pb-1"
-                                  >
-                                    {trimmed.replace(/^#+\s*/, "")}
-                                  </h3>
-                                );
-                              }
-
-                              if (isBullet) {
-                                return (
-                                  <div key={idx} className="flex items-start gap-2 pl-3">
-                                    <span className="text-primary font-bold">•</span>
-                                    <span>{trimmed.replace(/^[-*•\d.]\s+/, "")}</span>
-                                  </div>
-                                );
-                              }
-
-                              return <p key={idx} className="leading-relaxed">{line}</p>;
+                              return (
+                                <p key={idx} className="leading-relaxed whitespace-pre-wrap">
+                                  {line}
+                                </p>
+                              );
                             })
                           ) : (
                             <span className="text-muted-foreground italic">No content available to preview.</span>
