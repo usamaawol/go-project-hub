@@ -115,4 +115,111 @@ describe("DocuMind Slide Count Estimator & Blank Slide Prevention", () => {
       }
     }
   });
+
+  it("formats a complex 200-line master project prompt into an executive 8-slide deck without boring text dumps or duplicates", () => {
+    const complexPrompt = `
+MASTER PROJECT PROMPT — EAGLE TECHNOLOGY
+Rebuild a Complete Flutter Android Application from Scratch
+
+Act as a senior Flutter developer, mobile UI/UX engineer, Firebase architect, Android build engineer, and application security specialist.
+Your task is to reconstruct my previously working Android application, formerly named **RED FOX TECH**, under its new name **Eagle Technology**.
+My old computer crashed, and the original project folder was deleted before I could push the source code to GitHub.
+Therefore, assume the original source code is unavailable.
+
+PROJECT IDENTITY
+New application name: Eagle Technology
+Previous name: RED FOX TECH
+Platform: Android
+
+WORKING RULES — FOLLOW STRICTLY
+First inspect the available development environment and project directory
+2. If the workspace is empty, create the Flutter project in the current designated workspace.
+3. Do not claim that the old application has been recovered. This is a reconstruction.
+5. Ask me for missing screenshots, branding images, or essential configuration when required.
+6. Do not invent an original screen's exact layout when a reference screenshot is available.
+Never deploy production Firebase Security Rules, publish the application, create paid resources, or make irreversible changes without my explicit approval.
+Never expose private credentials, authentication tokens, service-account keys, or other secrets in source code, terminal logs, screenshots, or GitHub.
+14. Do not claim an APK has been built until the actual APK exists and its output path has been verified.
+16. Do not replace real backend operations with fake success messages or hardcoded data in production flows.
+Use free development tools and Firebase resources where possible.
+Warn me before introducing any service that could incur charges.
+18. Do not ask me to paste passwords, private keys, or service-account JSON into the Gemini chat.
+
+Reconstruct the screens and features evidenced by my screenshots.
+Managing supported listings
+Viewing submitted contact messages
+Reviewing incorrect-listing reports
+Viewing relevant statistics
+Restricting administrative operations to authorized administrators
+
+Use my existing Firebase project if it remains accessible and is suitable for this application.
+Implement Firebase Security Rules that enforce access control on the backend.
+A user may read and update only the profile fields they are authorized to access.
+Users must not be able to grant themselves administrator privileges.
+
+Use a clean, maintainable Flutter structure appropriate to the size of the application.
+Then build the debug APK and run the application on an Android emulator or connected device.
+Once the app works and the checks pass, create a release APK using the appropriate Flutter build command.
+Provide the exact verified APK path and the appropriate way for me to copy it to my phone.
+`;
+
+    const slides = buildSlideDeckContent(
+      "MASTER PROJECT PROMPT — EAGLE TECHNOLOGY",
+      complexPrompt,
+      8,
+      "balanced",
+      "Business Strategy & Operations",
+    );
+
+    expect(slides.length).toBe(8);
+
+    // Slide 1: Cover
+    expect(slides[0]!.layout).toBe("title");
+    expect(slides[0]!.title).toContain("MASTER PROJECT PROMPT");
+
+    // Slide 2: Agenda
+    expect(slides[1]!.layout).toBe("agenda");
+    // Agenda must NOT duplicate the presentation title as its first topic
+    expect(slides[1]!.bullets![0]).not.toBe("MASTER PROJECT PROMPT — EAGLE TECHNOLOGY");
+
+    // Slide 3: Should NOT be a duplicate of Slide 1 with empty bullets
+    expect(slides[2]!.title).not.toBe("MASTER PROJECT PROMPT — EAGLE TECHNOLOGY");
+    if (slides[2]!.bullets) {
+      expect(slides[2]!.bullets.length).toBeGreaterThanOrEqual(2);
+      expect(slides[2]!.bullets.length).toBeLessThanOrEqual(5);
+    }
+
+    // Every intermediate slide (3 to 7) must have between 2 and 5 bullets, never 50+
+    for (let i = 2; i < 7; i++) {
+      const s = slides[i]!;
+      if (s.bullets) {
+        expect(s.bullets.length).toBeLessThanOrEqual(5);
+        expect(s.bullets.length).toBeGreaterThanOrEqual(2);
+        for (const b of s.bullets) {
+          // No raw bullet numbering like "2. If the workspace..."
+          expect(b).not.toMatch(/^\d+[.)]\s/);
+          // Every bullet has a clean executive anchor
+          expect(b).toContain(":");
+        }
+      }
+      if (s.leftColumn) {
+        expect(s.leftColumn.bullets.length).toBeLessThanOrEqual(4);
+      }
+      if (s.rightColumn) {
+        expect(s.rightColumn.bullets.length).toBeLessThanOrEqual(4);
+      }
+    }
+
+    // Slide 8: Conclusion
+    const conclusion = slides[7]!;
+    expect(conclusion.layout).toBe("conclusion");
+    expect(conclusion.bullets).toBeDefined();
+    expect(conclusion.bullets!.length).toBeGreaterThanOrEqual(3);
+
+    // Conclusion must NOT blindly copy the bullets of Slide 7
+    const slide7Bullets = slides[6]!.bullets || [];
+    if (slide7Bullets.length > 0) {
+      expect(conclusion.bullets![0]).not.toBe(slide7Bullets[0]);
+    }
+  });
 });

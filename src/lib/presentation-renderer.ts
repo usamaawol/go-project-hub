@@ -721,7 +721,7 @@ export async function renderSlideDeckToPptx(
           fontFace: fontTitle,
         });
 
-        const leftBullets = (left.bullets || []).map((b) => ({
+        const leftBullets = (left.bullets || []).slice(0, 4).map((b) => ({
           text: b,
           options: { breakLine: true },
         }));
@@ -761,7 +761,7 @@ export async function renderSlideDeckToPptx(
           fontFace: fontTitle,
         });
 
-        const rightBullets = (right.bullets || []).map((b) => ({
+        const rightBullets = (right.bullets || []).slice(0, 4).map((b) => ({
           text: b,
           options: { breakLine: true },
         }));
@@ -1259,7 +1259,7 @@ export async function renderSlideDeckToPptx(
               fontFace: fontBody,
             });
           } else {
-            const bulletItems = s.bullets.map((b) => ({
+            const bulletItems = s.bullets.slice(0, 5).map((b) => ({
               text: b,
               options: { breakLine: true },
             }));

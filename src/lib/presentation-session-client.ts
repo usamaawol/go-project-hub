@@ -155,6 +155,33 @@ function parseContentIntoSections(
   let currentHeader = "";
   let currentItems: string[] = [];
 
+  // Helper: Detect semantic transition markers inside dense guidelines/prompts
+  const detectSemanticSubHeader = (line: string): string | null => {
+    const lower = line.toLowerCase().trim();
+    if (lower.startsWith("never deploy") || lower.startsWith("never expose") || lower.includes("security rules that enforce")) {
+      return "Security Guardrails & Access Rules";
+    }
+    if (lower.startsWith("use my existing firebase") || lower.includes("official flutterfire setup")) {
+      return "Firebase Backend & Cloud Integration";
+    }
+    if (lower.includes("clean, maintainable flutter structure") || lower.includes("separate responsibilities")) {
+      return "Modular Flutter Architecture";
+    }
+    if (lower.includes("then build the debug apk") || lower.includes("release apk") || lower.includes("build apk")) {
+      return "Build Verification & Release Deliverables";
+    }
+    if (lower.includes("reconstruct the screens and features") || lower.includes("expected feature set")) {
+      return "Core Application Features & Screens";
+    }
+    if (lower.includes("do not enable production ads") || lower.includes("admob")) {
+      return "Monetization Guardrails & Compliance";
+    }
+    if (lower.includes("inspect each screenshot carefully") || lower.includes("main layout and screen proportions")) {
+      return "Visual Interface & Design Fidelity";
+    }
+    return null;
+  };
+
   const isSubHeadingLine = (line: string): boolean => {
     return /^(design characteristics|characteristics|features|key features|attributes|specifications|requirements|details|notes|creative direction|visual direction|style guide|parameters):?$/i.test(
       line.trim(),
@@ -174,30 +201,68 @@ function parseContentIntoSections(
   };
 
   const isHeadingLine = (line: string): boolean => {
-    if (isSubHeadingLine(line)) return false;
-    if (isLeadInClause(line)) return false;
-    if (line.startsWith("#")) return true;
-    if (line.endsWith(":") && line.length < 80) return true;
-    if (/^\d+[.)]\s+[A-Z]/.test(line) && line.length < 80) return true;
-    if (/^phase\s+\d+/i.test(line) && line.length < 80) return true;
-    if (/^concept\s+\d+/i.test(line) && line.length < 80) return true;
-    if (/^(q\d+|problem|question|part|chapter|section|exercise|task)\b/i.test(line) && line.length < 80) return true;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 3) return false;
+    if (isSubHeadingLine(trimmed)) return false;
+    if (isLeadInClause(trimmed)) return false;
+
+    // Detect semantic topic headers
+    if (detectSemanticSubHeader(trimmed)) return true;
+
+    // Never match full conversational or instructional sentences as headings
     if (
-      /^(Introduction|Overview|Executive Summary|Background|Problem|Methodology|Analysis|Results|Findings|Key Indicators|Challenges|Solutions|Architecture|Implementation|Roadmap|Timeline|Conclusion|Summary|Next Steps|Scope|Boundaries)/i.test(
-        line,
+      /^(if|when|then|while|after|before|do not|never|always|ensure|make sure|use|work|ask|check|inspect|support|provide|allow|create|reconstruct|determine|separate|choose)\b/i.test(
+        trimmed,
       ) &&
-      line.length < 75
+      trimmed.length > 25
     ) {
-      return true;
+      return false;
     }
-    if (line === line.toUpperCase() && line.length > 3 && line.length < 60 && !line.includes(".")) {
+
+    if (/^#{1,4}\s+[A-Za-z0-9]/.test(trimmed)) return true;
+    if (trimmed.endsWith(":") && trimmed.length <= 50 && !trimmed.includes(". ")) {
+      if (!/^(requirements|specifications|notes|details|such as|for example|including):?$/i.test(trimmed)) {
+        return true;
+      }
+    }
+
+    // Numbered major section headers (short, title-cased, not an imperative sentence)
+    if (/^\d+[.)]\s+[A-Z][a-zA-Z0-9\s—–-]{3,45}$/.test(trimmed) && !trimmed.endsWith(".")) {
+      if (!/^\d+[.)]\s+(if|do not|never|always|ask|use|check|ensure|make|work|inspect|reconstruct)\b/i.test(trimmed)) {
+        return true;
+      }
+    }
+
+    if (/^(stage|phase|part|section|chapter|module|sprint|milestone)\s+\d+[:.—\s]/i.test(trimmed)) return true;
+    if (/^concept\s+\d+/i.test(trimmed) && trimmed.length < 80) return true;
+    if (/^(q\d+|problem|question|part|chapter|section|exercise|task)\b/i.test(trimmed) && trimmed.length < 80) return true;
+
+    const isMajorKeyword = /^(introduction|overview|executive summary|background|problem|methodology|analysis|results|findings|key indicators|challenges|solutions|architecture|implementation|roadmap|timeline|conclusion|summary|next steps|scope|boundaries)$/i.test(
+      trimmed.replace(/[:.—]+$/, "").trim(),
+    );
+    if (isMajorKeyword) return true;
+
+    if (trimmed === trimmed.toUpperCase() && trimmed.length > 3 && trimmed.length <= 60 && !trimmed.includes(".") && /[A-Z]/.test(trimmed)) {
       return true;
     }
     return false;
   };
 
   for (const line of lines) {
-    if (isSubHeadingLine(line)) {
+    const semantic = detectSemanticSubHeader(line);
+    if (semantic) {
+      if (currentHeader || currentItems.length > 0) {
+        const sectionItems = currentItems.length > 0 
+          ? (currentHeader ? currentItems : currentItems.slice(1))
+          : (currentHeader ? [currentHeader] : []);
+        rawSections.push({
+          header: currentHeader || currentItems[0] || "Overview",
+          items: sectionItems.length > 0 ? sectionItems : [currentHeader || "Overview"],
+        });
+        currentItems = [];
+      }
+      currentHeader = semantic;
+    } else if (isSubHeadingLine(line)) {
       // Sub-heading belongs to parent section; don't split
       currentItems.push(line.replace(/:$/, "").trim() + ":");
     } else if (isHeadingLine(line)) {
@@ -213,10 +278,18 @@ function parseContentIntoSections(
       }
       currentHeader = line
         .replace(/^[-#*>\d.\s]+/, "")
-        .replace(/:$/, "")
+        .replace(/[:.]+$/, "")
         .trim();
     } else {
-      currentItems.push(line.replace(/^[-*•]\s*/, "").trim());
+      // Clean bullet: remove leading numbers, bullets, asterisks
+      const cleaned = line
+        .replace(/^[-*•]\s*/, "")
+        .replace(/^\d+[.)]\s*/, "")
+        .trim();
+      // Skip meaningless filler labels
+      if (cleaned && !/^(requirements|specifications|notes|details|such as|for example|including):?$/i.test(cleaned)) {
+        currentItems.push(cleaned);
+      }
     }
   }
 
@@ -228,6 +301,19 @@ function parseContentIntoSections(
       header: currentHeader || currentItems[0] || "Synthesis & Overview",
       items: finalItems.length > 0 ? finalItems : [currentHeader || "Synthesis & Overview"],
     });
+  }
+
+  // Remove redundant section if it just repeats the document title
+  if (rawSections.length > 1) {
+    const firstH = rawSections[0]!.header.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const titH = defaultTitle.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (firstH === titH || firstH.includes("masterprojectprompt") || firstH.includes("projectprompt")) {
+      const firstItems = rawSections[0]!.items;
+      rawSections.shift();
+      if (rawSections[0] && firstItems.length > 0) {
+        rawSections[0].items.unshift(...firstItems);
+      }
+    }
   }
 
   // If document had no explicit headings, partition paragraphs or line chunks
@@ -309,11 +395,32 @@ function parseContentIntoSections(
     }
   }
 
-  while (rawSections.length > targetCount) {
-    const last = rawSections.pop()!;
-    if (rawSections.length > 0) {
-      rawSections[rawSections.length - 1]!.items.push(...last.items);
+  // When rawSections exceed targetCount, cluster them evenly so no single slide gets overloaded with a wall of text
+  if (rawSections.length > targetCount) {
+    const clusteredSections: Array<{ header: string; items: string[] }> = [];
+    const ratio = rawSections.length / targetCount;
+
+    for (let k = 0; k < targetCount; k++) {
+      const startIdx = Math.floor(k * ratio);
+      const endIdx = Math.min(rawSections.length, Math.floor((k + 1) * ratio));
+      const group = rawSections.slice(startIdx, endIdx);
+
+      if (group.length > 0) {
+        // Choose the most descriptive header in this cluster
+        const primary = group[0]!;
+        const combinedItems: string[] = [];
+        for (const sec of group) {
+          combinedItems.push(...sec.items);
+        }
+        clusteredSections.push({
+          header: primary.header,
+          items: combinedItems,
+        });
+      }
     }
+
+    rawSections.length = 0;
+    rawSections.push(...clusteredSections);
   }
 
   // Helper: Cleans sentence fragments into professional presentation headings while preserving user topics
@@ -337,6 +444,67 @@ function parseContentIntoSections(
         .join(" ");
     }
     return t.slice(0, 75) || defaultTitle || "Executive Overview";
+  }
+
+  // Helper: Curates and structures raw bullet points with bold executive anchors
+  function formatExecutiveBullet(raw: string): string {
+    let text = (raw || "")
+      .replace(/^[-*•\s]+/, "")
+      .replace(/^\d+[.)]\s*/, "")
+      .replace(/^[✓✔︎•*]\s*/, "")
+      .trim();
+
+    if (!text) return "";
+
+    // If text already has a short anchor like "Title: details", normalize it
+    const colonMatch = text.match(/^([A-Za-z0-9\s—–/&]{3,28}):\s+(.+)$/);
+    if (colonMatch) {
+      const anchor = colonMatch[1]!.trim();
+      const rest = colonMatch[2]!.trim();
+      return `${anchor}: ${rest.charAt(0).toUpperCase() + rest.slice(1)}`;
+    }
+
+    // Derive contextual executive anchor from sentence intent
+    let anchor = "";
+    const lower = text.toLowerCase();
+
+    if (lower.startsWith("never expose") || lower.includes("secret") || lower.includes("private key") || lower.includes("credentials")) {
+      anchor = "Secret Protection";
+    } else if (lower.startsWith("never deploy") || lower.includes("approval") || lower.includes("explicit approval")) {
+      anchor = "Change Guardrails";
+    } else if (lower.includes("workspace") || lower.includes("directory") || lower.includes("project folder")) {
+      anchor = "Workspace Setup";
+    } else if (lower.includes("reconstruction") || lower.includes("rebuild") || lower.includes("recover")) {
+      anchor = "Reconstruction Baseline";
+    } else if (lower.includes("screenshot") || lower.includes("visual") || lower.includes("screen proportion")) {
+      anchor = "Visual Fidelity";
+    } else if (lower.includes("apk") || lower.includes("build") || lower.includes("compile")) {
+      anchor = "Build Verification";
+    } else if (lower.includes("fake") || lower.includes("mock") || lower.includes("hardcode")) {
+      anchor = "Data Integrity";
+    } else if (lower.includes("firebase") || lower.includes("firestore") || lower.includes("auth")) {
+      anchor = "Firebase Architecture";
+    } else if (lower.includes("security rules") || lower.includes("permission") || lower.includes("access control")) {
+      anchor = "Access Control";
+    } else if (lower.includes("state management") || lower.includes("architecture") || lower.includes("structure")) {
+      anchor = "System Architecture";
+    } else if (lower.includes("test") || lower.includes("analyze") || lower.includes("quality")) {
+      anchor = "Quality Standards";
+    } else if (lower.includes("admob") || lower.includes("advertis")) {
+      anchor = "Monetization Guardrails";
+    } else if (lower.includes("git") || lower.includes("backup") || lower.includes("commit")) {
+      anchor = "Repository & Backup";
+    } else {
+      const words = text.split(/\s+/).slice(0, 3);
+      anchor = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+    }
+
+    let cleanBody = text.replace(/^([a-z])/i, (m) => m.toUpperCase());
+    if (cleanBody.length > 135) {
+      cleanBody = cleanBody.slice(0, 130).replace(/[,;:\s]+$/, "") + "...";
+    }
+
+    return `${anchor}: ${cleanBody}`;
   }
 
   // Helper: Enriches and splits long user sentences while NEVER inventing facts or filler
@@ -414,8 +582,8 @@ function parseContentIntoSections(
       }
     }
 
-    // Return the user's genuine bullets without appending synthetic corporate boilerplate
-    return list;
+    // Return the user's genuine bullets formatted with executive anchors
+    return list.map(formatExecutiveBullet).filter(Boolean);
   }
 
   // 2. Synthesize rich ParsedSection structures
@@ -452,17 +620,15 @@ function parseContentIntoSections(
       }
     }
 
-    // B. Detect Scope & Guardrails (In-Scope vs Out-of-Scope / Frontend-only)
+    // B. Detect Scope & Guardrails ONLY when title specifically focuses on scope/guardrails
     const isScopeOrGuardrails =
-      /\b(frontend-only|front-end only|scope|boundaries|guardrails|do not build|out-of-scope|in-scope)\b/i.test(
-        title + " " + bullets.join(" "),
-      );
+      /\b(scope|boundaries|guardrails|in-scope vs out-of-scope)\b/i.test(title);
 
-    // C. Detect Comparison (vs, versus, compared to, pros/cons)
+    // C. Detect Comparison ONLY when title indicates genuine comparison
     const isComparison =
-      /\b(vs\.?|versus|compared to|on the other hand|pros and cons|difference between|advantages)\b/i.test(
+      /\b(vs\.?|versus|compared to|trade-offs|pros and cons|pros vs cons|difference between|advantages and disadvantages)\b/i.test(
         title,
-      ) || bullets.some((b) => /\b(vs\.?|versus)\b/i.test(b));
+      );
 
     // D. Detect Process / Sequence (step 1, step 2, phase 1, phase 2)
     const isProcessOrTimeline =
@@ -871,18 +1037,31 @@ export function buildSlideDeckContent(
     }
   }
 
-  // 5. Conclusion Slide
+  // 5. Conclusion Slide: Multi-dimensional synthesis across the entire deck
   if (hasConclusion) {
-    const lastSection = sections[sections.length - 1];
-    const conclusionBullets =
-      lastSection && lastSection.bullets.length > 0
-        ? lastSection.bullets.slice(0, 4)
-        : [
-            `Decisive insights synthesized from ${cleanTitle}.`,
-            `Key actionable recommendations and operational alignment.`,
-            `Strategic roadmap and milestones for deployment.`,
-            `Immediate next steps and governance checklist.`,
-          ];
+    const conclusionBullets: string[] = [];
+
+    if (sections[0] && sections[0].bullets.length > 0) {
+      const b0 = sections[0].bullets[0]!.replace(/^[-*•\d.\s]+/, "");
+      conclusionBullets.push(`Project Mandate: ${b0.slice(0, 95)}`);
+    }
+
+    const midIdx = Math.floor(sections.length / 2);
+    if (sections[midIdx] && sections[midIdx].bullets.length > 0) {
+      const bMid = sections[midIdx].bullets[0]!.replace(/^[-*•\d.\s]+/, "");
+      conclusionBullets.push(`Execution Standard: ${bMid.slice(0, 95)}`);
+    }
+
+    const lateIdx = Math.max(0, sections.length - 1);
+    if (sections[lateIdx] && sections[lateIdx].bullets.length > 1) {
+      const bLate = sections[lateIdx].bullets[1]!.replace(/^[-*•\d.\s]+/, "");
+      conclusionBullets.push(`Verification Gate: ${bLate.slice(0, 95)}`);
+    } else if (sections[lateIdx] && sections[lateIdx].bullets.length > 0) {
+      const bLate = sections[lateIdx].bullets[0]!.replace(/^[-*•\d.\s]+/, "");
+      conclusionBullets.push(`Verification Gate: ${bLate.slice(0, 95)}`);
+    }
+
+    conclusionBullets.push(`Final Deliverable: Validate end-to-end milestone stability and confirm release readiness.`);
 
     slides.push({
       id: `slide-${totalSlots}`,

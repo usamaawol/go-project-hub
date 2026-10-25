@@ -255,6 +255,19 @@ export function buildContextualVisual(params: {
 </svg>`;
   } else {
     type = "diagram";
+    const bulletLabels = (params.bullets || []).map((b) => {
+      const clean = b.replace(/^[✓✔︎•*\d.\s]+/, "").trim();
+      const colonIdx = clean.indexOf(":");
+      if (colonIdx > 0 && colonIdx < 25) {
+        return clean.slice(0, colonIdx);
+      }
+      return clean.slice(0, 18);
+    });
+
+    const step1Title = escapeXml(bulletLabels[0] || "Foundations");
+    const step2Title = escapeXml(bulletLabels[1] || "Execution");
+    const step3Title = escapeXml(bulletLabels[2] || "Verification");
+
     svg = `<svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
   <rect width="800" height="480" rx="20" fill="${bg}" stroke="${accent}" stroke-opacity="0.3" stroke-width="2"/>
   <text x="60" y="65" font-family="system-ui, sans-serif" font-size="15" font-weight="800" fill="${textPrimary}" letter-spacing="1">
@@ -264,25 +277,25 @@ export function buildContextualVisual(params: {
   <rect x="60" y="170" width="180" height="150" rx="16" fill="${cardBg}" stroke="${accent}" stroke-width="1.5" />
   <circle cx="95" cy="205" r="14" fill="${accent}" />
   <text x="95" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">01</text>
-  <text x="120" y="210" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Discovery</text>
-  <text x="80" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Requirements</text>
-  <text x="80" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Creative Brief</text>
+  <text x="120" y="210" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${textPrimary}">${step1Title}</text>
+  <text x="80" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Architecture Setup</text>
+  <text x="80" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Operational Mandate</text>
   <path d="M 240 245 L 295 245" stroke="${accent}" stroke-width="3" stroke-dasharray="4,4" />
   <polygon points="300,245 290,239 290,251" fill="${accent}" />
   <rect x="310" y="170" width="180" height="150" rx="16" fill="${cardBg}" stroke="${accent}" stroke-width="2" />
   <circle cx="345" cy="205" r="14" fill="${accent}" />
   <text x="345" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">02</text>
-  <text x="370" y="210" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Architecture</text>
-  <text x="330" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Design Strategy</text>
-  <text x="330" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Visual Concepts</text>
+  <text x="370" y="210" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${textPrimary}">${step2Title}</text>
+  <text x="330" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Implementation Guardrails</text>
+  <text x="330" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• System Alignment</text>
   <path d="M 490 245 L 545 245" stroke="${accent}" stroke-width="3" stroke-dasharray="4,4" />
   <polygon points="550,245 540,239 540,251" fill="${accent}" />
   <rect x="560" y="170" width="180" height="150" rx="16" fill="${cardBg}" stroke="${accent}" stroke-width="1.5" />
   <circle cx="595" cy="205" r="14" fill="${accent}" />
   <text x="595" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">03</text>
-  <text x="620" y="210" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Delivery</text>
-  <text x="580" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Frontend Build</text>
-  <text x="580" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Final Approval</text>
+  <text x="620" y="210" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${textPrimary}">${step3Title}</text>
+  <text x="580" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• End-to-End Testing</text>
+  <text x="580" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Release Validation</text>
 </svg>`;
   }
 

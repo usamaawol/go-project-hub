@@ -563,6 +563,24 @@ export function PresentationPreviewPage() {
     </div>
   );
 
+  const renderBulletWithAnchor = (text: string, defaultColor: string) => {
+    const colonIdx = text.indexOf(": ");
+    if (colonIdx > 2 && colonIdx < 32) {
+      const anchor = text.slice(0, colonIdx);
+      const rest = text.slice(colonIdx + 2);
+      return (
+        <span className="leading-relaxed" style={{ color: defaultColor, fontFamily: tokens.fontBody }}>
+          <strong className="font-bold tracking-tight opacity-95">{anchor}:</strong> {rest}
+        </span>
+      );
+    }
+    return (
+      <span className="leading-relaxed" style={{ color: defaultColor, fontFamily: tokens.fontBody }}>
+        {text}
+      </span>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
@@ -957,13 +975,12 @@ export function PresentationPreviewPage() {
                                   <li
                                     key={bIdx}
                                     className="flex items-start gap-2"
-                                    style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
                                   >
                                     <span
                                       className="h-1.5 w-1.5 rounded-full mt-2 shrink-0"
                                       style={{ backgroundColor: tokens.accent }}
                                     />
-                                    <span>{b}</span>
+                                    {renderBulletWithAnchor(b, tokens.cardText)}
                                   </li>
                                 ))}
                               </ul>
@@ -993,13 +1010,12 @@ export function PresentationPreviewPage() {
                                   <li
                                     key={bIdx}
                                     className="flex items-start gap-2"
-                                    style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
                                   >
                                     <span
                                       className="h-1.5 w-1.5 rounded-full mt-2 shrink-0"
                                       style={{ backgroundColor: tokens.accent }}
                                     />
-                                    <span>{b}</span>
+                                    {renderBulletWithAnchor(b, tokens.cardText)}
                                   </li>
                                 ))}
                               </ul>
@@ -1206,13 +1222,12 @@ export function PresentationPreviewPage() {
                                 <li
                                   key={idx}
                                   className="flex items-start gap-3"
-                                  style={{ color: tokens.textPrimary, fontFamily: tokens.fontBody }}
                                 >
                                   <span
                                     className="h-2 w-2 rounded-full mt-2 shrink-0"
                                     style={{ backgroundColor: tokens.accent }}
                                   />
-                                  <span className="leading-relaxed">{b}</span>
+                                  {renderBulletWithAnchor(b, tokens.textPrimary)}
                                 </li>
                               ))}
                             </ul>
@@ -1408,12 +1423,7 @@ export function PresentationPreviewPage() {
                                       className="h-2.5 w-2.5 rounded-full mt-2.5 shrink-0"
                                       style={{ backgroundColor: tokens.accent }}
                                     />
-                                    <span
-                                      className="leading-relaxed font-medium"
-                                      style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
-                                    >
-                                      {bullet}
-                                    </span>
+                                    {renderBulletWithAnchor(bullet, tokens.cardText)}
                                   </li>
                                 ))}
                               </ul>
@@ -1426,12 +1436,7 @@ export function PresentationPreviewPage() {
                                     className="h-2 w-2 rounded-full mt-2.5 shrink-0"
                                     style={{ backgroundColor: tokens.accent }}
                                   />
-                                  <span
-                                    className="leading-relaxed"
-                                    style={{ color: tokens.textPrimary, fontFamily: tokens.fontBody }}
-                                  >
-                                    {bullet}
-                                  </span>
+                                  {renderBulletWithAnchor(bullet, tokens.textPrimary)}
                                 </li>
                               ))}
                             </ul>
