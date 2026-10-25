@@ -1213,21 +1213,68 @@ export async function renderSlideDeckToPptx(
         const startY = geo.contentStartY;
         const cardH = geo.contentMaxH;
         if (s.bullets && s.bullets.length > 0) {
-          const bulletItems = s.bullets.map((b) => ({
-            text: b,
-            options: { breakLine: true },
-          }));
-          slide.addText(bulletItems, {
-            x: 1.0,
-            y: startY,
-            w: 11.333,
-            h: cardH,
-            fontSize: sizes.body,
-            color: tokens.textPrimaryHex,
-            bullet: true,
-            lineSpacing: 28,
-            fontFace: fontBody,
-          });
+          if (s.bullets.length <= 2) {
+            // Render as an Executive Key Takeaway Card with prominent styling so slide is never empty
+            const boxH = Math.min(cardH, 3.2);
+            slide.addShape(pptx.ShapeType.roundRect, {
+              x: 1.0,
+              y: startY,
+              w: 11.333,
+              h: boxH,
+              fill: { color: tokens.cardBgHex },
+              line: { color: tokens.accentHex, width: 1.5 },
+            });
+            slide.addShape(pptx.ShapeType.rect, {
+              x: 1.0,
+              y: startY,
+              w: 0.15,
+              h: boxH,
+              fill: { color: tokens.accentHex },
+            });
+            slide.addText("KEY STRATEGIC FOCUS", {
+              x: 1.4,
+              y: startY + 0.25,
+              w: 10.5,
+              h: 0.35,
+              fontSize: sizes.sectionTag,
+              bold: true,
+              color: tokens.accentHex,
+              fontFace: fontTitle,
+              charSpacing: 1.5,
+            });
+            const bulletItems = s.bullets.map((b) => ({
+              text: b,
+              options: { breakLine: true },
+            }));
+            slide.addText(bulletItems, {
+              x: 1.4,
+              y: startY + 0.7,
+              w: 10.5,
+              h: boxH - 0.9,
+              fontSize: sizes.body + 2,
+              bold: true,
+              color: tokens.cardTextHex,
+              bullet: true,
+              lineSpacing: 32,
+              fontFace: fontBody,
+            });
+          } else {
+            const bulletItems = s.bullets.map((b) => ({
+              text: b,
+              options: { breakLine: true },
+            }));
+            slide.addText(bulletItems, {
+              x: 1.0,
+              y: startY,
+              w: 11.333,
+              h: cardH,
+              fontSize: sizes.body,
+              color: tokens.textPrimaryHex,
+              bullet: true,
+              lineSpacing: 28,
+              fontFace: fontBody,
+            });
+          }
         }
         break;
       }

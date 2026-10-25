@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import {
   Sparkles,
@@ -51,6 +51,11 @@ import {
   testAdminOpenAIConnection,
 } from "@/lib/api-client";
 import { detectTitleFromText } from "@/lib/presentation-session-client";
+import {
+  estimateOptimalSlideCount,
+  SLIDE_COUNT_PRESETS,
+  type SlideCountOption,
+} from "@/lib/slide-count-estimator";
 
 import {
   Dialog,
@@ -225,13 +230,13 @@ export function PresentationWorkflow({
   const [selectedFontSize, setSelectedFontSize] = useState<
     "compact" | "standard" | "large" | "extra-large"
   >("standard");
-  const [slideCount, setSlideCount] = useState(() => {
+  const [slideCount, setSlideCount] = useState<number>(() => {
     try {
       if (typeof window !== "undefined" && window.sessionStorage) {
         const stored = window.sessionStorage.getItem("documind_template_slides_count");
         if (stored) {
           const parsed = parseInt(stored, 10);
-          if (!isNaN(parsed) && parsed >= 5 && parsed <= 20) return parsed;
+          if (!isNaN(parsed) && (SLIDE_COUNT_PRESETS as readonly number[]).includes(parsed)) return parsed;
         }
       }
     } catch {
@@ -239,6 +244,12 @@ export function PresentationWorkflow({
     }
     return 8;
   });
+  const [userLockedSlideCount, setUserLockedSlideCount] = useState(false);
+
+  // DocuMind Intelligent Slide Count Recommendation
+  const slideRecommendation = useMemo(() => {
+    return estimateOptimalSlideCount(pastedText, slideCount);
+  }, [pastedText, slideCount]);
   const [visualPreference, setVisualPreference] = useState<"diagrams" | "text-only">("diagrams");
 
   // Assignment Mode State
@@ -397,18 +408,26 @@ export function PresentationWorkflow({
   const [generationPhase, setGenerationPhase] = useState<string>("");
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Helper to sync pasted text and auto-extract title
+  // Helper to sync pasted text, auto-extract title, and estimate slide count
   const handlePastedTextChange = (text: string) => {
     setPastedText(text);
     if (!title.trim() || title === "Strategic Operations & Knowledge Review") {
       const detected = detectTitleFromText(text);
       if (detected) setTitle(detected);
     }
+    if (!userLockedSlideCount && text.trim().length > 30) {
+      const est = estimateOptimalSlideCount(text);
+      setSlideCount(est.optimalCount);
+    }
   };
 
   const handleLoadSampleOutline = () => {
     setTitle("Strategic Operations & Knowledge Review");
     setPastedText(sampleOutlineText);
+    if (!userLockedSlideCount) {
+      const est = estimateOptimalSlideCount(sampleOutlineText);
+      setSlideCount(est.optimalCount);
+    }
     toast.info("Loaded sample strategic review outline.");
   };
 
@@ -452,6 +471,10 @@ export function PresentationWorkflow({
           setPastedText("");
         } else {
           setPastedText(res.text);
+          if (!userLockedSlideCount && res.text.trim().length > 30) {
+            const est = estimateOptimalSlideCount(res.text);
+            setSlideCount(est.optimalCount);
+          }
           const detected = detectTitleFromText(res.text);
           if (detected && detected.length > 3) {
             setTitle(detected);
@@ -1061,6 +1084,64 @@ export function PresentationWorkflow({
                   </p>
                 </div>
               )}
+
+              {/* Intelligent Slide Length Guidance & Quick Presets */}
+              {(pastedText.trim().length > 30 || uploadedFile) && (
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3.5 transition-all">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15 text-primary shrink-0 mt-0.5">
+                        <Sparkles className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-foreground flex flex-wrap items-center gap-2">
+                          DocuMind Deck Length Guidance
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-primary/15 text-primary px-2 py-0.5 rounded-full">
+                            Estimated: {slideRecommendation.optimalCount} Slides
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {slideRecommendation.wordCount} words detected • ~{slideRecommendation.detectedTopicsCount} key topics • ~{slideRecommendation.estimatedMinutes} min presentation
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Presets selector buttons: 5, 8, 10, 15, 20 */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-mono text-muted-foreground mr-1 hidden sm:inline">
+                        Target:
+                      </span>
+                      {SLIDE_COUNT_PRESETS.map((cnt) => {
+                        const isOptimal = cnt === slideRecommendation.optimalCount;
+                        const isSelected = slideCount === cnt;
+                        return (
+                          <button
+                            key={cnt}
+                            type="button"
+                            onClick={() => {
+                              setSlideCount(cnt);
+                              setUserLockedSlideCount(true);
+                            }}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                              isSelected
+                                ? "bg-primary text-primary-foreground border-primary shadow-2xs font-bold"
+                                : isOptimal
+                                  ? "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 font-bold"
+                                  : "bg-surface-2 border-border text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {cnt} Slides {isOptimal && !isSelected ? "★" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground leading-relaxed bg-background/60 rounded-xl p-3 border border-border/60">
+                    {slideRecommendation.reason}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Step A Bottom Bar: Next Button */}
@@ -1300,42 +1381,98 @@ export function PresentationWorkflow({
             </div>
           </div>
 
-          {/* Section B.3: Slide Count & Free vs Pro Limit */}
+          {/* Section B.3: Slide Count & Intelligent Estimation */}
           <div
             data-tour="tour-slides"
             className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-6"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
                 <span className="font-mono text-xs font-bold uppercase tracking-wider text-primary">
-                  Slide Count
+                  Slide Count & Deck Length
                 </span>
                 <h3 className="text-xl sm:text-2xl font-serif font-bold text-foreground mt-0.5">
                   Target Length: {slideCount} Slides
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Free tier supports up to 20 slides per generated deck.
+                  AI estimates <strong className="text-foreground">{slideRecommendation.optimalCount} slides</strong> is optimal for your {slideRecommendation.wordCount} words to prevent empty or crowded slides.
                 </p>
               </div>
 
-              {/* Slide Count Buttons */}
+              {/* Slide Count Buttons: 5, 8, 10, 15, 20 */}
               <div className="flex flex-wrap gap-2">
-                {[5, 8, 10, 12, 15, 20].map((count) => (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => setSlideCount(count)}
-                    className={`rounded-xl border px-4 py-2 text-xs font-bold transition-all min-h-[44px] ${
-                      slideCount === count
-                        ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                        : "border-border bg-surface-2 text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {count} Slides
-                  </button>
-                ))}
+                {SLIDE_COUNT_PRESETS.map((count) => {
+                  const isOptimal = count === slideRecommendation.optimalCount;
+                  const isSelected = slideCount === count;
+                  return (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => {
+                        setSlideCount(count);
+                        setUserLockedSlideCount(true);
+                      }}
+                      className={`relative rounded-xl border px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs font-bold transition-all min-h-[46px] flex flex-col items-center justify-center gap-0.5 ${
+                        isSelected
+                          ? "border-primary bg-primary text-primary-foreground shadow-xs ring-1 ring-primary"
+                          : "border-border bg-surface-2 text-muted-foreground hover:text-foreground hover:border-border/80"
+                      }`}
+                    >
+                      {isOptimal && (
+                        <span
+                          className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.2 rounded font-extrabold ${
+                            isSelected
+                              ? "bg-primary-foreground/20 text-primary-foreground"
+                              : "bg-primary/10 text-primary"
+                          }`}
+                        >
+                          Recommended
+                        </span>
+                      )}
+                      <span>{count} Slides</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
+            {/* Advisory / Guidance callout */}
+            {(() => {
+              const advisory = slideRecommendation.getAdvisory(slideCount);
+              const isOptimal = advisory.level === "optimal";
+              const isWarning = advisory.level === "warning";
+              return (
+                <div
+                  className={`rounded-2xl border p-4 text-xs flex items-start gap-3 transition-colors ${
+                    isOptimal
+                      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-900 dark:text-emerald-200"
+                      : isWarning
+                        ? "border-amber-500/30 bg-amber-500/5 text-amber-900 dark:text-amber-200"
+                        : "border-primary/20 bg-primary/5 text-foreground"
+                  }`}
+                >
+                  <Sparkles
+                    className={`h-4 w-4 shrink-0 mt-0.5 ${
+                      isOptimal
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : isWarning
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-primary"
+                    }`}
+                  />
+                  <div className="space-y-0.5">
+                    <p className="font-semibold">
+                      {isOptimal
+                        ? "Optimal Deck Pacing"
+                        : isWarning
+                          ? "Pacing Warning"
+                          : "Slide Distribution Note"}
+                    </p>
+                    <p className="leading-relaxed opacity-90">{advisory.message}</p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Section B.4: Visual Treatment & Layout Preferences */}

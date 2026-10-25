@@ -953,7 +953,7 @@ export function PresentationPreviewPage() {
                                 {currentSlide.leftColumn.title}
                               </h3>
                               <ul className="mt-3 space-y-2 text-xs sm:text-sm">
-                                {currentSlide.leftColumn.bullets.map((b, bIdx) => (
+                                {currentSlide.leftColumn.bullets.slice(0, 5).map((b, bIdx) => (
                                   <li
                                     key={bIdx}
                                     className="flex items-start gap-2"
@@ -989,7 +989,7 @@ export function PresentationPreviewPage() {
                                 {currentSlide.rightColumn.title}
                               </h3>
                               <ul className="mt-3 space-y-2 text-xs sm:text-sm">
-                                {currentSlide.rightColumn.bullets.map((b, bIdx) => (
+                                {currentSlide.rightColumn.bullets.slice(0, 5).map((b, bIdx) => (
                                   <li
                                     key={bIdx}
                                     className="flex items-start gap-2"
@@ -1377,22 +1377,65 @@ export function PresentationPreviewPage() {
                         {renderSlideHeader(currentSlide)}
 
                         {currentSlide.bullets && currentSlide.bullets.length > 0 && (
-                          <ul className="space-y-3.5 pt-2 text-sm sm:text-base">
-                            {currentSlide.bullets.map((bullet, idx) => (
-                              <li key={idx} className="flex items-start gap-3">
+                          currentSlide.bullets.length <= 2 ? (
+                            <div
+                              className="rounded-2xl border p-6 sm:p-7 space-y-4 shadow-xs relative overflow-hidden mt-2"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.cardBorder,
+                              }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 bottom-0 w-2"
+                                style={{ backgroundColor: tokens.accent }}
+                              />
+                              <div className="flex items-center gap-2">
                                 <span
-                                  className="h-2 w-2 rounded-full mt-2.5 shrink-0"
-                                  style={{ backgroundColor: tokens.accent }}
-                                />
-                                <span
-                                  className="leading-relaxed"
-                                  style={{ color: tokens.textPrimary, fontFamily: tokens.fontBody }}
+                                  className="text-[10px] sm:text-xs font-mono uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full border"
+                                  style={{
+                                    backgroundColor: `${tokens.accent}15`,
+                                    color: tokens.accent,
+                                    borderColor: `${tokens.accent}35`,
+                                  }}
                                 >
-                                  {bullet}
+                                  KEY STRATEGIC FOCUS
                                 </span>
-                              </li>
-                            ))}
-                          </ul>
+                              </div>
+                              <ul className="space-y-3.5 text-base sm:text-lg">
+                                {currentSlide.bullets.map((bullet, idx) => (
+                                  <li key={idx} className="flex items-start gap-3">
+                                    <span
+                                      className="h-2.5 w-2.5 rounded-full mt-2.5 shrink-0"
+                                      style={{ backgroundColor: tokens.accent }}
+                                    />
+                                    <span
+                                      className="leading-relaxed font-medium"
+                                      style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                                    >
+                                      {bullet}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : (
+                            <ul className="space-y-3.5 pt-2 text-sm sm:text-base">
+                              {currentSlide.bullets.map((bullet, idx) => (
+                                <li key={idx} className="flex items-start gap-3">
+                                  <span
+                                    className="h-2 w-2 rounded-full mt-2.5 shrink-0"
+                                    style={{ backgroundColor: tokens.accent }}
+                                  />
+                                  <span
+                                    className="leading-relaxed"
+                                    style={{ color: tokens.textPrimary, fontFamily: tokens.fontBody }}
+                                  >
+                                    {bullet}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )
                         )}
                       </div>
                     )}
