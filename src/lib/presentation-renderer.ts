@@ -86,7 +86,7 @@ export async function renderSlideDeckToPptx(
     slide.background = { color: tokens.bgHex };
 
     // Common footer on all slides except cover
-    const isCover = s.layout === "title";
+    const isCover = s.layout === "title" || s.layout === "assignment-cover";
     const geo = computeHeaderGeometry(s.title, s.subtitle, sizes.slideTitle, sizes.subtitle);
 
     if (!isCover) {
@@ -256,6 +256,261 @@ export async function renderSlideDeckToPptx(
             fontFace: fontBody,
           },
         );
+        break;
+      }
+
+      case "assignment-cover": {
+        const meta = s.assignmentMetadata;
+        const coverAccent = (meta?.accentColor || tokens.accentHex).replace(/^#/, "");
+        const isGroup = meta?.assignmentType === "group";
+        const tplId = meta?.coverTemplateId || "classic-university";
+
+        const titleText = meta?.assignmentTitle?.trim() || s.title || "Academic Assignment";
+        const courseText = meta?.courseName?.trim() || "Course Subject";
+        const instructorText = meta?.instructorName?.trim() || "Course Instructor";
+        const uniText = meta?.universityName?.trim() || "";
+        const deptText = [meta?.collegeOrFaculty, meta?.department].filter(Boolean).join(" · ");
+        const studentName = meta?.studentName?.trim() || "Candidate Student";
+        const studentId = meta?.studentId?.trim() || "";
+        const dateText = meta?.submissionDate?.trim() || "";
+        const yearText = [meta?.academicYear, meta?.semester].filter(Boolean).join(" · ");
+
+        // 1. Template-specific frame / decorative styling
+        if (tplId === "formal-academic" || tplId === "classic-university" || tplId === "university-branding") {
+          slide.addShape(pptx.ShapeType.rect, {
+            x: 0.6,
+            y: 0.5,
+            w: 12.133,
+            h: 6.5,
+            fill: { color: tokens.bgHex },
+            line: { color: coverAccent, width: 2 },
+          });
+        } else if (tplId === "modern-minimal") {
+          slide.addShape(pptx.ShapeType.rect, {
+            x: 0,
+            y: 0,
+            w: 0.35,
+            h: 7.5,
+            fill: { color: coverAccent },
+          });
+        } else if (tplId === "professional-navy") {
+          slide.addShape(pptx.ShapeType.rect, {
+            x: 0,
+            y: 0,
+            w: 13.333,
+            h: 1.4,
+            fill: { color: "0F172A" },
+          });
+        }
+
+        // 2. University Logo (if uploaded, preserve aspect ratio)
+        let logoY = 0.8;
+        if (meta?.logoDataUrl && meta.logoDataUrl.startsWith("data:image")) {
+          try {
+            const logoX = tplId === "modern-minimal" || tplId === "structured-research" ? 1.0 : 5.86;
+            slide.addImage({
+              data: meta.logoDataUrl,
+              x: logoX,
+              y: 0.7,
+              w: 1.6,
+              h: 1.0,
+            });
+            logoY = 1.85;
+          } catch {
+            // graceful fallback if dataUrl cannot be parsed
+          }
+        }
+
+        // 3. University & Department Headers
+        if (uniText) {
+          slide.addText(uniText.toUpperCase(), {
+            x: 1.0,
+            y: logoY,
+            w: 11.333,
+            h: 0.4,
+            align: tplId === "modern-minimal" ? "left" : "center",
+            fontSize: sizes.sectionTag + 3,
+            bold: true,
+            color: tplId === "professional-navy" && logoY < 1.4 ? "FFFFFF" : tokens.textPrimaryHex,
+            fontFace: fontTitle,
+            charSpacing: 2,
+          });
+        }
+
+        if (deptText) {
+          slide.addText(deptText, {
+            x: 1.0,
+            y: logoY + 0.38,
+            w: 11.333,
+            h: 0.3,
+            align: tplId === "modern-minimal" ? "left" : "center",
+            fontSize: sizes.caption + 1,
+            color: tokens.textSecondaryHex,
+            fontFace: fontBody,
+          });
+        }
+
+        // 4. Course Tag Pill
+        const pillY = Math.max(logoY + 0.8, 2.5);
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: 1.0,
+          y: pillY,
+          w: 4.2,
+          h: 0.38,
+          fill: { color: tokens.cardBgHex },
+          line: { color: coverAccent, width: 1 },
+        });
+
+        slide.addText(
+          `${meta?.courseCode ? `${meta.courseCode}  •  ` : ""}${courseText}`.toUpperCase(),
+          {
+            x: 1.1,
+            y: pillY + 0.05,
+            w: 4.0,
+            h: 0.28,
+            fontSize: sizes.sectionTag,
+            bold: true,
+            color: coverAccent,
+            fontFace: fontTitle,
+            charSpacing: 1,
+          },
+        );
+
+        // 5. Main Assignment Title
+        const titleY = pillY + 0.55;
+        let titleSize = sizes.heroTitle;
+        if (titleText.length > 70) titleSize = Math.max(20, sizes.heroTitle - 10);
+        else if (titleText.length > 40) titleSize = Math.max(24, sizes.heroTitle - 6);
+
+        slide.addText(titleText, {
+          x: 1.0,
+          y: titleY,
+          w: 11.333,
+          h: 1.2,
+          fontSize: titleSize,
+          bold: true,
+          color: tokens.textPrimaryHex,
+          fontFace: fontTitle,
+        });
+
+        // 6. Bottom Metadata Card: Student(s) on Left, Instructor & Date on Right
+        const cardY = 4.8;
+        const cardW = 5.4;
+        const cardH = 1.6;
+
+        // Left Container: Student / Group Directory
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: 1.0,
+          y: cardY,
+          w: cardW,
+          h: cardH,
+          fill: { color: tokens.cardBgHex },
+          line: { color: tokens.cardBorderHex, width: 1 },
+        });
+
+        slide.addText(isGroup ? "GROUP CANDIDATES:" : "SUBMITTED BY CANDIDATE:", {
+          x: 1.2,
+          y: cardY + 0.15,
+          w: 5.0,
+          h: 0.25,
+          fontSize: sizes.caption,
+          bold: true,
+          color: coverAccent,
+          fontFace: fontTitle,
+          charSpacing: 1,
+        });
+
+        if (isGroup && meta?.groupMembers && meta.groupMembers.length > 0) {
+          const membersList = meta.groupMembers
+            .filter((m) => m.fullName.trim() || m.studentId.trim())
+            .slice(0, 3)
+            .map((m) => `${m.fullName || "Member"} (${m.studentId || "ID N/A"})`)
+            .join("\n");
+
+          slide.addText(membersList, {
+            x: 1.2,
+            y: cardY + 0.45,
+            w: 5.0,
+            h: 0.95,
+            fontSize: sizes.body - 3,
+            color: tokens.textPrimaryHex,
+            fontFace: fontBody,
+          });
+        } else {
+          slide.addText(studentName, {
+            x: 1.2,
+            y: cardY + 0.45,
+            w: 5.0,
+            h: 0.35,
+            fontSize: sizes.body,
+            bold: true,
+            color: tokens.textPrimaryHex,
+            fontFace: fontBody,
+          });
+          if (studentId) {
+            slide.addText(`Student ID: ${studentId}`, {
+              x: 1.2,
+              y: cardY + 0.85,
+              w: 5.0,
+              h: 0.3,
+              fontSize: sizes.body - 2,
+              color: tokens.textSecondaryHex,
+              fontFace: fontBody,
+            });
+          }
+        }
+
+        // Right Container: Evaluator & Submission Timeline
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: 6.9,
+          y: cardY,
+          w: cardW,
+          h: cardH,
+          fill: { color: tokens.cardBgHex },
+          line: { color: tokens.cardBorderHex, width: 1 },
+        });
+
+        slide.addText("FACULTY EVALUATOR & TIMELINE:", {
+          x: 7.1,
+          y: cardY + 0.15,
+          w: 5.0,
+          h: 0.25,
+          fontSize: sizes.caption,
+          bold: true,
+          color: coverAccent,
+          fontFace: fontTitle,
+          charSpacing: 1,
+        });
+
+        slide.addText(instructorText, {
+          x: 7.1,
+          y: cardY + 0.45,
+          w: 5.0,
+          h: 0.35,
+          fontSize: sizes.body,
+          bold: true,
+          color: tokens.textPrimaryHex,
+          fontFace: fontBody,
+        });
+
+        const timelineDetails = [
+          dateText ? `Date: ${dateText}` : "",
+          yearText ? `Session: ${yearText}` : "",
+        ]
+          .filter(Boolean)
+          .join("   •   ");
+
+        if (timelineDetails) {
+          slide.addText(timelineDetails, {
+            x: 7.1,
+            y: cardY + 0.85,
+            w: 5.0,
+            h: 0.3,
+            fontSize: sizes.caption,
+            color: tokens.textSecondaryHex,
+            fontFace: fontBody,
+          });
+        }
         break;
       }
 

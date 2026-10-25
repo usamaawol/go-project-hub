@@ -59,6 +59,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { GraduationCap, BookOpen as BookIcon, ShieldAlert } from "lucide-react";
+import {
+  type AssignmentMetadata,
+  type AssignmentType,
+  getDefaultAssignmentMetadata,
+  COVER_TEMPLATES,
+} from "@/lib/assignment-types";
+import {
+  extractAssignmentMetadataFromText,
+  type ExtractedAssignmentSuggestions,
+} from "@/lib/assignment-metadata-extractor";
+import { AssignmentInformationForm } from "./AssignmentInformationForm";
+import { CoverTemplateGallery } from "./CoverTemplateGallery";
+import { AssignmentCoverRenderer } from "./AssignmentCoverRenderer";
+import {
+  calculateSourceCoverage,
+  type SourceCoverageReport,
+  buildSlideDeckContent,
+} from "@/lib/presentation-session-client";
 
 const MAX_FREE_SLIDES = 20;
 
@@ -205,6 +224,44 @@ export function PresentationWorkflow({
     return 8;
   });
   const [visualPreference, setVisualPreference] = useState<"diagrams" | "text-only">("diagrams");
+
+  // Assignment Mode State
+  const [assignmentMode, setAssignmentMode] = useState(false);
+  const [assignmentMetadata, setAssignmentMetadata] = useState<AssignmentMetadata>(() =>
+    getDefaultAssignmentMetadata(),
+  );
+  const [extractedSuggestions, setExtractedSuggestions] =
+    useState<ExtractedAssignmentSuggestions | null>(null);
+  const [outlineReviewOpen, setOutlineReviewOpen] = useState(false);
+
+  const handleApplySuggestions = (s: ExtractedAssignmentSuggestions) => {
+    setAssignmentMetadata((prev) => ({
+      ...prev,
+      assignmentType: s.detectedType || prev.assignmentType,
+      studentName: s.studentName || prev.studentName,
+      studentId: s.studentId || prev.studentId,
+      groupMembers:
+        s.groupMembers && s.groupMembers.length > 0
+          ? s.groupMembers.map((m, i) => ({
+              id: `m-${i}-${Date.now()}`,
+              fullName: m.fullName,
+              studentId: m.studentId,
+            }))
+          : prev.groupMembers,
+      courseName: s.courseName || prev.courseName,
+      courseCode: s.courseCode || prev.courseCode,
+      instructorName: s.instructorName || prev.instructorName,
+      universityName: s.universityName || prev.universityName,
+      department: s.department || prev.department,
+      collegeOrFaculty: s.collegeOrFaculty || prev.collegeOrFaculty,
+      academicYear: s.academicYear || prev.academicYear,
+      semester: s.semester || prev.semester,
+      submissionDate: s.submissionDate || prev.submissionDate,
+      assignmentTitle: s.assignmentTitle || prev.assignmentTitle,
+    }));
+    toast.success("Assignment details applied from document!");
+    setExtractedSuggestions(null);
+  };
 
   // Lifecycle check for incoming template injection
   useEffect(() => {
@@ -379,6 +436,10 @@ export function PresentationWorkflow({
           if (detected && detected.length > 3) {
             setTitle(detected);
           }
+          const suggestions = extractAssignmentMetadataFromText(res.text);
+          if (suggestions.hasSuggestions) {
+            setExtractedSuggestions(suggestions);
+          }
           toast.success(`Extracted ${res.wordCount} words`, {
             description: `${(file.size / 1024 / 1024).toFixed(1)} MB processed into structured content.`,
           });
@@ -433,11 +494,53 @@ export function PresentationWorkflow({
           const detected = detectTitleFromText(extraction.text);
           if (detected) setTitle(detected);
         }
+        const suggestions = extractAssignmentMetadataFromText(extraction.text);
+        if (suggestions.hasSuggestions) {
+          setExtractedSuggestions(suggestions);
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Document extraction failed.";
         setFileError(msg);
         toast.error("Extraction Failed", { description: msg });
         return;
+      }
+    }
+
+    if (assignmentMode) {
+      const isGroup = assignmentMetadata.assignmentType === "group";
+      if (!isGroup) {
+        if (
+          !assignmentMetadata.studentName?.trim() ||
+          !assignmentMetadata.studentId?.trim() ||
+          !assignmentMetadata.courseName?.trim() ||
+          !assignmentMetadata.instructorName?.trim()
+        ) {
+          toast.error("Required Assignment Information Missing", {
+            description:
+              "Please complete Student Full Name, Student ID, Course Name, and Instructor Name (*).",
+          });
+          return;
+        }
+      } else {
+        if (
+          !assignmentMetadata.assignmentTitle?.trim() ||
+          !assignmentMetadata.courseName?.trim() ||
+          !assignmentMetadata.instructorName?.trim()
+        ) {
+          toast.error("Required Group Information Missing", {
+            description: "Please complete Group Title, Course Name, and Instructor Name (*).",
+          });
+          return;
+        }
+        const validMembers = assignmentMetadata.groupMembers.filter(
+          (m) => m.fullName.trim() && m.studentId.trim(),
+        );
+        if (validMembers.length === 0) {
+          toast.error("Group Members Required", {
+            description: "Please provide at least one group member with Full Name and Student ID.",
+          });
+          return;
+        }
       }
     }
 
@@ -530,6 +633,9 @@ export function PresentationWorkflow({
         content: contentToUse,
         purpose,
         density,
+        assignmentMetadata: assignmentMode
+          ? { ...assignmentMetadata, isAssignment: true }
+          : undefined,
         theme: {
           id: selectedTemplate.id,
           name: selectedTemplate.name,
@@ -590,6 +696,67 @@ export function PresentationWorkflow({
 
   return (
     <div className="w-full">
+      {/* Primary Mode Selector: Standard Presentation vs Academic Assignment Mode */}
+      <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2.5 rounded-2xl border border-border bg-card shadow-xs">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setAssignmentMode(false);
+              setAssignmentMetadata((prev) => ({ ...prev, isAssignment: false }));
+            }}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              !assignmentMode
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground hover:bg-surface-2"
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            <span>Standard Presentation</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="assignment-mode-button"
+            onClick={() => {
+              setAssignmentMode(true);
+              setAssignmentMetadata((prev) => ({ ...prev, isAssignment: true }));
+              toast.info("Academic Assignment Mode Activated", {
+                description:
+                  "Enter student/group details, university emblem, and select your cover template.",
+              });
+            }}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              assignmentMode
+                ? "bg-primary text-primary-foreground shadow-xs ring-2 ring-primary/30"
+                : "text-muted-foreground hover:text-foreground hover:bg-surface-2"
+            }`}
+          >
+            <GraduationCap className="h-4 w-4" />
+            <span>Assignment Mode</span>
+            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-600 dark:text-amber-400 font-extrabold">
+              Academic
+            </span>
+          </button>
+        </div>
+
+        {assignmentMode && (
+          <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-primary/5 rounded-xl border border-primary/20">
+            <span className="font-semibold text-primary">Mode:</span>
+            <span>
+              {assignmentMetadata.assignmentType === "group"
+                ? "Group Project"
+                : "Individual Submission"}
+            </span>
+            <span>•</span>
+            <span className="font-mono text-[11px] font-bold text-foreground">
+              {COVER_TEMPLATES.find((t) => t.id === assignmentMetadata.coverTemplateId)?.name ||
+                assignmentMetadata.coverTemplateId}
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Workflow Step Tracker */}
       <div className="mb-8 rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -649,6 +816,36 @@ export function PresentationWorkflow({
       {/* ================================================================= */}
       {currentStep === "content" && (
         <div className="space-y-6">
+          {/* Academic Assignment Form & Cover Gallery (Shown when Assignment Mode is Active) */}
+          {assignmentMode && (
+            <div className="space-y-6">
+              <AssignmentInformationForm
+                metadata={assignmentMetadata}
+                onChange={setAssignmentMetadata}
+                extractedSuggestions={extractedSuggestions}
+                onApplySuggestions={handleApplySuggestions}
+                onDismissSuggestions={() => setExtractedSuggestions(null)}
+              />
+
+              <div className="rounded-3xl border border-border bg-card p-5 sm:p-6 shadow-paper">
+                <CoverTemplateGallery
+                  metadata={assignmentMetadata}
+                  mode="presentation"
+                  onSelectTemplate={(tplId, defaultAccent) =>
+                    setAssignmentMetadata((prev) => ({
+                      ...prev,
+                      coverTemplateId: tplId,
+                      accentColor: defaultAccent || prev.accentColor,
+                    }))
+                  }
+                  onUpdateAccentColor={(accent) =>
+                    setAssignmentMetadata((prev) => ({ ...prev, accentColor: accent }))
+                  }
+                />
+              </div>
+            </div>
+          )}
+
           <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-6">
             {/* Topic Input */}
             <div data-tour="tour-topic" className="space-y-2">
@@ -1238,6 +1435,164 @@ export function PresentationWorkflow({
             </div>
           </div>
 
+          {/* Review Screen: Assignment & Content Outline Summary */}
+          {(() => {
+            const contentForReview = pastedText.trim();
+            const previewDeck = contentForReview
+              ? buildSlideDeckContent(
+                  title.trim() || detectTitleFromText(contentForReview) || "Assignment Presentation",
+                  contentForReview,
+                  slideCount,
+                  density,
+                  purpose,
+                  assignmentMode ? { ...assignmentMetadata, isAssignment: true } : undefined,
+                )
+              : [];
+            const coverageReport = calculateSourceCoverage(contentForReview, previewDeck);
+
+            return (
+              <div className="rounded-3xl border border-border bg-card p-6 shadow-paper space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Generation Blueprint Review (Step 7)</span>
+                    </div>
+                    <h3 className="text-xl font-serif font-bold text-foreground mt-1">
+                      {assignmentMode ? "Academic Assignment & Outline Synthesis" : "Presentation Blueprint Review"}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Verify your academic credentials, cover slide layout, and source topic coverage before compilation.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-primary/10 text-primary border border-primary/20">
+                      {coverageReport.coveragePercentage}% Source Coverage
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setOutlineReviewOpen(true)}
+                      className="text-xs h-8 gap-1.5"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Inspect Outline ({previewDeck.length} slides)
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  {/* Left Column: Academic Cover Summary */}
+                  {assignmentMode ? (
+                    <div className="p-4 rounded-2xl bg-surface-2/60 border border-border space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-foreground flex items-center gap-1.5">
+                          <GraduationCap className="h-4 w-4 text-primary" />
+                          Cover Slide: {COVER_TEMPLATES.find((t) => t.id === assignmentMetadata.coverTemplateId)?.name}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-primary text-primary-foreground">
+                          {assignmentMetadata.assignmentType}
+                        </span>
+                      </div>
+
+                      <div className="aspect-video w-full rounded-lg overflow-hidden border border-border/80 shadow-2xs bg-white">
+                        <AssignmentCoverRenderer
+                          metadata={assignmentMetadata}
+                          aspectRatio="16:9"
+                          isThumbnail={true}
+                        />
+                      </div>
+
+                      <div className="space-y-1 text-[11px] text-muted-foreground pt-1">
+                        <p>
+                          <strong className="text-foreground">Course:</strong> {assignmentMetadata.courseName || "Not set"}
+                        </p>
+                        <p>
+                          <strong className="text-foreground">Instructor:</strong> {assignmentMetadata.instructorName || "Not set"}
+                        </p>
+                        {assignmentMetadata.assignmentType === "individual" ? (
+                          <p>
+                            <strong className="text-foreground">Candidate:</strong> {assignmentMetadata.studentName} ({assignmentMetadata.studentId})
+                          </p>
+                        ) : (
+                          <p>
+                            <strong className="text-foreground">Group:</strong> {assignmentMetadata.groupMembers.filter((m) => m.fullName.trim()).length} Members
+                          </p>
+                        )}
+                        {assignmentMetadata.logoDataUrl && (
+                          <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                            <Check className="h-3 w-3" /> University emblem attached
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-2xl bg-surface-2/60 border border-border space-y-2">
+                      <span className="font-bold text-foreground flex items-center gap-1.5">
+                        <Layers className="h-4 w-4 text-primary" />
+                        Selected Deck Theme: {selectedTemplate.name}
+                      </span>
+                      <p className="text-xs text-muted-foreground">
+                        Category: {selectedTemplate.category} • Kind: {selectedTemplate.kind}
+                      </p>
+                      <div className="flex items-center gap-2 pt-2">
+                        <span
+                          className="h-4 w-4 rounded-full border"
+                          style={{ backgroundColor: selectedTemplate.colors.primary }}
+                        />
+                        <span
+                          className="h-4 w-4 rounded-full border"
+                          style={{ backgroundColor: selectedTemplate.colors.accent }}
+                        />
+                        <span
+                          className="h-4 w-4 rounded-full border"
+                          style={{ backgroundColor: selectedTemplate.colors.bg }}
+                        />
+                        <span className="text-[11px] font-mono text-muted-foreground ml-1">
+                          Typography: {selectedFont}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Right Column: Outline & Content Breakdown */}
+                  <div className="p-4 rounded-2xl bg-surface-2/60 border border-border space-y-2 flex flex-col justify-between">
+                    <div>
+                      <span className="font-bold text-foreground flex items-center gap-1.5 mb-2">
+                        <BookIcon className="h-4 w-4 text-primary" />
+                        Slide Deck Architecture ({previewDeck.length} slides)
+                      </span>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {previewDeck.map((sl, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-2 rounded-lg bg-card border border-border text-[11px]"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="font-mono text-muted-foreground">0{idx + 1}</span>
+                              <span className="font-medium text-foreground truncate">
+                                {sl.title}
+                              </span>
+                            </div>
+                            <span className="px-1.5 py-0.2 rounded font-mono text-[9px] uppercase bg-surface-2 text-muted-foreground shrink-0">
+                              {sl.layout}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-border/80 flex items-center justify-between text-[11px] text-muted-foreground font-mono">
+                      <span>Total Words: {contentForReview.split(/\s+/).filter(Boolean).length}</span>
+                      <span>Target: {slideCount} slides</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Bottom Action Bar: Back & Generate Presentation */}
           <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-paper flex flex-col sm:flex-row items-center justify-between gap-4">
             <Button
@@ -1629,6 +1984,113 @@ export function PresentationWorkflow({
               {savingAdminKey ? "Applying..." : "Save & Apply Globally"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Slide Outline & Content Traceability Inspection Dialog */}
+      <Dialog open={outlineReviewOpen} onOpenChange={setOutlineReviewOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl font-bold text-foreground">
+              Proposed Slide Deck Structure &amp; Source Coverage
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Review how your source content is mapped across each slide before generation. Every fact and topic is derived directly from your supplied text.
+            </DialogDescription>
+          </DialogHeader>
+
+          {(() => {
+            const contentForReview = pastedText.trim();
+            const deck = contentForReview
+              ? buildSlideDeckContent(
+                  title.trim() || detectTitleFromText(contentForReview) || "Assignment Presentation",
+                  contentForReview,
+                  slideCount,
+                  density,
+                  purpose,
+                  assignmentMode ? { ...assignmentMetadata, isAssignment: true } : undefined,
+                )
+              : [];
+            const cov = calculateSourceCoverage(contentForReview, deck);
+
+            return (
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2 border border-border text-xs">
+                  <div>
+                    <span className="font-bold text-foreground">
+                      Source Coverage Metric:
+                    </span>{" "}
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      {cov.coveragePercentage}% of detected topics covered
+                    </span>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {cov.coveredSections} of {cov.totalSections} sections mapped • Zero filler text injected
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-primary text-primary-foreground">
+                    {deck.length} Slides Total
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
+                  {deck.map((s, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3.5 rounded-xl border border-border bg-card space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="h-5 w-5 rounded bg-primary/10 text-primary font-mono text-xs font-bold flex items-center justify-center">
+                            {idx + 1}
+                          </span>
+                          <h4 className="font-bold text-xs text-foreground">{s.title}</h4>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-surface-2 text-muted-foreground">
+                          {s.layout}
+                        </span>
+                      </div>
+
+                      {s.subtitle && (
+                        <p className="text-[11px] text-muted-foreground italic pl-7">
+                          {s.subtitle}
+                        </p>
+                      )}
+
+                      {s.bullets && s.bullets.length > 0 && (
+                        <ul className="pl-11 list-disc text-xs text-foreground/80 space-y-0.5">
+                          {s.bullets.map((b, bIdx) => (
+                            <li key={bIdx}>{b}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setOutlineReviewOpen(false)}
+                    className="text-xs"
+                  >
+                    Close Outline
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => {
+                      setOutlineReviewOpen(false);
+                      handleStartGeneration();
+                    }}
+                    className="text-xs gap-1.5"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Confirm &amp; Generate Deck
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

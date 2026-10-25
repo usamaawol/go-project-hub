@@ -417,12 +417,14 @@ import {
   getClientSession,
   removeClientSession,
 } from "./presentation-session-client";
+import type { AssignmentMetadata } from "./assignment-types";
 
 export async function createPresentationSessionApi(input: {
   title: string;
   content: string;
   purpose?: string;
   density?: "concise" | "balanced" | "detailed";
+  assignmentMetadata?: AssignmentMetadata;
   theme: {
     id: string;
     name: string;
@@ -465,6 +467,7 @@ export async function createPresentationSessionApi(input: {
             title: json.data.title,
             purpose: input.purpose || "Business & Strategy",
             density: input.density || "balanced",
+            assignmentMetadata: input.assignmentMetadata,
             theme: input.theme,
             typography: {
               fontFamily: input.typography?.fontFamily || "Inter",
@@ -506,13 +509,21 @@ export async function createPresentationSessionApi(input: {
   const fontFamily = input.typography?.fontFamily || "Inter";
   const fontSizePreset = input.typography?.fontSizePreset || "standard";
 
-  const slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+  const slides = buildSlideDeckContent(
+    input.title,
+    input.content,
+    slideCount,
+    density,
+    purpose,
+    input.assignmentMetadata,
+  );
 
   const clientSession: PresentationSessionData = {
     id: sessionId,
     title: input.title.trim() || "Untitled Presentation",
     purpose,
     density,
+    assignmentMetadata: input.assignmentMetadata,
     theme: input.theme,
     typography: {
       fontFamily,

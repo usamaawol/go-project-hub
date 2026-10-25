@@ -16,7 +16,17 @@ const router = Router();
  */
 router.post("/presentations/generate", async (req: Request, res: Response) => {
   try {
-    const { title, content, purpose, density, theme, typography, slideCount, geminiApiKey } = req.body;
+    const {
+      title,
+      content,
+      purpose,
+      density,
+      theme,
+      typography,
+      slideCount,
+      geminiApiKey,
+      assignmentMetadata,
+    } = req.body;
     const headerApiKey = req.headers["x-gemini-api-key"] as string | undefined;
 
     if (!theme || !theme.name) {
@@ -38,6 +48,7 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       },
       slideCount: Number(slideCount) || 8,
       geminiApiKey: geminiApiKey || headerApiKey,
+      assignmentMetadata,
     };
 
     const session = await createPresentationSession(input);

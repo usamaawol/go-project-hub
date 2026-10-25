@@ -9,6 +9,7 @@ export type ThemeKind =
 
 export type SlideLayoutType =
   | "title"
+  | "assignment-cover"
   | "agenda"
   | "section-header"
   | "content"

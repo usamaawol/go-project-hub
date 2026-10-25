@@ -1,6 +1,7 @@
 import { type SlideLayoutType, computeThemeTokens, type RawThemeInput } from "./presentation-theme";
 import { renderSlideDeckToPptx } from "./presentation-renderer";
 import { buildContextualVisual } from "./presentation-visual-generator";
+import type { AssignmentMetadata } from "./assignment-types";
 
 export type { SlideLayoutType };
 
@@ -12,6 +13,12 @@ export interface SlidePreviewItem {
   subtitle?: string;
   categoryTag?: string;
   bullets?: string[];
+  // Assignment metadata for academic cover slides
+  assignmentMetadata?: AssignmentMetadata;
+  // Content accuracy & traceability
+  sourceParagraphIndices?: number[];
+  sourceExcerpt?: string;
+  isQuestionOrInstruction?: boolean;
   // Comparison & Two-column
   leftColumn?: { title: string; bullets: string[] };
   rightColumn?: { title: string; bullets: string[] };
@@ -48,6 +55,7 @@ export interface PresentationSessionData {
   title: string;
   purpose: string;
   density: "concise" | "balanced" | "detailed";
+  assignmentMetadata?: AssignmentMetadata;
   theme: {
     id: string;
     name: string;
@@ -173,6 +181,7 @@ function parseContentIntoSections(
     if (/^\d+[.)]\s+[A-Z]/.test(line) && line.length < 80) return true;
     if (/^phase\s+\d+/i.test(line) && line.length < 80) return true;
     if (/^concept\s+\d+/i.test(line) && line.length < 80) return true;
+    if (/^(q\d+|problem|question|part|chapter|section|exercise|task)\b/i.test(line) && line.length < 80) return true;
     if (
       /^(Introduction|Overview|Executive Summary|Background|Problem|Methodology|Analysis|Results|Findings|Key Indicators|Challenges|Solutions|Architecture|Implementation|Roadmap|Timeline|Conclusion|Summary|Next Steps|Scope|Boundaries)/i.test(
         line,
@@ -234,7 +243,7 @@ function parseContentIntoSections(
     }
   }
 
-  // Balance section count to targetCount
+  // Balance section count to targetCount without inventing fake content
   while (rawSections.length < targetCount) {
     let maxIdx = -1;
     let maxCount = -1;
@@ -257,11 +266,40 @@ function parseContentIntoSections(
         { header: target.header, items: part1 },
         { header: `${target.header} (Cont.)`, items: part2 },
       );
+    } else if (
+      maxIdx >= 0 &&
+      rawSections[maxIdx]!.items.length >= 1 &&
+      rawSections[maxIdx]!.items[0]!.includes(". ")
+    ) {
+      const target = rawSections[maxIdx]!;
+      const sents = target.items[0]!.split(/(?<=\.)\s+/).filter(Boolean);
+      if (sents.length >= 2) {
+        const half = Math.ceil(sents.length / 2);
+        rawSections.splice(
+          maxIdx,
+          1,
+          { header: target.header, items: sents.slice(0, half) },
+          { header: `${target.header} (Cont.)`, items: sents.slice(half) },
+        );
+      } else {
+        const target = rawSections[maxIdx]!;
+        rawSections.splice(
+          maxIdx,
+          1,
+          { header: target.header, items: target.items },
+          { header: `${target.header} — Key Focus`, items: target.items },
+        );
+      }
+    } else if (maxIdx >= 0) {
+      const target = rawSections[maxIdx]!;
+      rawSections.splice(
+        maxIdx,
+        1,
+        { header: target.header, items: target.items },
+        { header: `${target.header} — Key Focus`, items: target.items },
+      );
     } else {
-      rawSections.push({
-        header: `Strategic Alignment & Focus`,
-        items: [`Continuous synthesis and verification for ${defaultTitle}`],
-      });
+      break;
     }
   }
 
@@ -272,30 +310,15 @@ function parseContentIntoSections(
     }
   }
 
-  // Helper: Cleans sentence fragments into professional presentation headings
+  // Helper: Cleans sentence fragments into professional presentation headings while preserving user topics
   function cleanSlideTitle(rawHeader: string): string {
     let t = (rawHeader || "")
       .replace(/^[-#*>\d.\s]+/, "")
       .replace(/[:.]+$/, "")
       .trim();
 
-    const lower = t.toLowerCase();
-    if (lower === "data or input" || lower === "data and input" || lower === "input or data" || lower === "data") {
-      return "Data Ingestion & Multimodal Inputs";
-    }
-    if (lower === "model or ai system" || lower === "model or ai" || lower === "ai model" || lower === "model") {
-      return "Core AI Model & Inference Architecture";
-    }
-    if (lower.startsWith("at a high level")) {
-      return "High-Level System Architecture & Flow";
-    }
-    if (lower.includes("these tasks can include") || lower.includes("tasks include")) {
-      return "Key Capabilities & Core AI Tasks";
-    }
-    if (lower === "output or result" || lower === "outputs" || lower === "output") {
-      return "Generated Outputs & Practical Synthesis";
-    }
-    if (lower.startsWith("part 1") || lower.startsWith("part 2") || lower.startsWith("part 3")) {
+    // Preserve assignment questions, problems, parts, exercises verbatim
+    if (/^(q\d+|problem|question|part|chapter|section|exercise|task)\b/i.test(t)) {
       return t;
     }
 
@@ -310,8 +333,8 @@ function parseContentIntoSections(
     return t.slice(0, 75) || defaultTitle || "Executive Overview";
   }
 
-  // Helper: Enriches sparse single-bullet lists into well-balanced structured points
-  function enrichSectionBullets(rawList: string[], sectionTitle: string): string[] {
+  // Helper: Enriches and splits long user sentences while NEVER inventing facts or filler
+  function enrichSectionBullets(rawList: string[]): string[] {
     const list: string[] = [];
     for (const b of rawList) {
       const trimmed = b.trim();
@@ -324,18 +347,20 @@ function parseContentIntoSections(
           .map((p) => p.trim())
           .filter((p) => p.length > 2);
 
-        if (parts.length >= 3) {
+        if (parts.length >= 2) {
+          const half = Math.ceil(parts.length / 2);
           list.push(
-            `Primary Input Modalities: ${parts.slice(0, 2).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}`,
+            parts
+              .slice(0, half)
+              .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+              .join(", "),
           );
           list.push(
-            `Quantitative & Sensor Signals: ${parts.slice(2, 4).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}`,
+            parts
+              .slice(half)
+              .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+              .join(", "),
           );
-          if (parts.length > 4) {
-            list.push(
-              `Contextual Inquiries & Prompts: ${parts.slice(4).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}`,
-            );
-          }
           continue;
         }
       }
@@ -348,14 +373,7 @@ function parseContentIntoSections(
       }
     }
 
-    if (list.length === 1) {
-      list.push(`Operational Workflow: Structured ingestion and validation pipeline for ${sectionTitle.toLowerCase()}`);
-      list.push(`Architectural Impact: Ensures high-fidelity data flow and reliable downstream execution`);
-    } else if (list.length === 0) {
-      list.push(`Core analytical scope and strategic considerations for ${sectionTitle}`);
-      list.push(`Execution framework and implementation milestones`);
-    }
-
+    // Return the user's genuine bullets without appending synthetic corporate boilerplate
     return list;
   }
 
@@ -366,7 +384,7 @@ function parseContentIntoSections(
     const raw = rawSections[idx]!;
     const title = cleanSlideTitle(raw.header);
     const rawBullets = raw.items.map((b) => b.trim()).filter(Boolean);
-    const bullets = enrichSectionBullets(rawBullets, title);
+    const bullets = enrichSectionBullets(rawBullets);
 
     // A. Detect Metrics (Numbers, percentages, currency, units)
     const metricPattern =
@@ -608,6 +626,7 @@ export function buildSlideDeckContent(
   slideCount: number,
   density: "concise" | "balanced" | "detailed",
   purpose: string,
+  assignmentMetadata?: AssignmentMetadata,
 ): SlidePreviewItem[] {
   const slides: SlidePreviewItem[] = [];
 
@@ -624,16 +643,35 @@ export function buildSlideDeckContent(
     cleanTitle = detected;
   }
 
-  // Slide 1: Title / Cover
-  slides.push({
-    id: "slide-1",
-    slideNumber: 1,
-    layout: "title",
-    title: cleanTitle,
-    subtitle: `${purpose.toUpperCase()}  //  Synthesized with DocuMind`,
-    categoryTag: purpose,
-    notes: `Welcome the audience and introduce the core thesis of ${cleanTitle}.`,
-  });
+  // Slide 1: Assignment Cover OR Standard Title Slide
+  if (assignmentMetadata?.isAssignment) {
+    const isGroup = assignmentMetadata.assignmentType === "group";
+    const sub = `${assignmentMetadata.courseName || purpose} — ${
+      isGroup ? "Group Assignment" : "Individual Assignment"
+    }`;
+    slides.push({
+      id: "slide-1",
+      slideNumber: 1,
+      layout: "assignment-cover",
+      title: assignmentMetadata.assignmentTitle?.trim() || cleanTitle,
+      subtitle: sub,
+      categoryTag: "ACADEMIC ASSIGNMENT",
+      assignmentMetadata,
+      notes: `Assignment Submission for ${assignmentMetadata.courseName || cleanTitle}. Submitted to ${
+        assignmentMetadata.instructorName || "Instructor"
+      }.`,
+    });
+  } else {
+    slides.push({
+      id: "slide-1",
+      slideNumber: 1,
+      layout: "title",
+      title: cleanTitle,
+      subtitle: `${purpose.toUpperCase()}  //  Synthesized with DocuMind`,
+      categoryTag: purpose,
+      notes: `Welcome the audience and introduce the core thesis of ${cleanTitle}.`,
+    });
+  }
 
   const totalSlots = Math.min(20, Math.max(3, slideCount));
   const hasConclusion = totalSlots >= 4;
@@ -861,4 +899,88 @@ export async function generateAndDownloadClientPptx(
   const cleanFilename = `${session.title.replace(/[^a-zA-Z0-9_-]/g, "_") || "presentation"}.pptx`;
   await pptx.writeFile({ fileName: cleanFilename });
   return cleanFilename;
+}
+
+export interface SourceCoverageReport {
+  totalSections: number;
+  coveredSections: number;
+  coveragePercentage: number;
+  uncoveredTopics: string[];
+}
+
+/**
+ * Validates that user source sections and key topics are faithfully represented in the generated deck.
+ */
+export function calculateSourceCoverage(
+  rawContent: string,
+  slides: SlidePreviewItem[],
+): SourceCoverageReport {
+  if (!rawContent || !rawContent.trim()) {
+    return { totalSections: 0, coveredSections: 0, coveragePercentage: 100, uncoveredTopics: [] };
+  }
+
+  const lines = rawContent
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const potentialHeadings = lines
+    .filter(
+      (l) =>
+        l.startsWith("#") ||
+        (l.length < 80 && l.endsWith(":")) ||
+        /^\d+[.)]\s+[A-Z]/.test(l) ||
+        /^(Q\d+|Problem|Question|Task|Chapter|Section|Part)\b/i.test(l),
+    )
+    .map((h) =>
+      h
+        .replace(/^[-#*>\d.\s]+/, "")
+        .replace(/[:.]+$/, "")
+        .trim(),
+    )
+    .filter((h) => h.length > 2);
+
+  if (potentialHeadings.length === 0) {
+    return { totalSections: 1, coveredSections: 1, coveragePercentage: 100, uncoveredTopics: [] };
+  }
+
+  const allSlideContent = slides
+    .map((s) =>
+      [
+        s.title,
+        s.subtitle || "",
+        ...(s.bullets || []),
+        ...(s.leftColumn?.bullets || []),
+        ...(s.rightColumn?.bullets || []),
+        ...(s.cards?.map((c) => `${c.title} ${c.description}`) || []),
+      ]
+        .join(" ")
+        .toLowerCase(),
+    )
+    .join(" ");
+
+  const uncovered: string[] = [];
+  let covered = 0;
+
+  for (const h of potentialHeadings) {
+    const hWords = h
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+    const isCovered = hWords.length === 0 || hWords.some((w) => allSlideContent.includes(w));
+    if (isCovered) {
+      covered++;
+    } else {
+      uncovered.push(h);
+    }
+  }
+
+  const coveragePercentage = Math.round((covered / potentialHeadings.length) * 100);
+
+  return {
+    totalSections: potentialHeadings.length,
+    coveredSections: covered,
+    coveragePercentage,
+    uncoveredTopics: uncovered,
+  };
 }

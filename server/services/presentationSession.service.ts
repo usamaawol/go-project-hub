@@ -19,6 +19,7 @@ import {
   getActiveProvider,
 } from "./adminSettings.service";
 import { ENV } from "../config/env";
+import type { AssignmentMetadata } from "../../src/lib/assignment-types";
 
 export type { SlideLayoutType };
 export type SlideData = SlidePreviewItem;
@@ -28,6 +29,7 @@ export interface PresentationSession {
   title: string;
   purpose: string;
   density: "concise" | "balanced" | "detailed";
+  assignmentMetadata?: AssignmentMetadata;
   theme: {
     id: string;
     name: string;
@@ -77,6 +79,7 @@ export interface CreatePresentationSessionInput {
   };
   slideCount?: number;
   geminiApiKey?: string;
+  assignmentMetadata?: AssignmentMetadata;
 }
 
 // 15 Minutes in milliseconds (zero-retention ephemeral session)
@@ -403,7 +406,14 @@ export async function createPresentationSession(
 
   // 1. If provider is set to offline or zero external APIs
   if (activeProvider === "offline") {
-    slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+    slides = buildSlideDeckContent(
+      input.title,
+      input.content,
+      slideCount,
+      density,
+      purpose,
+      input.assignmentMetadata,
+    );
   }
   // 2. If provider is set to OpenAI
   else if (activeProvider === "openai" && effectiveOpenAiKey) {
@@ -418,7 +428,14 @@ export async function createPresentationSession(
     if (oSlides && oSlides.length === slideCount) {
       slides = oSlides;
     } else {
-      slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+      slides = buildSlideDeckContent(
+        input.title,
+        input.content,
+        slideCount,
+        density,
+        purpose,
+        input.assignmentMetadata,
+      );
     }
   }
   // 3. Default: Gemini provider with automatic deterministic fallback
@@ -437,8 +454,35 @@ export async function createPresentationSession(
       }
     }
     if (slides.length === 0) {
-      slides = buildSlideDeckContent(input.title, input.content, slideCount, density, purpose);
+      slides = buildSlideDeckContent(
+        input.title,
+        input.content,
+        slideCount,
+        density,
+        purpose,
+        input.assignmentMetadata,
+      );
     }
+  }
+
+  // If this is an academic assignment, guarantee Slide 1 is the official assignment cover
+  if (input.assignmentMetadata?.isAssignment && slides.length > 0) {
+    const isGroup = input.assignmentMetadata.assignmentType === "group";
+    const sub = `${input.assignmentMetadata.courseName || purpose} — ${
+      isGroup ? "Group Assignment" : "Individual Assignment"
+    }`;
+    slides[0] = {
+      id: "slide-1",
+      slideNumber: 1,
+      layout: "assignment-cover",
+      title: input.assignmentMetadata.assignmentTitle?.trim() || input.title,
+      subtitle: sub,
+      categoryTag: "ACADEMIC ASSIGNMENT",
+      assignmentMetadata: input.assignmentMetadata,
+      notes: `Assignment Submission for ${input.assignmentMetadata.courseName || input.title}. Submitted to ${
+        input.assignmentMetadata.instructorName || "Instructor"
+      }.`,
+    };
   }
 
   // Generate contextual visuals (pictures, graphs, diagrams) for visual-led slides
@@ -496,6 +540,7 @@ export async function createPresentationSession(
     title: derivedTitle,
     purpose,
     density,
+    assignmentMetadata: input.assignmentMetadata,
     theme,
     typography: {
       fontFamily,

@@ -44,9 +44,13 @@ import {
   type PresentationSessionData,
   type SlidePreviewItem,
 } from "@/lib/api-client";
-import { generateAndDownloadClientPptx } from "@/lib/presentation-session-client";
+import { generateAndDownloadClientPptx, saveClientSession } from "@/lib/presentation-session-client";
 import { computeThemeTokens } from "@/lib/presentation-theme";
 import { buildContextualVisual } from "@/lib/presentation-visual-generator";
+import { AssignmentCoverRenderer } from "@/components/workspace/AssignmentCoverRenderer";
+import { AssignmentInformationForm } from "@/components/workspace/AssignmentInformationForm";
+import { CoverTemplateGallery } from "@/components/workspace/CoverTemplateGallery";
+import { getDefaultAssignmentMetadata, type AssignmentMetadata } from "@/lib/assignment-types";
 
 export const Route = createFileRoute("/presentation-preview/$id")({
   head: () => ({
@@ -81,6 +85,8 @@ export function PresentationPreviewPage() {
 
   // Interactive Slide Editor State
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [coverEditModalOpen, setCoverEditModalOpen] = useState(false);
+  const [tempCoverMeta, setTempCoverMeta] = useState<AssignmentMetadata | null>(null);
   const [editingSlideIdx, setEditingSlideIdx] = useState(0);
   const [editTitle, setEditTitle] = useState("");
   const [editSubtitle, setEditSubtitle] = useState("");
@@ -92,6 +98,13 @@ export function PresentationPreviewPage() {
   const openEditSlideModal = (idx: number) => {
     if (!session || !session.slides[idx]) return;
     const target = session.slides[idx]!;
+    if (target.layout === "assignment-cover") {
+      setTempCoverMeta(
+        target.assignmentMetadata || session.assignmentMetadata || getDefaultAssignmentMetadata(),
+      );
+      setCoverEditModalOpen(true);
+      return;
+    }
     setEditingSlideIdx(idx);
     setEditTitle(target.title || "");
     setEditSubtitle(target.subtitle || "");
@@ -99,6 +112,57 @@ export function PresentationPreviewPage() {
     setEditBullets(target.bullets && target.bullets.length > 0 ? [...target.bullets] : [""]);
     setEditNotes(target.notes || "");
     setEditModalOpen(true);
+  };
+
+  const handleSaveCoverMetadata = async () => {
+    if (!session || !tempCoverMeta) return;
+    setSavingEdit(true);
+    try {
+      const isGroup = tempCoverMeta.assignmentType === "group";
+      const updatedTitle = tempCoverMeta.assignmentTitle?.trim() || session.title;
+      const updatedSubtitle = `${tempCoverMeta.courseName || session.purpose} — ${
+        isGroup ? "Group Assignment" : "Individual Assignment"
+      }`;
+
+      const updatedSlide: SlidePreviewItem = {
+        ...session.slides[0]!,
+        title: updatedTitle,
+        subtitle: updatedSubtitle,
+        assignmentMetadata: tempCoverMeta,
+      };
+
+      const updatedSlides = [...session.slides];
+      updatedSlides[0] = updatedSlide;
+
+      const updatedSession: PresentationSessionData = {
+        ...session,
+        title: updatedTitle,
+        assignmentMetadata: tempCoverMeta,
+        slides: updatedSlides,
+      };
+
+      setSession(updatedSession);
+      saveClientSession(updatedSession);
+
+      try {
+        await updatePresentationSlideApi(session.id, 0, {
+          title: updatedTitle,
+          subtitle: updatedSubtitle,
+          assignmentMetadata: tempCoverMeta,
+        });
+      } catch {
+        // client storage updated
+      }
+
+      toast.success("Assignment Cover Updated", {
+        description: `Applied ${tempCoverMeta.coverTemplateId} template with your updated details.`,
+      });
+      setCoverEditModalOpen(false);
+    } catch (err) {
+      toast.error("Failed to update cover");
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleAddBullet = () => {
@@ -685,6 +749,22 @@ export function PresentationPreviewPage() {
 
                   {/* Dynamic Slide Body Layouts - strictly constrained with min-h-0 so all slides maintain equal size */}
                   <div className="flex-1 min-h-0 overflow-y-auto my-auto py-3 pr-1 scrollbar-thin">
+                    {/* 0. ACADEMIC ASSIGNMENT COVER */}
+                    {currentSlide.layout === "assignment-cover" && (
+                      <div className="w-full h-full flex flex-col justify-center">
+                        <div className="w-full max-h-[460px] aspect-video rounded-xl overflow-hidden border border-border shadow-xs">
+                          <AssignmentCoverRenderer
+                            metadata={
+                              currentSlide.assignmentMetadata ||
+                              session.assignmentMetadata ||
+                              getDefaultAssignmentMetadata()
+                            }
+                            aspectRatio="16:9"
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {/* 1. TITLE / COVER */}
                     {currentSlide.layout === "title" && (
                       <div className="max-w-4xl space-y-4">
@@ -1648,6 +1728,72 @@ export function PresentationPreviewPage() {
               )}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assignment Cover Page Editor Dialog */}
+      <Dialog open={coverEditModalOpen} onOpenChange={setCoverEditModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl font-bold text-foreground">
+              Edit Assignment Cover Details &amp; Design
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Update candidate names, student IDs, course information, instructor, university logo, or switch between all 10 academic cover templates.
+            </DialogDescription>
+          </DialogHeader>
+
+          {tempCoverMeta && (
+            <div className="space-y-6 pt-2">
+              <AssignmentInformationForm
+                metadata={tempCoverMeta}
+                onChange={setTempCoverMeta}
+              />
+
+              <div className="border-t border-border pt-4">
+                <CoverTemplateGallery
+                  metadata={tempCoverMeta}
+                  mode="presentation"
+                  onSelectTemplate={(tid, accent) =>
+                    setTempCoverMeta({
+                      ...tempCoverMeta,
+                      coverTemplateId: tid,
+                      accentColor: accent || tempCoverMeta.accentColor,
+                    })
+                  }
+                  onUpdateAccentColor={(color) =>
+                    setTempCoverMeta({ ...tempCoverMeta, accentColor: color })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCoverEditModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={savingEdit}
+                  onClick={handleSaveCoverMetadata}
+                >
+                  {savingEdit ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5 mr-1" /> Apply to Cover Slide
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

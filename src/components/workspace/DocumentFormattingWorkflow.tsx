@@ -30,10 +30,20 @@ import {
   Film,
   Layers,
   Wand2,
+  GraduationCap,
+  Edit3,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
+import type { AssignmentMetadata } from "@/lib/assignment-types";
+import { getDefaultAssignmentMetadata, COVER_TEMPLATES } from "@/lib/assignment-types";
+import { extractAssignmentMetadataFromText } from "@/lib/assignment-metadata-extractor";
+import { AssignmentInformationForm } from "@/components/workspace/AssignmentInformationForm";
+import { CoverTemplateGallery } from "@/components/workspace/CoverTemplateGallery";
+import { AssignmentCoverRenderer } from "@/components/workspace/AssignmentCoverRenderer";
+import { generateAssignmentCoverHtml } from "@/lib/assignment-document-renderer";
 
 
 export interface FormattingConfig {
@@ -48,6 +58,9 @@ export interface FormattingConfig {
   authorName: string;
   institution: string;
   dateStr: string;
+
+  // Academic Assignment Mode
+  assignmentMetadata?: AssignmentMetadata;
 
   // Typography
   fontFamily: "serif" | "sans" | "mono";
@@ -1165,6 +1178,17 @@ export function DocumentFormattingWorkflow({
   const [activePageNum, setActivePageNum] = useState<number>(1);
   const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
 
+  // Academic Assignment Mode State
+  const [assignmentMode, setAssignmentMode] = useState<boolean>(false);
+  const [assignmentMetadata, setAssignmentMetadata] = useState<AssignmentMetadata>(() => ({
+    ...getDefaultAssignmentMetadata(),
+    isAssignment: true,
+  }));
+  const [extractedSuggestions, setExtractedSuggestions] = useState<ReturnType<
+    typeof extractAssignmentMetadataFromText
+  > | null>(null);
+  const [isEditCoverModalOpen, setIsEditCoverModalOpen] = useState<boolean>(false);
+
   // File handling
   const handleFileUpload = async (file: File) => {
     setUploadedFile(file);
@@ -1175,6 +1199,12 @@ export function DocumentFormattingWorkflow({
       const text = await file.text();
       setRawText(text);
       deriveTitleFromContent(text);
+      if (assignmentMode) {
+        const suggestions = extractAssignmentMetadataFromText(text);
+        if (suggestions.hasSuggestions) {
+          setExtractedSuggestions(suggestions);
+        }
+      }
       toast.success(`Loaded "${file.name}" successfully.`);
       return;
     }
@@ -1186,6 +1216,12 @@ export function DocumentFormattingWorkflow({
         if (res.text) {
           setRawText(res.text);
           deriveTitleFromContent(res.text);
+          if (assignmentMode) {
+            const suggestions = extractAssignmentMetadataFromText(res.text);
+            if (suggestions.hasSuggestions) {
+              setExtractedSuggestions(suggestions);
+            }
+          }
           toast.success(`Extracted ${res.wordCount || "text"} words from "${file.name}".`);
         } else {
           toast.info("Document loaded. You can refine the text before formatting.");
@@ -1212,6 +1248,72 @@ export function DocumentFormattingWorkflow({
       dateStr: meta.dateStr || prev.dateStr,
       layoutArchetype: meta.recommendedArchetype || prev.layoutArchetype,
     }));
+    if (meta.docTitle && !assignmentMetadata.assignmentTitle) {
+      setAssignmentMetadata((prev) => ({
+        ...prev,
+        assignmentTitle: prev.assignmentTitle || meta.docTitle,
+      }));
+    }
+  };
+
+  const handleProceedToStyling = () => {
+    if (!rawText.trim()) {
+      toast.error("Please supply document content", {
+        description: "Paste your document or upload a supported file.",
+      });
+      return;
+    }
+
+    if (assignmentMode) {
+      const isGroup = assignmentMetadata.assignmentType === "group";
+      if (!isGroup) {
+        if (
+          !assignmentMetadata.studentName?.trim() ||
+          !assignmentMetadata.studentId?.trim() ||
+          !assignmentMetadata.courseName?.trim() ||
+          !assignmentMetadata.instructorName?.trim()
+        ) {
+          toast.error("Required Assignment Information Missing", {
+            description:
+              "Please complete Student Full Name, Student ID, Course Name, and Instructor Name (*).",
+          });
+          return;
+        }
+      } else {
+        if (
+          !assignmentMetadata.assignmentTitle?.trim() ||
+          !assignmentMetadata.courseName?.trim() ||
+          !assignmentMetadata.instructorName?.trim()
+        ) {
+          toast.error("Required Group Information Missing", {
+            description: "Please complete Group Title, Course Name, and Instructor Name (*).",
+          });
+          return;
+        }
+        const validMembers = assignmentMetadata.groupMembers.filter(
+          (m) => m.fullName.trim() && m.studentId.trim(),
+        );
+        if (validMembers.length === 0) {
+          toast.error("Group Members Required", {
+            description: "Please provide at least one group member with Full Name and Student ID.",
+          });
+          return;
+        }
+      }
+
+      // Sync config with assignment metadata
+      setConfig((prev) => ({
+        ...prev,
+        hasCoverPage: true,
+        assignmentMetadata: { ...assignmentMetadata, isAssignment: true },
+        docTitle: assignmentMetadata.assignmentTitle || assignmentMetadata.courseName || prev.docTitle,
+        authorName: !isGroup ? assignmentMetadata.studentName : (assignmentMetadata.groupMembers[0]?.fullName || ""),
+        institution: assignmentMetadata.universityName || prev.institution,
+        layoutArchetype: "academic",
+      }));
+    }
+
+    setStep(2);
   };
 
   const autoPolishText = () => {
@@ -1222,11 +1324,13 @@ export function DocumentFormattingWorkflow({
 
   // Export handlers
   const handleExportDocx = () => {
-    // Generate styled HTML/text payload packaged as clean downloadable HTML-based doc / rich text
-    const htmlContent = generateFormattedHtml(rawText, config);
+    const activeConfig = assignmentMode
+      ? { ...config, hasCoverPage: true, assignmentMetadata: { ...assignmentMetadata, isAssignment: true } }
+      : config;
+    const htmlContent = generateFormattedHtml(rawText, activeConfig);
     const blob = new Blob([htmlContent], { type: "application/msword;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const docName = `${config.docTitle.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32) || "formatted_document"}.doc`;
+    const docName = `${(activeConfig.docTitle || "formatted_document").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32)}.doc`;
     const a = document.createElement("a");
     a.href = url;
     a.download = docName;
@@ -1239,7 +1343,10 @@ export function DocumentFormattingWorkflow({
   };
 
   const handlePrintPreview = () => {
-    const htmlContent = generateFormattedHtml(rawText, config);
+    const activeConfig = assignmentMode
+      ? { ...config, hasCoverPage: true, assignmentMetadata: { ...assignmentMetadata, isAssignment: true } }
+      : config;
+    const htmlContent = generateFormattedHtml(rawText, activeConfig);
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Popup blocked. Please allow popups to print/save as PDF.");
@@ -1291,12 +1398,92 @@ export function DocumentFormattingWorkflow({
         )}
       </div>
 
+      {/* Primary Mode Selector: Standard Document vs Academic Assignment Mode */}
+      <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2.5 rounded-2xl border border-border bg-card shadow-xs">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setAssignmentMode(false);
+              setAssignmentMetadata((prev) => ({ ...prev, isAssignment: false }));
+              setConfig((prev) => ({
+                ...prev,
+                assignmentMetadata: undefined,
+                hasCoverPage: false,
+              }));
+            }}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              !assignmentMode
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground hover:bg-surface-2"
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            <span>Standard Document</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="assignment-mode-button"
+            onClick={() => {
+              setAssignmentMode(true);
+              setAssignmentMetadata((prev) => ({ ...prev, isAssignment: true }));
+              setConfig((prev) => ({
+                ...prev,
+                hasCoverPage: true,
+                assignmentMetadata: { ...assignmentMetadata, isAssignment: true },
+                layoutArchetype: "academic",
+              }));
+              toast.info("Academic Assignment Mode Activated", {
+                description:
+                  "Enter student or group details, university emblem, and select your A4 academic cover template.",
+              });
+            }}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              assignmentMode
+                ? "bg-primary text-primary-foreground shadow-xs ring-1 ring-primary/40"
+                : "text-muted-foreground hover:text-foreground hover:bg-surface-2"
+            }`}
+          >
+            <GraduationCap className="h-4 w-4 text-amber-400" />
+            <span>Assignment Mode</span>
+            <span className="hidden sm:inline-block rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500">
+              New
+            </span>
+          </button>
+        </div>
+
+        {assignmentMode && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs">
+            <GraduationCap className="h-4 w-4 shrink-0" />
+            <span className="font-semibold">
+              {assignmentMetadata.assignmentType === "group" ? "Group Assignment" : "Individual Assignment"}
+            </span>
+            <span className="text-muted-foreground text-[11px] hidden md:inline">
+              · {assignmentMetadata.coverTemplateId.replace(/-/g, " ").toUpperCase()}
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Step Indicator Bar */}
       <div className="mb-8 grid grid-cols-3 gap-2 sm:gap-4">
         {[
-          { num: 1, label: "1. Source Document", desc: "Paste or upload DOCX/PDF/TXT" },
-          { num: 2, label: "2. Style & Typography", desc: "Cover, margins, fonts, headers" },
-          { num: 3, label: "3. Preview & Export", desc: "Inspect pages & download doc" },
+          {
+            num: 1,
+            label: assignmentMode ? "1. Assignment & Source" : "1. Source Document",
+            desc: assignmentMode ? "Student info & document text" : "Paste or upload DOCX/PDF/TXT",
+          },
+          {
+            num: 2,
+            label: assignmentMode ? "2. Cover & Typography" : "2. Style & Typography",
+            desc: assignmentMode ? "10 Cover templates & styles" : "Cover, margins, fonts, headers",
+          },
+          {
+            num: 3,
+            label: "3. Preview & Export",
+            desc: "Inspect A4 pages & download doc",
+          },
         ].map((s) => {
           const isActive = step === s.num;
           const isDone = step > s.num;
@@ -1372,11 +1559,45 @@ export function DocumentFormattingWorkflow({
       {/* ============================================================== */}
       {step === 1 && (
         <div className="space-y-6">
+          {/* Academic Assignment Information Form */}
+          {assignmentMode && (
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
+              <AssignmentInformationForm
+                metadata={assignmentMetadata}
+                onChange={(updated) => {
+                  setAssignmentMetadata(updated);
+                  setConfig((prev) => ({
+                    ...prev,
+                    assignmentMetadata: updated,
+                    docTitle: updated.assignmentTitle || updated.courseName || prev.docTitle,
+                    institution: updated.universityName || prev.institution,
+                  }));
+                }}
+                extractedSuggestions={extractedSuggestions}
+                onApplySuggestions={(fields) => {
+                  setAssignmentMetadata((prev) => {
+                    const next = { ...prev, ...fields };
+                    setConfig((c) => ({
+                      ...c,
+                      assignmentMetadata: next,
+                      docTitle: next.assignmentTitle || next.courseName || c.docTitle,
+                      institution: next.universityName || c.institution,
+                    }));
+                    return next;
+                  });
+                  setExtractedSuggestions(null);
+                  toast.success("Applied Extracted Assignment Details");
+                }}
+                onDismissSuggestions={() => setExtractedSuggestions(null)}
+              />
+            </div>
+          )}
+
           <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
             {/* Input Mode Selector */}
             <div className="flex items-center justify-between border-b border-border pb-4 mb-5">
               <h2 className="font-serif text-lg font-bold text-foreground">
-                Provide Document Content
+                {assignmentMode ? "Provide Assignment Content" : "Provide Document Content"}
               </h2>
               <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
                 <button
@@ -1410,10 +1631,56 @@ export function DocumentFormattingWorkflow({
               <div>
                 <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Document Text (paste draft, production brief, thesis chapter, or technical notes)
+                    Document Text (paste draft, assignment questions, thesis chapter, or research notes)
                   </label>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] text-muted-foreground hidden sm:inline mr-1">Presets:</span>
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      className="text-[11px] h-7 gap-1"
+                      onClick={() => {
+                        const sampleAssignment = `CS 401 — Advanced Distributed Systems
+Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols
+
+1.0 Problem Statement & Theoretical Foundations
+Traditional Paxos and Raft protocols tolerate crash-stop failures in benign networked environments. However, in adversarial distributed networks where arbitrary or malicious nodes deviate from protocol logic, Byzantine Fault Tolerance (BFT) mechanisms are strictly required to ensure safety and liveness.
+
+2.0 Comparative Protocol Analysis
+We evaluate Practical Byzantine Fault Tolerance (PBFT) alongside Proof-of-Stake Tendermint consensus:
+- Message Complexity: PBFT scales quadratically with O(n^2) message exchanges per round, bounding network cluster size.
+- Quorum Thresholds: Both systems require 3f + 1 total replicas to withstand f adversarial Byzantine nodes.
+
+3.0 Implementation & Experimental Results
+Our benchmark results demonstrate 1,450 transactions per second under a 16-node cluster with 40ms simulated network latency.
+
+4.0 Evaluation & Conclusion
+Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed consensus safety under adversarial partitions.`;
+                        setRawText(sampleAssignment);
+                        deriveTitleFromContent(sampleAssignment);
+                        if (assignmentMode) {
+                          setAssignmentMetadata((prev) => ({
+                            ...prev,
+                            assignmentTitle: "Byzantine Fault Tolerant Consensus Protocols",
+                            courseName: "CS 401 — Advanced Distributed Systems",
+                            courseCode: "CS 401",
+                            instructorName: "Dr. Evelyn Reed",
+                            universityName: "Stanford University",
+                            department: "Department of Computer Science",
+                            collegeOrFaculty: "School of Engineering",
+                            academicYear: "2026-2027",
+                            semester: "Fall 2026",
+                            submissionDate: "October 28, 2026",
+                            studentName: prev.studentName || "Alex Morgan",
+                            studentId: prev.studentId || "STU-882910",
+                          }));
+                        }
+                        toast.info("Loaded Academic Assignment Sample.");
+                      }}
+                    >
+                      <GraduationCap className="h-3 w-3 text-amber-500" />
+                      Assignment Sample
+                    </Button>
                     <Button
                       variant="glass"
                       size="sm"
@@ -1459,10 +1726,17 @@ export function DocumentFormattingWorkflow({
                   rows={12}
                   value={rawText}
                   onChange={(e) => {
-                    setRawText(e.target.value);
-                    deriveTitleFromContent(e.target.value);
+                    const val = e.target.value;
+                    setRawText(val);
+                    deriveTitleFromContent(val);
+                    if (assignmentMode && val.length > 50) {
+                      const suggestions = extractAssignmentMetadataFromText(val);
+                      if (suggestions.hasSuggestions) {
+                        setExtractedSuggestions(suggestions);
+                      }
+                    }
                   }}
-                  placeholder="Paste your unformatted report, manuscript, video prompt, or research notes here..."
+                  placeholder="Paste your unformatted assignment, report, manuscript, or research notes here..."
                   className="w-full rounded-xl border border-border bg-background p-4 text-sm font-sans leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
@@ -1617,7 +1891,7 @@ export function DocumentFormattingWorkflow({
               variant="hero"
               size="lg"
               disabled={!rawText.trim() || extracting}
-              onClick={() => setStep(2)}
+              onClick={handleProceedToStyling}
               className="gap-2 px-6"
             >
               Continue to Styling & Typography <ChevronRight className="h-4 w-4" />
@@ -1631,6 +1905,41 @@ export function DocumentFormattingWorkflow({
       {/* ============================================================== */}
       {step === 2 && (
         <div className="space-y-6">
+          {/* Academic Cover Page Template Picker in Assignment Mode */}
+          {assignmentMode && (
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
+              <div className="flex items-center gap-2 border-b border-border pb-3 mb-4">
+                <GraduationCap className="h-4 w-4 text-primary" />
+                <h2 className="font-serif text-base font-bold text-foreground">
+                  Academic Cover Page Template
+                </h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                Choose from 10 distinct academic cover-page designs. Each template applies distinct framing, typography, and metadata layouts formatted specifically for A4 document pages.
+              </p>
+              <CoverTemplateGallery
+                mode="document"
+                selectedTemplateId={assignmentMetadata.coverTemplateId}
+                onSelectTemplate={(templateId) => {
+                  setAssignmentMetadata((prev) => ({ ...prev, coverTemplateId: templateId }));
+                  setConfig((prev) => ({
+                    ...prev,
+                    assignmentMetadata: { ...assignmentMetadata, coverTemplateId: templateId },
+                  }));
+                }}
+                accentColor={assignmentMetadata.accentColor}
+                onChangeAccentColor={(color) => {
+                  setAssignmentMetadata((prev) => ({ ...prev, accentColor: color }));
+                  setConfig((prev) => ({
+                    ...prev,
+                    assignmentMetadata: { ...assignmentMetadata, accentColor: color },
+                  }));
+                }}
+                metadata={assignmentMetadata}
+              />
+            </div>
+          )}
+
           {/* Document Layout Archetype Selector */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3 mb-4">
@@ -1712,20 +2021,44 @@ export function DocumentFormattingWorkflow({
                       Cover Page & Metadata
                     </h2>
                   </div>
-                  <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={config.hasCoverPage}
-                      onChange={(e) =>
-                        setConfig((prev) => ({ ...prev, hasCoverPage: e.target.checked }))
-                      }
-                      className="rounded border-border text-primary focus:ring-primary"
-                    />
-                    Generate Cover Page
-                  </label>
+                  {!assignmentMode && (
+                    <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={config.hasCoverPage}
+                        onChange={(e) =>
+                          setConfig((prev) => ({ ...prev, hasCoverPage: e.target.checked }))
+                        }
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      Generate Cover Page
+                    </label>
+                  )}
                 </div>
 
-                {config.hasCoverPage ? (
+                {assignmentMode ? (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-foreground flex items-center gap-1.5">
+                          <GraduationCap className="h-4 w-4 text-primary" />
+                          Academic Cover Active
+                        </span>
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary uppercase">
+                          {assignmentMetadata.coverTemplateId.replace(/-/g, " ")}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground leading-relaxed">
+                        Template and academic metadata configured. The first page is reserved as an official academic assignment cover page.
+                      </p>
+                      <div className="pt-2 border-t border-primary/15 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                        <span><strong>Student/Group:</strong> {assignmentMetadata.assignmentType === "group" ? (assignmentMetadata.assignmentTitle || "Group Project") : assignmentMetadata.studentName}</span>
+                        <span><strong>Course:</strong> {assignmentMetadata.courseName}</span>
+                        <span><strong>Instructor:</strong> {assignmentMetadata.instructorName}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : config.hasCoverPage ? (
                   <div className="space-y-3.5">
                     <div>
                       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -2159,12 +2492,95 @@ export function DocumentFormattingWorkflow({
             </div>
           </div>
 
+          {/* Step 7 Document Blueprint Review */}
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-primary/20 pb-4 mb-4">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                  {assignmentMode ? "Academic Assignment Blueprint" : "Document Formatting Blueprint"}
+                </span>
+                <h3 className="text-base font-bold text-foreground">
+                  {assignmentMode
+                    ? (assignmentMetadata.assignmentTitle || assignmentMetadata.courseName || "Academic Assignment")
+                    : (config.docTitle || "Formatted Document")}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-card border border-border px-3 py-1 font-mono text-xs font-semibold text-foreground">
+                  {parseDocumentSections(rawText, config.headingNumbering).length} Sections Identified
+                </span>
+                {assignmentMode && (
+                  <span className="rounded-full bg-primary/10 border border-primary/20 px-3 py-1 font-mono text-xs font-bold text-primary uppercase">
+                    Template: {assignmentMetadata.coverTemplateId.replace(/-/g, " ")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+              <div className="p-3 rounded-xl bg-card border border-border">
+                <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                  {assignmentMode ? "Student / Group" : "Author / Institution"}
+                </span>
+                <span className="font-semibold text-foreground mt-1 block truncate">
+                  {assignmentMode
+                    ? (assignmentMetadata.assignmentType === "group"
+                        ? `${assignmentMetadata.groupMembers.filter((m) => m.fullName.trim()).length} Group Members`
+                        : `${assignmentMetadata.studentName || "Student"} (${assignmentMetadata.studentId || "ID"})`)
+                    : (config.authorName || config.institution || "Standard Author")}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-card border border-border">
+                <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                  {assignmentMode ? "Course / Evaluator" : "Layout Archetype"}
+                </span>
+                <span className="font-semibold text-foreground mt-1 block truncate">
+                  {assignmentMode
+                    ? `${assignmentMetadata.courseName || "Course"} · ${assignmentMetadata.instructorName || "Instructor"}`
+                    : config.layoutArchetype.toUpperCase()}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-card border border-border">
+                <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                  Typography & Spacing
+                </span>
+                <span className="font-semibold text-foreground mt-1 block">
+                  {config.fontFamily.toUpperCase()} · {config.baseFontSize} · {config.lineSpacing}x
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-card border border-border">
+                <span className="text-muted-foreground block text-[10px] uppercase font-semibold">
+                  {assignmentMode ? "University Emblem" : "Table of Contents"}
+                </span>
+                <span className="font-semibold text-foreground mt-1 block">
+                  {assignmentMode
+                    ? (assignmentMetadata.logoDataUrl ? "Emblem Uploaded (Verified)" : "Standard Crest Typography")
+                    : (config.includeToc ? "Dedicated TOC Page Included" : "Integrated TOC")}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Action Row */}
           <div className="flex items-center justify-between border-t border-border pt-6">
             <Button variant="glass" onClick={() => setStep(1)} className="gap-2">
               <ChevronLeft className="h-4 w-4" /> Back to Content
             </Button>
-            <Button variant="hero" size="lg" onClick={() => setStep(3)} className="gap-2 px-6">
+            <Button
+              variant="hero"
+              size="lg"
+              onClick={() => {
+                if (assignmentMode) {
+                  setConfig((prev) => ({
+                    ...prev,
+                    hasCoverPage: true,
+                    assignmentMetadata: { ...assignmentMetadata, isAssignment: true },
+                  }));
+                }
+                setStep(3);
+              }}
+              className="gap-2 px-6"
+            >
               Generate Live Document Preview <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -2184,7 +2600,7 @@ export function DocumentFormattingWorkflow({
               </span>
               <div>
                 <h3 className="font-serif text-sm font-bold text-foreground">
-                  Formatted Document Stage
+                  {assignmentMode ? "Academic Assignment Document" : "Formatted Document Stage"}
                 </h3>
                 <p className="text-[11px] text-muted-foreground">
                   Typography applied: {config.fontFamily.toUpperCase()} · {config.baseFontSize} ·{" "}
@@ -2194,6 +2610,16 @@ export function DocumentFormattingWorkflow({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {assignmentMode && (
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={() => setIsEditCoverModalOpen(true)}
+                  className="text-xs text-primary gap-1"
+                >
+                  <Edit3 className="h-3.5 w-3.5" /> Edit Cover Details
+                </Button>
+              )}
               <Button variant="glass" size="sm" onClick={() => setStep(2)} className="text-xs">
                 <Sliders className="h-3.5 w-3.5 mr-1" /> Adjust Styles
               </Button>
@@ -2536,6 +2962,87 @@ export function DocumentFormattingWorkflow({
           </div>
         </div>
       )}
+
+      {/* Edit Cover Details Modal in Step 3 */}
+      {isEditCoverModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-4 mb-6">
+              <div className="flex items-center gap-2.5">
+                <GraduationCap className="h-5 w-5 text-primary" />
+                <h2 className="font-serif text-lg font-bold text-foreground">
+                  Edit Academic Cover Page Details & Template
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditCoverModalOpen(false)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-3">
+                  Cover Template & Accent Color
+                </h3>
+                <CoverTemplateGallery
+                  mode="document"
+                  selectedTemplateId={assignmentMetadata.coverTemplateId}
+                  onSelectTemplate={(tid) => {
+                    setAssignmentMetadata((prev) => ({ ...prev, coverTemplateId: tid }));
+                    setConfig((prev) => ({
+                      ...prev,
+                      assignmentMetadata: { ...assignmentMetadata, coverTemplateId: tid },
+                    }));
+                  }}
+                  accentColor={assignmentMetadata.accentColor}
+                  onChangeAccentColor={(col) => {
+                    setAssignmentMetadata((prev) => ({ ...prev, accentColor: col }));
+                    setConfig((prev) => ({
+                      ...prev,
+                      assignmentMetadata: { ...assignmentMetadata, accentColor: col },
+                    }));
+                  }}
+                  metadata={assignmentMetadata}
+                />
+              </div>
+
+              <div className="border-t border-border pt-6">
+                <h3 className="text-sm font-semibold text-foreground mb-3">
+                  Assignment Information
+                </h3>
+                <AssignmentInformationForm
+                  metadata={assignmentMetadata}
+                  onChange={(updated) => {
+                    setAssignmentMetadata(updated);
+                    setConfig((prev) => ({
+                      ...prev,
+                      assignmentMetadata: updated,
+                      docTitle: updated.assignmentTitle || updated.courseName || prev.docTitle,
+                      institution: updated.universityName || prev.institution,
+                    }));
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+                <Button
+                  variant="hero"
+                  onClick={() => {
+                    setIsEditCoverModalOpen(false);
+                    toast.success("Cover Page Updated");
+                  }}
+                >
+                  Apply & Update Preview
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2645,55 +3152,67 @@ function A4PageCard({
       {/* Running Page Top Header */}
       <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-4 mb-4 select-none">
         <span className="truncate max-w-[70%] font-medium">
-          {config.headerText || config.docTitle || "Document"}
+          {page.isCover ? "" : config.headerText || config.docTitle || "Document"}
         </span>
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
-          {page.isCover ? "Cover Page" : page.isToc ? "Table of Contents" : `A4 Page ${page.pageNumber}`}
+          {page.isCover
+            ? config.assignmentMetadata?.isAssignment
+              ? "Academic Assignment Cover"
+              : "Cover Page"
+            : page.isToc
+              ? "Table of Contents"
+              : `A4 Page ${page.pageNumber}`}
         </span>
       </div>
 
       {/* Page Content Body */}
-      <div className="flex-1 space-y-4">
+      <div className="flex-1 space-y-4 flex flex-col">
         {/* Cover Page */}
         {page.isCover && (
-          <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">
-            <div className="space-y-4">
-              {config.institution && (
-                <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
-                  {config.institution}
-                </p>
-              )}
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight text-foreground">
-                {config.docTitle}
-              </h1>
-              {config.docSubtitle && (
-                <p className="text-base sm:text-lg font-normal italic text-muted-foreground">
-                  {config.docSubtitle}
-                </p>
-              )}
+          config.assignmentMetadata?.isAssignment ? (
+            <div className="flex-1 flex flex-col justify-between py-2 w-full">
+              <AssignmentCoverRenderer metadata={config.assignmentMetadata} aspectRatio="a4" />
             </div>
-            <div className="my-10">
-              <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
-                Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
+          ) : (
+            <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">
+              <div className="space-y-4">
+                {config.institution && (
+                  <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
+                    {config.institution}
+                  </p>
+                )}
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight text-foreground">
+                  {config.docTitle}
+                </h1>
+                {config.docSubtitle && (
+                  <p className="text-base sm:text-lg font-normal italic text-muted-foreground">
+                    {config.docSubtitle}
+                  </p>
+                )}
+              </div>
+              <div className="my-10">
+                <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
+                  Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
+                </div>
+              </div>
+              <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
+                {config.authorName && (
+                  <p>
+                    <strong className="text-foreground">Author:</strong> {config.authorName}
+                  </p>
+                )}
+                {config.institution && (
+                  <p>
+                    <strong className="text-foreground">Institution:</strong>{" "}
+                    {config.institution}
+                  </p>
+                )}
+                <p>
+                  <strong className="text-foreground">Date:</strong> {config.dateStr}
+                </p>
               </div>
             </div>
-            <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
-              {config.authorName && (
-                <p>
-                  <strong className="text-foreground">Author:</strong> {config.authorName}
-                </p>
-              )}
-              {config.institution && (
-                <p>
-                  <strong className="text-foreground">Institution:</strong>{" "}
-                  {config.institution}
-                </p>
-              )}
-              <p>
-                <strong className="text-foreground">Date:</strong> {config.dateStr}
-              </p>
-            </div>
-          </div>
+          )
         )}
 
         {/* Dedicated Table of Contents Page */}
@@ -2812,14 +3331,16 @@ function A4PageCard({
       </div>
 
       {/* Running Page Bottom Footer */}
-      <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
-        <span>DocuMind Studio · A4 Document</span>
-        <span>
-          {config.pageNumberFormat === "page-x-of-y"
-            ? `Page ${page.pageNumber} of ${page.totalPages}`
-            : `${page.pageNumber}`}
-        </span>
-      </div>
+      {!page.isCover && (
+        <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
+          <span>DocuMind Studio · A4 Document</span>
+          <span>
+            {config.pageNumberFormat === "page-x-of-y"
+              ? `Page ${page.pageNumber} of ${page.totalPages}`
+              : `${page.pageNumber}`}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -3130,6 +3651,14 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
       let content = "";
 
       if (page.isCover) {
+        if (config.assignmentMetadata?.isAssignment) {
+          content = generateAssignmentCoverHtml(config.assignmentMetadata);
+          return `<div class="a4-sheet" style="width: 210mm; min-height: 297mm; padding: 16mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always;">
+            <div style="flex: 1; display: flex; flex-direction: column;">
+              ${content}
+            </div>
+          </div>`;
+        }
         content = `<div style="min-height: 230mm; display: flex; flex-direction: column; justify-content: space-between;">
           <div>
             ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10pt; color: #0284c7; font-weight: bold;">${escapeHtml(config.institution)}</p>` : ""}
