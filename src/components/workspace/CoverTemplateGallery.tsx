@@ -36,8 +36,9 @@ export function CoverTemplateGallery({
   onUpdateAccentColor,
 }: CoverTemplateGalleryProps) {
   const [activeCategory, setActiveCategory] = useState<string>("All");
-  const selectedTemplateId = metadata.coverTemplateId || "classic-university";
-  const selectedTemplate = COVER_TEMPLATES.find((t) => t.id === selectedTemplateId) || COVER_TEMPLATES[0]!;
+  const selectedTemplateId = metadata?.coverTemplateId || "classic-university";
+  const selectedTemplate =
+    COVER_TEMPLATES.find((t) => t.id === selectedTemplateId) || COVER_TEMPLATES[0]!;
 
   const categories = ["All", "Classic", "Modern", "Formal", "Creative", "Minimal"];
 
@@ -71,7 +72,9 @@ export function CoverTemplateGallery({
           <span className="text-xs text-muted-foreground font-medium mr-1">Accent:</span>
           <div className="flex items-center gap-1">
             {ACCENT_PALETTE.map((c) => {
-              const isCurrent = (metadata.accentColor || selectedTemplate.defaultAccent).toLowerCase() === c.hex.toLowerCase();
+              const isCurrent =
+                ((metadata?.accentColor || selectedTemplate?.defaultAccent || "#1E3A8A")).toLowerCase() ===
+                c.hex.toLowerCase();
               return (
                 <button
                   key={c.hex}

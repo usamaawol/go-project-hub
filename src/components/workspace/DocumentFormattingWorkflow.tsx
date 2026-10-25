@@ -750,7 +750,7 @@ export function parseDocumentSections(
   text: string,
   headingNumbering: "decimal" | "roman" | "none" = "none",
 ): DocSection[] {
-  if (!text || !text.trim()) {
+  if (!text || typeof text !== "string" || !text.trim()) {
     return [
       {
         level: 1,
@@ -968,6 +968,9 @@ export function paginateSectionsIntoA4Pages(
   sections: DocSection[],
   config: FormattingConfig,
 ): DocA4Page[] {
+  if (!sections || !Array.isArray(sections)) {
+    return [];
+  }
   const PAGE_CAPACITY = 820; // Standard A4 printable height budget
 
   const pages: DocA4Page[] = [];
@@ -1112,9 +1115,13 @@ export function DocumentFormattingWorkflow({
   // Content state
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
   const [rawText, setRawText] = useState(() => {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const stored = window.sessionStorage.getItem("documind_template_doc_content");
-      if (stored) return stored;
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const stored = window.sessionStorage.getItem("documind_template_doc_content");
+        if (stored) return stored;
+      }
+    } catch {
+      // Ignore storage access errors
     }
     return "";
   });
@@ -1125,16 +1132,20 @@ export function DocumentFormattingWorkflow({
 
   // Lifecycle check for incoming document template
   useEffect(() => {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const storedDoc = window.sessionStorage.getItem("documind_template_doc_content");
-      const storedTitle = window.sessionStorage.getItem("documind_template_doc_title");
-      if (storedDoc) {
-        toast.success(`Template loaded: "${storedTitle || "Document Template"}"`, {
-          description: "Structured sections and design tokens applied to Document Studio.",
-        });
-        window.sessionStorage.removeItem("documind_template_doc_content");
-        window.sessionStorage.removeItem("documind_template_doc_title");
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const storedDoc = window.sessionStorage.getItem("documind_template_doc_content");
+        const storedTitle = window.sessionStorage.getItem("documind_template_doc_title");
+        if (storedDoc) {
+          toast.success(`Template loaded: "${storedTitle || "Document Template"}"`, {
+            description: "Structured sections and design tokens applied to Document Studio.",
+          });
+          window.sessionStorage.removeItem("documind_template_doc_content");
+          window.sessionStorage.removeItem("documind_template_doc_title");
+        }
       }
+    } catch {
+      // Ignore storage access errors
     }
   }, []);
 
@@ -1367,37 +1378,7 @@ export function DocumentFormattingWorkflow({
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Workflow Header Banner */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border pb-6">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
-            <BookOpen className="h-3.5 w-3.5" />
-            <span>Document Styling & Academic Typography</span>
-          </div>
-          <h1 className="mt-2 font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Document Formatting Studio
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
-            Format written documents with professional cover pages, precise heading hierarchies,
-            standardized margins, running headers, and clean page numbers. Completely separate from
-            PowerPoint slide decks.
-          </p>
-        </div>
-
-        {onSwitchToPresentation && (
-          <Button
-            variant="glass"
-            size="sm"
-            onClick={onSwitchToPresentation}
-            className="self-start md:self-auto gap-2 text-xs"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Switch to Presentation Maker
-          </Button>
-        )}
-      </div>
-
+    <div className="w-full">
       {/* Primary Mode Selector: Standard Document vs Academic Assignment Mode */}
       <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2.5 rounded-2xl border border-border bg-card shadow-xs">
         <div className="flex items-center gap-2">
@@ -1457,10 +1438,10 @@ export function DocumentFormattingWorkflow({
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs">
             <GraduationCap className="h-4 w-4 shrink-0" />
             <span className="font-semibold">
-              {assignmentMetadata.assignmentType === "group" ? "Group Assignment" : "Individual Assignment"}
+              {assignmentMetadata?.assignmentType === "group" ? "Group Assignment" : "Individual Assignment"}
             </span>
             <span className="text-muted-foreground text-[11px] hidden md:inline">
-              · {assignmentMetadata.coverTemplateId.replace(/-/g, " ").toUpperCase()}
+              · {(assignmentMetadata?.coverTemplateId || "classic-university").replace(/-/g, " ").toUpperCase()}
             </span>
           </div>
         )}
@@ -1919,23 +1900,29 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
               </p>
               <CoverTemplateGallery
                 mode="document"
-                selectedTemplateId={assignmentMetadata.coverTemplateId}
-                onSelectTemplate={(templateId) => {
-                  setAssignmentMetadata((prev) => ({ ...prev, coverTemplateId: templateId }));
+                metadata={assignmentMetadata}
+                onSelectTemplate={(templateId, defaultAccent) => {
+                  setAssignmentMetadata((prev) => ({
+                    ...prev,
+                    coverTemplateId: templateId,
+                    accentColor: defaultAccent || prev.accentColor,
+                  }));
                   setConfig((prev) => ({
                     ...prev,
-                    assignmentMetadata: { ...assignmentMetadata, coverTemplateId: templateId },
+                    assignmentMetadata: {
+                      ...assignmentMetadata,
+                      coverTemplateId: templateId,
+                      accentColor: defaultAccent || assignmentMetadata.accentColor,
+                    },
                   }));
                 }}
-                accentColor={assignmentMetadata.accentColor}
-                onChangeAccentColor={(color) => {
+                onUpdateAccentColor={(color) => {
                   setAssignmentMetadata((prev) => ({ ...prev, accentColor: color }));
                   setConfig((prev) => ({
                     ...prev,
                     assignmentMetadata: { ...assignmentMetadata, accentColor: color },
                   }));
                 }}
-                metadata={assignmentMetadata}
               />
             </div>
           )}
@@ -2045,16 +2032,16 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                           Academic Cover Active
                         </span>
                         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary uppercase">
-                          {assignmentMetadata.coverTemplateId.replace(/-/g, " ")}
+                          {(assignmentMetadata?.coverTemplateId || "classic-university").replace(/-/g, " ")}
                         </span>
                       </div>
                       <p className="text-muted-foreground leading-relaxed">
                         Template and academic metadata configured. The first page is reserved as an official academic assignment cover page.
                       </p>
                       <div className="pt-2 border-t border-primary/15 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                        <span><strong>Student/Group:</strong> {assignmentMetadata.assignmentType === "group" ? (assignmentMetadata.assignmentTitle || "Group Project") : assignmentMetadata.studentName}</span>
-                        <span><strong>Course:</strong> {assignmentMetadata.courseName}</span>
-                        <span><strong>Instructor:</strong> {assignmentMetadata.instructorName}</span>
+                        <span><strong>Student/Group:</strong> {assignmentMetadata?.assignmentType === "group" ? (assignmentMetadata?.assignmentTitle || "Group Project") : (assignmentMetadata?.studentName || "Student")}</span>
+                        <span><strong>Course:</strong> {assignmentMetadata?.courseName || "Course"}</span>
+                        <span><strong>Instructor:</strong> {assignmentMetadata?.instructorName || "Instructor"}</span>
                       </div>
                     </div>
                   </div>
@@ -2511,7 +2498,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </span>
                 {assignmentMode && (
                   <span className="rounded-full bg-primary/10 border border-primary/20 px-3 py-1 font-mono text-xs font-bold text-primary uppercase">
-                    Template: {assignmentMetadata.coverTemplateId.replace(/-/g, " ")}
+                    Template: {(assignmentMetadata?.coverTemplateId || "classic-university").replace(/-/g, " ")}
                   </span>
                 )}
               </div>
@@ -2524,9 +2511,9 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </span>
                 <span className="font-semibold text-foreground mt-1 block truncate">
                   {assignmentMode
-                    ? (assignmentMetadata.assignmentType === "group"
-                        ? `${assignmentMetadata.groupMembers.filter((m) => m.fullName.trim()).length} Group Members`
-                        : `${assignmentMetadata.studentName || "Student"} (${assignmentMetadata.studentId || "ID"})`)
+                    ? (assignmentMetadata?.assignmentType === "group"
+                        ? `${(assignmentMetadata?.groupMembers || []).filter((m) => m.fullName.trim()).length} Group Members`
+                        : `${assignmentMetadata?.studentName || "Student"} (${assignmentMetadata?.studentId || "ID"})`)
                     : (config.authorName || config.institution || "Standard Author")}
                 </span>
               </div>
@@ -2536,7 +2523,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </span>
                 <span className="font-semibold text-foreground mt-1 block truncate">
                   {assignmentMode
-                    ? `${assignmentMetadata.courseName || "Course"} · ${assignmentMetadata.instructorName || "Instructor"}`
+                    ? `${assignmentMetadata?.courseName || "Course"} · ${assignmentMetadata?.instructorName || "Instructor"}`
                     : config.layoutArchetype.toUpperCase()}
                 </span>
               </div>
@@ -2990,23 +2977,29 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </h3>
                 <CoverTemplateGallery
                   mode="document"
-                  selectedTemplateId={assignmentMetadata.coverTemplateId}
-                  onSelectTemplate={(tid) => {
-                    setAssignmentMetadata((prev) => ({ ...prev, coverTemplateId: tid }));
+                  metadata={assignmentMetadata}
+                  onSelectTemplate={(tid, defaultAccent) => {
+                    setAssignmentMetadata((prev) => ({
+                      ...prev,
+                      coverTemplateId: tid,
+                      accentColor: defaultAccent || prev.accentColor,
+                    }));
                     setConfig((prev) => ({
                       ...prev,
-                      assignmentMetadata: { ...assignmentMetadata, coverTemplateId: tid },
+                      assignmentMetadata: {
+                        ...assignmentMetadata,
+                        coverTemplateId: tid,
+                        accentColor: defaultAccent || assignmentMetadata.accentColor,
+                      },
                     }));
                   }}
-                  accentColor={assignmentMetadata.accentColor}
-                  onChangeAccentColor={(col) => {
+                  onUpdateAccentColor={(col) => {
                     setAssignmentMetadata((prev) => ({ ...prev, accentColor: col }));
                     setConfig((prev) => ({
                       ...prev,
                       assignmentMetadata: { ...assignmentMetadata, accentColor: col },
                     }));
                   }}
-                  metadata={assignmentMetadata}
                 />
               </div>
 

@@ -46,6 +46,25 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
+  const errorMessage =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "An unexpected error occurred.";
+
+  const handleResetStorageAndReload = () => {
+    try {
+      if (typeof window !== "undefined") {
+        sessionStorage.clear();
+        localStorage.removeItem("documind_template_doc_content");
+        localStorage.removeItem("documind_template_doc_title");
+        localStorage.removeItem("documind_template_content");
+        localStorage.removeItem("documind_template_title");
+        localStorage.removeItem("documind_selected_theme_id");
+      }
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
@@ -55,15 +74,36 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
         <p className="mt-2 text-sm text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
+
+        {errorMessage && (
+          <details className="mt-4 text-left p-3 rounded-lg border border-border bg-muted/40 text-xs font-mono text-muted-foreground max-h-40 overflow-auto">
+            <summary className="cursor-pointer font-sans font-medium text-foreground hover:underline">
+              Technical Details
+            </summary>
+            <p className="mt-2 text-destructive font-semibold break-all">{errorMessage}</p>
+            {error instanceof Error && error.stack && (
+              <pre className="mt-1 text-[10px] text-muted-foreground whitespace-pre-wrap break-all">
+                {error.stack}
+              </pre>
+            )}
+          </details>
+        )}
+
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 cursor-pointer"
           >
             Try again
+          </button>
+          <button
+            onClick={handleResetStorageAndReload}
+            className="inline-flex items-center justify-center rounded-md border border-input bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent cursor-pointer"
+          >
+            Clear cache & reload
           </button>
           <a
             href="/"

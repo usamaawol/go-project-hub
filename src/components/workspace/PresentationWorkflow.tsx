@@ -178,9 +178,13 @@ export function PresentationWorkflow({
 
   // Step A: Content State
   const [title, setTitle] = useState(() => {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const stored = window.sessionStorage.getItem("documind_template_title");
-      if (stored) return stored;
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const stored = window.sessionStorage.getItem("documind_template_title");
+        if (stored) return stored;
+      }
+    } catch {
+      // ignore
     }
     return "";
   });
@@ -188,9 +192,13 @@ export function PresentationWorkflow({
   const [density, setDensity] = useState<"concise" | "balanced" | "detailed">("balanced");
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
   const [pastedText, setPastedText] = useState(() => {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const stored = window.sessionStorage.getItem("documind_template_content");
-      if (stored) return stored;
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const stored = window.sessionStorage.getItem("documind_template_content");
+        if (stored) return stored;
+      }
+    } catch {
+      // ignore
     }
     return "";
   });
@@ -200,12 +208,16 @@ export function PresentationWorkflow({
 
   // Step B: Settings State
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem>(() => {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const storedId = window.sessionStorage.getItem("documind_selected_theme_id");
-      if (storedId) {
-        const found = TEMPLATES.find((t) => t.id === storedId && t.isFree);
-        if (found) return found;
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const storedId = window.sessionStorage.getItem("documind_selected_theme_id");
+        if (storedId) {
+          const found = TEMPLATES.find((t) => t.id === storedId && t.isFree);
+          if (found) return found;
+        }
       }
+    } catch {
+      // ignore
     }
     return TEMPLATES.find((t) => t.isFree) || TEMPLATES[0]!;
   });
@@ -214,12 +226,16 @@ export function PresentationWorkflow({
     "compact" | "standard" | "large" | "extra-large"
   >("standard");
   const [slideCount, setSlideCount] = useState(() => {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const stored = window.sessionStorage.getItem("documind_template_slides_count");
-      if (stored) {
-        const parsed = parseInt(stored, 10);
-        if (!isNaN(parsed) && parsed >= 5 && parsed <= 20) return parsed;
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const stored = window.sessionStorage.getItem("documind_template_slides_count");
+        if (stored) {
+          const parsed = parseInt(stored, 10);
+          if (!isNaN(parsed) && parsed >= 5 && parsed <= 20) return parsed;
+        }
       }
+    } catch {
+      // ignore
     }
     return 8;
   });
@@ -265,17 +281,21 @@ export function PresentationWorkflow({
 
   // Lifecycle check for incoming template injection
   useEffect(() => {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const templateTitle = window.sessionStorage.getItem("documind_template_title");
-      if (templateTitle) {
-        toast.success(`Template loaded: "${templateTitle}"`, {
-          description: "Structure and design tokens loaded. Ready to customize or generate.",
-        });
-        window.sessionStorage.removeItem("documind_template_title");
-        window.sessionStorage.removeItem("documind_template_content");
-        window.sessionStorage.removeItem("documind_template_slides_count");
-        window.sessionStorage.removeItem("documind_selected_theme_id");
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const templateTitle = window.sessionStorage.getItem("documind_template_title");
+        if (templateTitle) {
+          toast.success(`Template loaded: "${templateTitle}"`, {
+            description: "Structure and design tokens loaded. Ready to customize or generate.",
+          });
+          window.sessionStorage.removeItem("documind_template_title");
+          window.sessionStorage.removeItem("documind_template_content");
+          window.sessionStorage.removeItem("documind_template_slides_count");
+          window.sessionStorage.removeItem("documind_selected_theme_id");
+        }
       }
+    } catch {
+      // ignore
     }
   }, []);
 

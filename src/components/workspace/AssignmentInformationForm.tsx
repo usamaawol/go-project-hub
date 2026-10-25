@@ -47,12 +47,27 @@ export function AssignmentInformationForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
 
-  const isGroup = metadata.assignmentType === "group";
+  const safeMetadata = metadata || {
+    isAssignment: true,
+    assignmentType: "individual" as const,
+    studentName: "",
+    studentId: "",
+    groupMembers: [
+      { id: "member-1", fullName: "", studentId: "" },
+      { id: "member-2", fullName: "", studentId: "" },
+    ],
+    courseName: "",
+    instructorName: "",
+    coverTemplateId: "classic-university",
+  };
+
+  const isGroup = safeMetadata.assignmentType === "group";
+  const groupMembers = safeMetadata.groupMembers || [];
 
   // Mode Switch
   const handleTypeChange = (newType: AssignmentType) => {
     onChange({
-      ...metadata,
+      ...safeMetadata,
       assignmentType: newType,
     });
   };
@@ -60,29 +75,29 @@ export function AssignmentInformationForm({
   // Field change helper
   const updateField = (key: keyof AssignmentMetadata, value: any) => {
     onChange({
-      ...metadata,
+      ...safeMetadata,
       [key]: value,
     });
   };
 
   // Group Members helpers
   const handleAddMember = () => {
-    const newId = `member-${Date.now()}-${metadata.groupMembers.length + 1}`;
-    const updated = [...metadata.groupMembers, { id: newId, fullName: "", studentId: "" }];
+    const newId = `member-${Date.now()}-${groupMembers.length + 1}`;
+    const updated = [...groupMembers, { id: newId, fullName: "", studentId: "" }];
     updateField("groupMembers", updated);
   };
 
   const handleUpdateMember = (index: number, key: keyof StudentMember, val: string) => {
-    const updated = metadata.groupMembers.map((m, i) => (i === index ? { ...m, [key]: val } : m));
+    const updated = groupMembers.map((m, i) => (i === index ? { ...m, [key]: val } : m));
     updateField("groupMembers", updated);
   };
 
   const handleRemoveMember = (index: number) => {
-    if (metadata.groupMembers.length <= 1) {
+    if (groupMembers.length <= 1) {
       toast.error("At least one group member is required for group assignments.");
       return;
     }
-    const updated = metadata.groupMembers.filter((_, i) => i !== index);
+    const updated = groupMembers.filter((_, i) => i !== index);
     updateField("groupMembers", updated);
   };
 
@@ -414,7 +429,7 @@ export function AssignmentInformationForm({
                 </div>
 
                 <div className="space-y-2">
-                  {metadata.groupMembers.map((member, idx) => (
+                  {(safeMetadata.groupMembers || []).map((member, idx) => (
                     <div
                       key={member.id || idx}
                       className="flex items-center gap-2 p-2.5 rounded-lg bg-surface-2/60 border border-border"
@@ -426,19 +441,19 @@ export function AssignmentInformationForm({
                         <input
                           type="text"
                           placeholder="Member Full Name *"
-                          value={member.fullName}
+                          value={member.fullName || ""}
                           onChange={(e) => handleUpdateMember(idx, "fullName", e.target.value)}
                           className="px-2.5 py-1.5 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <input
                           type="text"
                           placeholder="Student ID *"
-                          value={member.studentId}
+                          value={member.studentId || ""}
                           onChange={(e) => handleUpdateMember(idx, "studentId", e.target.value)}
                           className="px-2.5 py-1.5 text-xs font-mono rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
-                      {metadata.groupMembers.length > 1 && (
+                      {(safeMetadata.groupMembers || []).length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveMember(idx)}
