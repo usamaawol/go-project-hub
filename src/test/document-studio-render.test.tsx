@@ -5,7 +5,9 @@ import { routeTree } from "@/routeTree.gen";
 import {
   paginateSectionsIntoA4Pages,
   parseDocumentSections,
+  renderDocBlock,
   type FormattingConfig,
+  type DocBlock,
 } from "@/components/workspace/DocumentFormattingWorkflow";
 import { COVER_TEMPLATES, getDefaultAssignmentMetadata } from "@/lib/assignment-types";
 
@@ -91,5 +93,30 @@ describe("Document Studio Verification", () => {
 
     const html2 = generateAssignmentCoverHtml({} as any);
     expect(html2).toContain("Individual Course Assignment");
+  });
+
+  it("safely renders document blocks without reference error for lineSpacing or lineHeight", () => {
+    const paragraphBlock: DocBlock = {
+      type: "paragraph",
+      content: "This is a regular paragraph verifying that lineSpacing renders without any ReferenceError.",
+    };
+
+    const rendered = renderDocBlock(paragraphBlock, 0, "standard", "1.6");
+    expect(rendered).toBeDefined();
+    expect(rendered.type).toBe("p");
+    expect(rendered.props.style.lineHeight).toBe("1.6");
+
+    const darkRendered = renderDocBlock(paragraphBlock, 1, "dark", "2.0");
+    expect(darkRendered).toBeDefined();
+    expect(darkRendered.props.style.lineHeight).toBe("2.0");
+
+    const listBlock: DocBlock = {
+      type: "list",
+      content: "",
+      listItems: ["Point 1", "Point 2"],
+    };
+    const renderedList = renderDocBlock(listBlock, 2, "standard", "1.5");
+    expect(renderedList).toBeDefined();
+    expect(renderedList.type).toBe("ul");
   });
 });

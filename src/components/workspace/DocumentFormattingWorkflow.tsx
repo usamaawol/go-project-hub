@@ -3333,7 +3333,7 @@ function A4PageCard({
 /**
  * Renders an individual document block faithfully preserving original content
  */
-function renderDocBlock(
+export function renderDocBlock(
   block: DocBlock,
   bIdx: number,
   paperMode: "standard" | "dark",
@@ -3580,7 +3580,7 @@ function renderDocBlock(
       className={`text-sm leading-relaxed text-justify ${
         paperMode === "dark" ? "text-zinc-200" : "text-stone-800"
       }`}
-      style={{ lineHeight }}
+      style={{ lineHeight: lineSpacing || "1.6" }}
     >
       {renderRichInline(block.content)}
     </p>
