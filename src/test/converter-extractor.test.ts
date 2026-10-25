@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { convertDocumentBuffer } from "../../server/services/converter.service";
 import { extractTextFromBuffer } from "../../server/services/extractor.service";
 import { PDFDocument } from "pdf-lib";
+import fs from "fs";
 
 describe("DocuMind File Converter & OCR Text Extractor Verification", () => {
   const sampleDocumentContent = `1.0 Executive Architecture & Implementation
@@ -210,6 +211,29 @@ All original topics, main ideas, and structure are preserved with zero data loss
       expect(result.filename).toBe("optimized_Internet_Programming_II_Nextjs_Assignment_converted.txt");
       expect(result.previewText).toContain("Internet Programming II Nextjs Assignment");
       expect(result.wordCount).toBeGreaterThan(0);
+    });
+
+    it("converts complex user PDF documents such as Sof Omar Tech Academy Glossary into TXT and DOCX preserving all terms", async () => {
+      const filePath = "/home/usama/Downloads/Telegram Desktop/Sof Omar Tech Academy - Tech Terminologies Glossary (1).pdf";
+      if (!fs.existsSync(filePath)) {
+        return; // Skip if file not on runner filesystem
+      }
+      const buffer = fs.readFileSync(filePath);
+      const file = new File([buffer], "Sof Omar Tech Academy - Tech Terminologies Glossary (1).pdf", {
+        type: "application/pdf",
+      });
+
+      const { convertDocument } = await import("../lib/document-converter");
+      const txtResult = await convertDocument(file, "TXT");
+
+      expect(txtResult.wordCount).toBeGreaterThan(1500);
+      expect(txtResult.previewText).toContain("TECH TERMINOLOGIES");
+      expect(txtResult.previewText).toContain("Sof Omar Tech Academy");
+      expect(txtResult.previewText).toContain("Abdulfetah Jemal");
+
+      const docxResult = await convertDocument(file, "DOCX");
+      expect(docxResult.wordCount).toBeGreaterThan(1500);
+      expect(docxResult.filename).toContain("_converted.docx");
     });
   });
 });

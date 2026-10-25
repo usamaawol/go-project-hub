@@ -17,71 +17,154 @@ export async function extractTextFromPdfBytes(
   bytes: Uint8Array,
   onProgress?: (status: string) => void,
 ): Promise<PdfExtractionResult> {
-  // Load PDF using pdfjs-dist legacy build (no worker required)
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  let cleanedText = "";
+  let pageCount = 1;
 
-  const loadingTask = pdfjsLib.getDocument({
-    data: bytes,
-    useSystemFonts: true,
-    disableFontFace: true,
-    isEvalSupported: false,
-  });
+  // Tier 1: PDFParse (Fastest, pure JS, handles compressed FlateDecode streams & subset fonts without worker scripts)
+  try {
+    onProgress?.("Extracting PDF content with primary parser...");
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse(new Uint8Array(bytes));
+    await parser.load();
+    const parsed = await parser.getText();
+    const text = (parsed.text || "").trim();
+    if (text.length > 5) {
+      cleanedText = text;
+      pageCount = parsed.total || 1;
+      const words = cleanedText.split(/\s+/).filter(Boolean).length;
+      const lines = cleanedText.split("\n").filter((l) => l.trim().length > 0).length;
+      return {
+        text: cleanedText,
+        pageCount,
+        wordCount: words,
+        lineCount: lines,
+        charCount: cleanedText.length,
+        isOcr: false,
+      };
+    }
+  } catch (pdfParseErr) {
+    console.warn("Tier 1 PDFParse extraction error, falling back to secondary parser:", pdfParseErr);
+  }
 
-  const pdf = await loadingTask.promise;
-  const pageCount = pdf.numPages;
-  let fullText = "";
+  // Tier 2: pdfjs-dist legacy engine with local or CDN worker fallback
+  try {
+    onProgress?.("Extracting PDF glyphs with secondary engine...");
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    if (typeof window !== "undefined") {
+      try {
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        }
+      } catch {}
+    }
 
-  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
-    onProgress?.(`Extracting page ${pageNum} of ${pageCount}...`);
-    const page = await pdf.getPage(pageNum);
-    const content = await page.getTextContent();
-    const items = content.items as Array<{ str?: string; transform?: number[] }>;
-    const strings: string[] = [];
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(bytes),
+      useSystemFonts: true,
+      disableFontFace: true,
+      isEvalSupported: false,
+    });
 
-    let lastY: number | null = null;
-    for (const item of items) {
-      if (!item.str) continue;
-      const currentY = item.transform ? item.transform[5] : null;
-      if (lastY !== null && currentY !== null && Math.abs(currentY - lastY) > 6) {
-        strings.push("\n");
+    const pdf = await loadingTask.promise;
+    pageCount = pdf.numPages;
+    let fullText = "";
+
+    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+      onProgress?.(`Extracting page ${pageNum} of ${pageCount}...`);
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      const items = content.items as Array<{ str?: string; transform?: number[] }>;
+      const strings: string[] = [];
+
+      let lastY: number | null = null;
+      for (const item of items) {
+        if (!item.str) continue;
+        const currentY = item.transform ? item.transform[5] : null;
+        if (lastY !== null && currentY !== null && Math.abs(currentY - lastY) > 6) {
+          strings.push("\n");
+        }
+        strings.push(item.str);
+        if (currentY !== null) {
+          lastY = currentY;
+        }
       }
-      strings.push(item.str);
-      if (currentY !== null) {
-        lastY = currentY;
+
+      const pageText = strings.join(" ").replace(/\s*\n\s*/g, "\n").trim();
+      if (pageText) {
+        fullText += pageText + "\n\n";
       }
     }
 
-    const pageText = strings.join(" ").replace(/\s*\n\s*/g, "\n").trim();
-    if (pageText) {
-      fullText += pageText + "\n\n";
+    if (fullText.trim().length > 5) {
+      cleanedText = fullText.trim();
+      const words = cleanedText.split(/\s+/).filter(Boolean).length;
+      const lines = cleanedText.split("\n").filter((l) => l.trim().length > 0).length;
+      return {
+        text: cleanedText,
+        pageCount,
+        wordCount: words,
+        lineCount: lines,
+        charCount: cleanedText.length,
+        isOcr: false,
+      };
     }
+  } catch (pdfjsErr) {
+    console.warn("Tier 2 pdfjs-dist extraction error:", pdfjsErr);
   }
 
-  const cleanedText = fullText.trim();
-
-  // If text was extracted, return immediately
-  if (cleanedText.length > 5) {
-    const words = cleanedText.split(/\s+/).filter(Boolean).length;
-    const lines = cleanedText.split("\n").filter((l) => l.trim().length > 0).length;
-    return {
-      text: cleanedText,
-      pageCount,
-      wordCount: words,
-      lineCount: lines,
-      charCount: cleanedText.length,
-      isOcr: false,
-    };
+  // Tier 3: Direct uncompressed / flate stream extraction
+  try {
+    const textDecoder = new TextDecoder("utf-8", { fatal: false });
+    const rawString = textDecoder.decode(bytes);
+    const btMatches = rawString.matchAll(/BT[\s\S]*?ET/g);
+    const extractedParts: string[] = [];
+    for (const match of btMatches) {
+      const block = match[0];
+      const stringMatches = block.matchAll(/\((.*?)\)\s*T[jJ]/g);
+      for (const sm of stringMatches) {
+        if (sm[1] && sm[1].trim().length > 0) {
+          extractedParts.push(sm[1].replace(/\\([()\\])/g, "$1"));
+        }
+      }
+    }
+    const streamExtracted = extractedParts.join(" ").trim();
+    if (streamExtracted.length > 20) {
+      cleanedText = streamExtracted;
+      const words = cleanedText.split(/\s+/).filter(Boolean).length;
+      const lines = cleanedText.split("\n").filter((l) => l.trim().length > 0).length;
+      return {
+        text: cleanedText,
+        pageCount,
+        wordCount: words,
+        lineCount: lines,
+        charCount: cleanedText.length,
+        isOcr: false,
+      };
+    }
+  } catch (streamErr) {
+    console.warn("Tier 3 stream extraction fallback error:", streamErr);
   }
 
-  // Fallback: If document contains no selectable text (scanned image PDF), run OCR via canvas if in browser
+  // Tier 4: Scanned Image PDF OCR fallback via Canvas & Tesseract.js (if in browser)
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     try {
       onProgress?.("Scanned PDF detected. Running in-browser OCR...");
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+      }
+      const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(bytes),
+        useSystemFonts: true,
+        disableFontFace: true,
+        isEvalSupported: false,
+      });
+      const pdf = await loadingTask.promise;
       const { createWorker } = await import("tesseract.js");
       const worker = await createWorker("eng");
       let ocrText = "";
 
-      for (let pageNum = 1; pageNum <= Math.min(pageCount, 10); pageNum++) {
+      for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 10); pageNum++) {
         const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1.5 });
         const canvas = document.createElement("canvas");
@@ -107,7 +190,7 @@ export async function extractTextFromPdfBytes(
         const lines = trimmedOcr.split("\n").filter((l) => l.trim().length > 0).length;
         return {
           text: trimmedOcr,
-          pageCount,
+          pageCount: pdf.numPages,
           wordCount: words,
           lineCount: lines,
           charCount: trimmedOcr.length,
