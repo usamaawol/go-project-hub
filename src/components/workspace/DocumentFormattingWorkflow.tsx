@@ -203,6 +203,7 @@ export interface DocSection {
   paragraphs: string[];
   blocks: DocBlock[];
   pageNumber?: number;
+  sectionIndex?: number;
 }
 
 export function renderRichInline(text: string) {
@@ -961,6 +962,10 @@ export interface DocA4Page {
   totalPages: number;
   isCover?: boolean;
   isToc?: boolean;
+  isFirstBodyPage?: boolean;
+  tocItems?: DocSection[];
+  tocPart?: number;
+  tocTotalParts?: number;
   sections: DocA4SectionItem[];
 }
 
@@ -971,7 +976,7 @@ export function paginateSectionsIntoA4Pages(
   if (!sections || !Array.isArray(sections)) {
     return [];
   }
-  const PAGE_CAPACITY = 820; // Standard A4 printable height budget
+  const PAGE_CAPACITY = 740; // Strict standard A4 printable height budget (safely under 1123px)
 
   const pages: DocA4Page[] = [];
   let currentPageNumber = 1;
@@ -987,46 +992,83 @@ export function paginateSectionsIntoA4Pages(
     currentPageNumber++;
   }
 
-  // 2. Dedicated Table of Contents page ONLY if Cover Page is explicitly enabled
-  const isDedicatedToc = config.includeToc && config.hasCoverPage;
-  if (isDedicatedToc) {
-    pages.push({
-      pageNumber: currentPageNumber,
-      totalPages: 1,
-      isToc: true,
-      sections: [],
-    });
-    currentPageNumber++;
+  // 2. Dedicated Table of Contents Page(s)
+  // When TOC is enabled, paginate TOC into dedicated A4 page(s)
+  // Max ~22 items on TOC Part 1 (has title header) and ~24 items on subsequent TOC pages
+  if (config.includeToc) {
+    const tocItems = sections.filter(
+      (s) => Boolean(s.title) && (s.level <= (config.tocLevels || 3)),
+    );
+    if (tocItems.length > 0) {
+      const TOC_FIRST_PAGE_LIMIT = 22;
+      const TOC_SUBSEQUENT_PAGE_LIMIT = 24;
+
+      let remaining = [...tocItems];
+      let tocPart = 1;
+
+      // Calculate total TOC pages
+      let tempCount = tocItems.length;
+      let totalTocPages = 1;
+      if (tempCount > TOC_FIRST_PAGE_LIMIT) {
+        tempCount -= TOC_FIRST_PAGE_LIMIT;
+        totalTocPages += Math.ceil(tempCount / TOC_SUBSEQUENT_PAGE_LIMIT);
+      }
+
+      while (remaining.length > 0) {
+        const pageSize = tocPart === 1 ? TOC_FIRST_PAGE_LIMIT : TOC_SUBSEQUENT_PAGE_LIMIT;
+        const pageItems = remaining.slice(0, pageSize);
+        remaining = remaining.slice(pageSize);
+
+        pages.push({
+          pageNumber: currentPageNumber,
+          totalPages: 1,
+          isToc: true,
+          tocItems: pageItems,
+          tocPart,
+          tocTotalParts: totalTocPages,
+          sections: [],
+        });
+        currentPageNumber++;
+        tocPart++;
+      }
+    }
   }
 
   // 3. Paginate body sections
   let currentHeight = 0;
-  // If TOC is integrated on the first body page, budget its height
-  if (config.includeToc && !isDedicatedToc) {
-    const tocCount = sections.filter((s) => Boolean(s.title)).length;
-    currentHeight += Math.min(260, 45 + tocCount * 22);
-  }
+  let isFirstBodyPage = true;
+
+  // Calculate Document Header height on first body page
+  let docHeaderHeight = 110;
+  if (config.institution) docHeaderHeight += 30;
+  if (config.docSubtitle) docHeaderHeight += 30;
+  if (config.authorName || config.dateStr) docHeaderHeight += 30;
+  currentHeight += docHeaderHeight;
+
   let currentSectionsOnPage: DocA4SectionItem[] = [];
 
   const startNewPage = () => {
     pages.push({
       pageNumber: currentPageNumber,
       totalPages: 1,
+      isFirstBodyPage: isFirstBodyPage,
       sections: currentSectionsOnPage,
     });
     currentPageNumber++;
+    isFirstBodyPage = false;
     currentSectionsOnPage = [];
     currentHeight = 0;
   };
 
   for (let sIdx = 0; sIdx < sections.length; sIdx++) {
     const sec = sections[sIdx]!;
-    // Assign page number to section for TOC display
+    // Assign page number and index to section for TOC display
     sec.pageNumber = currentPageNumber;
+    sec.sectionIndex = sIdx;
 
-    const headingHeight = sec.title ? (sec.level === 1 ? 65 : sec.level === 2 ? 45 : 35) : 0;
+    const headingHeight = sec.title ? (sec.level === 1 ? 60 : sec.level === 2 ? 42 : 32) : 0;
 
-    if (headingHeight > 0 && currentHeight + headingHeight > PAGE_CAPACITY - 80 && currentSectionsOnPage.length > 0) {
+    if (headingHeight > 0 && currentHeight + headingHeight > PAGE_CAPACITY - 60 && currentSectionsOnPage.length > 0) {
       startNewPage();
       sec.pageNumber = currentPageNumber;
     }
@@ -1044,24 +1086,54 @@ export function paginateSectionsIntoA4Pages(
 
     for (let bIdx = 0; bIdx < sec.blocks.length; bIdx++) {
       const block = sec.blocks[bIdx]!;
-      let blockHeight = 40;
+      let blockHeight = 38;
 
       if (block.type === "paragraph" || block.type === "lead") {
-        blockHeight = Math.max(35, Math.ceil((block.content?.length || 40) / 90) * 22);
+        blockHeight = Math.max(32, Math.ceil((block.content?.length || 40) / 85) * 20);
       } else if (block.type === "list") {
-        blockHeight = 20 + (block.listItems?.length || 2) * 24;
+        blockHeight = 20 + (block.listItems?.length || 2) * 22;
       } else if (block.type === "table") {
-        blockHeight = 45 + (block.tableData?.rows?.length || 2) * 32;
+        blockHeight = 45 + (block.tableData?.rows?.length || 2) * 30;
       } else if (block.type === "callout") {
-        blockHeight = 65 + Math.ceil((block.content?.length || 40) / 80) * 20;
+        blockHeight = 60 + Math.ceil((block.content?.length || 40) / 75) * 18;
       } else if (block.type === "image") {
-        blockHeight = 220;
+        blockHeight = 210;
       } else if (block.type === "scene") {
-        blockHeight = 150;
+        blockHeight = 140;
       } else if (block.type === "palette") {
-        blockHeight = 100;
+        blockHeight = 90;
       } else if (block.type === "parameter") {
-        blockHeight = 35;
+        blockHeight = 32;
+      }
+
+      // Handle long lists cleanly across pages so they never overflow A4
+      if (block.type === "list" && block.listItems && block.listItems.length > 18) {
+        const items = [...block.listItems];
+        while (items.length > 0) {
+          const availHeight = PAGE_CAPACITY - currentHeight;
+          const countCanFit = Math.max(3, Math.floor((availHeight - 20) / 22));
+          const chunk = items.splice(0, countCanFit);
+          const chunkBlock: DocBlock = { ...block, listItems: chunk };
+          const chunkHeight = 20 + chunk.length * 22;
+
+          if (currentHeight + chunkHeight > PAGE_CAPACITY && (currentSectionsOnPage.length > 0 || secItem.blocks.length > 0)) {
+            if (secItem.blocks.length > 0 || secItem.renderHeading) {
+              currentSectionsOnPage.push(secItem);
+            }
+            startNewPage();
+            secItem = {
+              sectionIndex: sIdx,
+              title: sec.title,
+              level: sec.level,
+              numberStr: sec.numberStr,
+              renderHeading: false,
+              blocks: [],
+            };
+          }
+          secItem.blocks.push(chunkBlock);
+          currentHeight += chunkHeight;
+        }
+        continue;
       }
 
       if (currentHeight + blockHeight > PAGE_CAPACITY && (currentSectionsOnPage.length > 0 || secItem.blocks.length > 0)) {
@@ -1092,6 +1164,7 @@ export function paginateSectionsIntoA4Pages(
     pages.push({
       pageNumber: currentPageNumber,
       totalPages: 1,
+      isFirstBodyPage: isFirstBodyPage,
       sections: currentSectionsOnPage,
     });
   }
@@ -2766,33 +2839,54 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </div>
 
                 {/* A4 Pages Canvas Container */}
-                <div className="flex flex-col items-center py-6 bg-surface-2/40 rounded-2xl border border-border p-3 sm:p-6 lg:p-8 overflow-x-auto">
+                <div className="flex flex-col items-center py-8 bg-slate-100/90 dark:bg-zinc-950/90 rounded-2xl border border-border p-3 sm:p-6 lg:p-8 overflow-x-auto shadow-inner">
                   {/* VIEW MODE 1: ALL A4 PAGES STACKED */}
                   {previewPage === "all" && (
-                    <div className="w-full space-y-8 flex flex-col items-center">
+                    <div className="w-full space-y-10 flex flex-col items-center">
                       {a4Pages.map((page) => (
-                        <A4PageCard
-                          key={page.pageNumber}
-                          page={page}
-                          config={config}
-                          paperMode={paperMode}
-                          sections={sections}
-                          isDedicatedToc={isDedicatedToc}
-                          onNavigatePage={(p) => setActivePageNum(p)}
-                        />
+                        <div key={page.pageNumber} className="flex flex-col items-center w-full max-w-[794px]">
+                          {/* Page Sheet Label Bar */}
+                          <div className="w-full flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
+                            <span className="font-semibold tracking-wider uppercase text-primary">
+                              A4 Sheet {page.pageNumber} of {page.totalPages}
+                            </span>
+                            <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                              {page.isCover
+                                ? "Cover Page"
+                                : page.isToc
+                                  ? `Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` (${page.tocPart}/${page.tocTotalParts})` : ""}`
+                                  : "210 × 297 mm"}
+                            </span>
+                          </div>
+
+                          <A4PageCard
+                            page={page}
+                            config={config}
+                            paperMode={paperMode}
+                            sections={sections}
+                            onNavigatePage={(p) => setActivePageNum(p)}
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
 
                   {/* VIEW MODE 2: SINGLE PAGE FLIPPER */}
                   {previewPage === "single" && (
-                    <div className="w-full flex justify-center">
+                    <div className="w-full flex flex-col items-center">
+                      <div className="w-full max-w-[794px] flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
+                        <span className="font-semibold tracking-wider uppercase text-primary">
+                          A4 Sheet {activePage.pageNumber} of {activePage.totalPages}
+                        </span>
+                        <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                          210 × 297 mm
+                        </span>
+                      </div>
                       <A4PageCard
                         page={activePage}
                         config={config}
                         paperMode={paperMode}
                         sections={sections}
-                        isDedicatedToc={isDedicatedToc}
                         onNavigatePage={(p) => setActivePageNum(p)}
                       />
                     </div>
@@ -2800,116 +2894,63 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
 
                   {/* VIEW MODE 3: DEDICATED TOC VIEW */}
                   {previewPage === "toc" && (
-                    <div className="w-full flex justify-center">
-                      <div
-                        className={`w-full max-w-[794px] min-h-[1123px] mx-auto rounded-sm border p-8 sm:p-12 md:p-16 flex flex-col justify-between transition-all ${
-                          paperMode === "dark"
-                            ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-2xl shadow-black/60"
-                            : "bg-white border-stone-200 text-stone-900 shadow-xl"
-                        } ${
-                          config.fontFamily === "serif"
-                            ? "font-serif"
-                            : config.fontFamily === "mono"
-                              ? "font-mono"
-                              : "font-sans"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-4 mb-4 select-none">
-                          <span className="truncate max-w-[70%] font-medium">
-                            {config.headerText || config.docTitle}
-                          </span>
-                          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
-                            Table of Contents
-                          </span>
-                        </div>
-                        <div className="flex-1 space-y-6">
-                          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-                            Table of Contents
-                          </h2>
-                          <TableOfContentsCard
-                            sections={sections}
-                            config={config}
-                            onNavigatePage={(p) => {
-                              setActivePageNum(p);
-                              setPreviewPage("single");
-                            }}
-                          />
-                        </div>
-                        <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
-                          <span>DocuMind Studio · A4 Document</span>
-                          <span>ii</span>
-                        </div>
-                      </div>
+                    <div className="w-full space-y-10 flex flex-col items-center">
+                      {a4Pages
+                        .filter((p) => p.isToc)
+                        .map((tocPage) => (
+                          <div key={tocPage.pageNumber} className="flex flex-col items-center w-full max-w-[794px]">
+                            <div className="w-full flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
+                              <span className="font-semibold tracking-wider uppercase text-primary">
+                                Table of Contents · A4 Page {tocPage.pageNumber}
+                              </span>
+                              <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                                {tocPage.tocTotalParts && tocPage.tocTotalParts > 1
+                                  ? `Part ${tocPage.tocPart} of ${tocPage.tocTotalParts}`
+                                  : "210 × 297 mm"}
+                              </span>
+                            </div>
+                            <A4PageCard
+                              page={tocPage}
+                              config={config}
+                              paperMode={paperMode}
+                              sections={sections}
+                              onNavigatePage={(p) => {
+                                setActivePageNum(p);
+                                setPreviewPage("single");
+                              }}
+                            />
+                          </div>
+                        ))}
                     </div>
                   )}
 
                   {/* VIEW MODE 4: DEDICATED COVER PAGE VIEW */}
                   {previewPage === "cover" && (
-                    <div className="w-full flex justify-center">
-                      <div
-                        className={`w-full max-w-[794px] min-h-[1123px] mx-auto rounded-sm border p-8 sm:p-12 md:p-16 flex flex-col justify-between transition-all ${
-                          paperMode === "dark"
-                            ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-2xl shadow-black/60"
-                            : "bg-white border-stone-200 text-stone-900 shadow-xl"
-                        } ${
-                          config.fontFamily === "serif"
-                            ? "font-serif"
-                            : config.fontFamily === "mono"
-                              ? "font-mono"
-                              : "font-sans"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-4 mb-4 select-none">
-                          <span className="truncate max-w-[70%] font-medium">
-                            {config.headerText || config.docTitle}
-                          </span>
-                          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
-                            Cover Page
-                          </span>
-                        </div>
-                        <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">
-                          <div className="space-y-4">
-                            {config.institution && (
-                              <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
-                                {config.institution}
-                              </p>
-                            )}
-                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight text-foreground">
-                              {config.docTitle}
-                            </h1>
-                            {config.docSubtitle && (
-                              <p className="text-base sm:text-lg font-normal italic text-muted-foreground">
-                                {config.docSubtitle}
-                              </p>
-                            )}
-                          </div>
-                          <div className="my-10">
-                            <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
-                              Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
+                    <div className="w-full space-y-10 flex flex-col items-center">
+                      {a4Pages
+                        .filter((p) => p.isCover)
+                        .map((coverPage) => (
+                          <div key={coverPage.pageNumber} className="flex flex-col items-center w-full max-w-[794px]">
+                            <div className="w-full flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 mb-2 px-1 select-none">
+                              <span className="font-semibold tracking-wider uppercase text-primary">
+                                Cover Page · A4 Sheet 1
+                              </span>
+                              <span className="text-[10px] bg-surface-2 border border-border/60 rounded px-2 py-0.5">
+                                210 × 297 mm
+                              </span>
                             </div>
+                            <A4PageCard
+                              page={coverPage}
+                              config={config}
+                              paperMode={paperMode}
+                              sections={sections}
+                              onNavigatePage={(p) => {
+                                setActivePageNum(p);
+                                setPreviewPage("single");
+                              }}
+                            />
                           </div>
-                          <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
-                            {config.authorName && (
-                              <p>
-                                <strong className="text-foreground">Author:</strong> {config.authorName}
-                              </p>
-                            )}
-                            {config.institution && (
-                              <p>
-                                <strong className="text-foreground">Institution:</strong>{" "}
-                                {config.institution}
-                              </p>
-                            )}
-                            <p>
-                              <strong className="text-foreground">Date:</strong> {config.dateStr}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
-                          <span>DocuMind Studio · A4 Document</span>
-                          <span>Cover</span>
-                        </div>
-                      </div>
+                        ))}
                     </div>
                   )}
                 </div>
@@ -3038,30 +3079,40 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
 function TableOfContentsCard({
   sections,
   config,
+  tocPart,
+  tocTotalParts,
   onNavigatePage,
 }: {
   sections: DocSection[];
   config: FormattingConfig;
+  tocPart?: number;
+  tocTotalParts?: number;
   onNavigatePage?: (pageNum: number) => void;
 }) {
   const tocSections = sections.filter((s) => Boolean(s.title));
   if (tocSections.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-border/70 bg-surface-2/40 p-5 sm:p-6 space-y-3.5 shadow-xs">
+    <div className="rounded-xl border border-border/70 bg-surface-2/40 p-4 sm:p-5 space-y-3 shadow-xs">
       <div className="flex items-center justify-between pb-2 border-b border-border/50">
         <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
           <span>Table of Contents</span>
-          <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">
-            {tocSections.length} Topics
-          </span>
+          {tocTotalParts && tocTotalParts > 1 ? (
+            <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">
+              Part {tocPart} of {tocTotalParts}
+            </span>
+          ) : (
+            <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">
+              {tocSections.length} Topics
+            </span>
+          )}
         </h3>
         <span className="font-mono text-[11px] font-semibold text-muted-foreground">
           Page
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {tocSections.map((sec, idx) => (
           <button
             key={idx}
@@ -3071,7 +3122,7 @@ function TableOfContentsCard({
                 onNavigatePage(sec.pageNumber);
               }
               const el =
-                document.getElementById(`sec-${idx}`) ||
+                document.getElementById(`sec-${sec.sectionIndex ?? idx}`) ||
                 document.getElementById(`page-${sec.pageNumber}`);
               el?.scrollIntoView({ behavior: "smooth" });
             }}
@@ -3108,23 +3159,28 @@ function A4PageCard({
   config,
   paperMode,
   sections,
-  isDedicatedToc,
   onNavigatePage,
 }: {
   page: DocA4Page;
   config: FormattingConfig;
   paperMode: "standard" | "dark";
   sections: DocSection[];
-  isDedicatedToc: boolean;
   onNavigatePage?: (pageNum: number) => void;
 }) {
+  const marginPadding =
+    config.margins === "narrow"
+      ? "p-6 sm:p-8"
+      : config.margins === "wide"
+        ? "p-10 sm:p-14"
+        : "p-8 sm:p-12";
+
   return (
     <div
       id={`page-${page.pageNumber}`}
-      className={`w-full max-w-[794px] min-h-[1123px] mx-auto rounded-sm border p-8 sm:p-12 md:p-16 flex flex-col justify-between transition-all ${
+      className={`w-full max-w-[794px] min-h-[1123px] md:h-[1123px] md:max-h-[1123px] overflow-hidden mx-auto rounded-xs border ${marginPadding} flex flex-col justify-between transition-all select-text ${
         paperMode === "dark"
-          ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-2xl shadow-black/60"
-          : "bg-white border-stone-200 text-stone-900 shadow-xl"
+          ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-[0_12px_36px_rgba(0,0,0,0.6)]"
+          : "bg-white border-stone-200 text-stone-900 shadow-[0_12px_36px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06)]"
       } ${
         config.fontFamily === "serif"
           ? "font-serif"
@@ -3135,7 +3191,7 @@ function A4PageCard({
       style={{ lineHeight: config.lineSpacing }}
     >
       {/* Running Page Top Header */}
-      <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-4 mb-4 select-none">
+      <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-3 mb-3 border-b border-border/30 shrink-0 select-none">
         <span className="truncate max-w-[70%] font-medium">
           {page.isCover ? "" : config.headerText || config.docTitle || "Document"}
         </span>
@@ -3145,13 +3201,13 @@ function A4PageCard({
               ? "Academic Assignment Cover"
               : "Cover Page"
             : page.isToc
-              ? "Table of Contents"
+              ? `Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` (${page.tocPart}/${page.tocTotalParts})` : ""}`
               : `A4 Page ${page.pageNumber}`}
         </span>
       </div>
 
       {/* Page Content Body */}
-      <div className="flex-1 space-y-4 flex flex-col">
+      <div className="flex-1 space-y-4 flex flex-col justify-start overflow-hidden">
         {/* Cover Page */}
         {page.isCover && (
           config.assignmentMetadata?.isAssignment ? (
@@ -3202,13 +3258,15 @@ function A4PageCard({
 
         {/* Dedicated Table of Contents Page */}
         {page.isToc && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">
+          <div className="space-y-4 flex-1 flex flex-col">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground font-serif">
               Table of Contents
             </h2>
             <TableOfContentsCard
-              sections={sections}
+              sections={page.tocItems || sections}
               config={config}
+              tocPart={page.tocPart}
+              tocTotalParts={page.tocTotalParts}
               onNavigatePage={onNavigatePage}
             />
           </div>
@@ -3216,12 +3274,12 @@ function A4PageCard({
 
         {/* Regular Content Page */}
         {!page.isCover && !page.isToc && (
-          <div className="space-y-6">
-            {/* If Page 1 (or Page 2 after Cover), render Document Header */}
-            {page.pageNumber === (config.hasCoverPage ? 2 : 1) && !page.isToc && (
-              <div className="mb-8 space-y-3">
+          <div className="space-y-5">
+            {/* If First Body Page, render Document Header */}
+            {page.isFirstBodyPage && (
+              <div className="mb-6 space-y-2.5">
                 {config.institution && (
-                  <div className="mb-2">
+                  <div className="mb-1.5">
                     <span className="font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-primary/10 text-primary">
                       {config.institution}
                     </span>
@@ -3246,31 +3304,18 @@ function A4PageCard({
               </div>
             )}
 
-            {/* Embedded Table of Contents on first content page when not dedicated */}
-            {page.pageNumber === (config.hasCoverPage ? 2 : 1) &&
-              config.includeToc &&
-              !isDedicatedToc && (
-                <div className="mb-8">
-                  <TableOfContentsCard
-                    sections={sections}
-                    config={config}
-                    onNavigatePage={onNavigatePage}
-                  />
-                </div>
-              )}
-
             {/* Section items on this page */}
-            <div className="space-y-6">
+            <div className="space-y-5">
               {page.sections.map((secItem, sIdx) => (
                 <div
                   key={sIdx}
                   id={secItem.renderHeading ? `sec-${secItem.sectionIndex}` : undefined}
-                  className="space-y-3"
+                  className="space-y-2.5"
                 >
                   {secItem.renderHeading && secItem.title && (
                     <div>
                       {secItem.level === 1 && (
-                        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-baseline gap-2 pt-3 mb-2">
+                        <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground flex items-baseline gap-2 pt-2 mb-1.5">
                           {secItem.numberStr && (
                             <span className="font-mono text-base text-primary font-bold shrink-0">
                               {secItem.numberStr}
@@ -3280,9 +3325,9 @@ function A4PageCard({
                         </h2>
                       )}
                       {secItem.level === 2 && (
-                        <h3 className="text-base sm:text-lg font-semibold tracking-tight text-foreground flex items-baseline gap-2 pt-2 mb-1">
+                        <h3 className="text-sm sm:text-base font-semibold tracking-tight text-foreground flex items-baseline gap-2 pt-1.5 mb-1">
                           {secItem.numberStr && (
-                            <span className="font-mono text-xs sm:text-sm text-primary font-semibold shrink-0">
+                            <span className="font-mono text-xs text-primary font-semibold shrink-0">
                               {secItem.numberStr}
                             </span>
                           )}
@@ -3303,7 +3348,7 @@ function A4PageCard({
                   )}
 
                   {/* Section Blocks */}
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     {secItem.blocks.map((block, bIdx) =>
                       renderDocBlock(block, bIdx, paperMode, config.lineSpacing),
                     )}
@@ -3317,7 +3362,7 @@ function A4PageCard({
 
       {/* Running Page Bottom Footer */}
       {!page.isCover && (
-        <div className="pt-6 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground select-none">
+        <div className="pt-3 mt-auto border-t border-border/30 flex items-center justify-between text-[11px] font-mono text-muted-foreground shrink-0 select-none">
           <span>DocuMind Studio · A4 Document</span>
           <span>
             {config.pageNumberFormat === "page-x-of-y"
@@ -3600,35 +3645,6 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
 
   const sections = parseDocumentSections(rawText, config.headingNumbering);
   const a4Pages = paginateSectionsIntoA4Pages(sections, config);
-  const isDedicatedToc = config.includeToc && config.hasCoverPage;
-
-  // Generate TOC HTML
-  let tocHtml = "";
-  if (config.includeToc) {
-    const tocItems = sections.filter((s) => Boolean(s.title));
-    tocHtml = `<div style="margin: 20px 0; padding: 18px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-      <div style="font-weight: bold; font-size: 11pt; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; margin-bottom: 12px; display: flex; justify-content: space-between;">
-        <span>Table of Contents</span>
-        <span style="font-size: 9pt; color: #64748b;">Page</span>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        ${tocItems
-          .map(
-            (sec) => `
-          <div style="display: flex; align-items: baseline; justify-content: space-between; font-size: 10pt;">
-            <span style="font-weight: ${sec.level === 1 ? '600' : '400'}; color: #1e293b; padding-left: ${sec.level > 1 ? '16px' : '0'};">
-              ${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}
-            </span>
-            <span style="flex: 1; margin: 0 10px; border-bottom: 1px dotted #cbd5e1;"></span>
-            <span style="font-family: monospace; font-size: 9pt; font-weight: bold; color: #0284c7;">
-              Page ${sec.pageNumber || 1}
-            </span>
-          </div>`,
-          )
-          .join("")}
-      </div>
-    </div>`;
-  }
 
   // Generate HTML for each A4 page
   const pagesHtml = a4Pages
@@ -3638,13 +3654,13 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
       if (page.isCover) {
         if (config.assignmentMetadata?.isAssignment) {
           content = generateAssignmentCoverHtml(config.assignmentMetadata);
-          return `<div class="a4-sheet" style="width: 210mm; min-height: 297mm; padding: 16mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always;">
-            <div style="flex: 1; display: flex; flex-direction: column;">
+          return `<div class="a4-sheet" style="width: 210mm; height: 297mm; max-height: 297mm; overflow: hidden; padding: 16mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; page-break-inside: avoid;">
+            <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
               ${content}
             </div>
           </div>`;
         }
-        content = `<div style="min-height: 230mm; display: flex; flex-direction: column; justify-content: space-between;">
+        content = `<div style="height: 240mm; display: flex; flex-direction: column; justify-content: space-between;">
           <div>
             ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10pt; color: #0284c7; font-weight: bold;">${escapeHtml(config.institution)}</p>` : ""}
             <h1 style="font-size: 2.4rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #0f172a;">${escapeHtml(config.docTitle)}</h1>
@@ -3660,24 +3676,40 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
           </div>
         </div>`;
       } else if (page.isToc) {
-        content = `<div style="min-height: 230mm;">
-          <h2 style="font-size: 1.8rem; font-weight: bold; color: #0f172a; margin-bottom: 1.5rem;">Table of Contents</h2>
-          ${tocHtml}
+        const tocItems = page.tocItems || sections.filter((s) => Boolean(s.title));
+        content = `<div style="flex: 1;">
+          <h2 style="font-size: 1.6rem; font-weight: bold; color: #0f172a; margin-bottom: 1rem;">
+            Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` <span style="font-size: 11pt; color: #64748b; font-weight: normal;">(Part ${page.tocPart} of ${page.tocTotalParts})</span>` : ""}
+          </h2>
+          <div style="margin: 10px 0; padding: 14px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <div style="display: flex; flex-direction: column; gap: 7px;">
+              ${tocItems
+                .map(
+                  (sec) => `
+                <div style="display: flex; align-items: baseline; justify-content: space-between; font-size: 9.5pt;">
+                  <span style="font-weight: ${sec.level === 1 ? '600' : '400'}; color: #1e293b; padding-left: ${sec.level > 1 ? '14px' : '0'};">
+                    ${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}
+                  </span>
+                  <span style="flex: 1; margin: 0 10px; border-bottom: 1px dotted #cbd5e1;"></span>
+                  <span style="font-family: monospace; font-size: 9pt; font-weight: bold; color: #0284c7;">
+                    Page ${sec.pageNumber || 1}
+                  </span>
+                </div>`,
+                )
+                .join("")}
+            </div>
+          </div>
         </div>`;
       } else {
         let bodyInner = "";
 
-        if (page.pageNumber === (config.hasCoverPage ? 2 : 1) && !page.isToc) {
-          bodyInner += `<div style="margin-bottom: 2rem;">
+        if (page.isFirstBodyPage) {
+          bodyInner += `<div style="margin-bottom: 1.6rem;">
             ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 1px; font-size: 9.5pt; color: #0284c7; font-weight: bold; margin-bottom: 6px;">${escapeHtml(config.institution)}</p>` : ""}
-            <h1 style="font-size: 2rem; font-weight: bold; color: #0f172a; margin-bottom: 0.5rem;">${escapeHtml(config.docTitle)}</h1>
-            ${config.docSubtitle ? `<p style="font-size: 1.1rem; color: #64748b; font-style: italic; margin-bottom: 0.8rem;">${escapeHtml(config.docSubtitle)}</p>` : ""}
+            <h1 style="font-size: 1.85rem; font-weight: bold; color: #0f172a; margin-bottom: 0.4rem;">${escapeHtml(config.docTitle)}</h1>
+            ${config.docSubtitle ? `<p style="font-size: 1.05rem; color: #64748b; font-style: italic; margin-bottom: 0.6rem;">${escapeHtml(config.docSubtitle)}</p>` : ""}
             ${config.authorName || config.dateStr ? `<p style="font-size: 9pt; color: #64748b; margin-top: 4px;">${config.authorName ? `By ${escapeHtml(config.authorName)} · ` : ""}${escapeHtml(config.dateStr)}</p>` : ""}
           </div>`;
-
-          if (config.includeToc && !isDedicatedToc) {
-            bodyInner += tocHtml;
-          }
         }
 
         for (const sec of page.sections) {
@@ -3760,16 +3792,16 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
         content = bodyInner;
       }
 
-      return `<div class="a4-sheet" style="width: 210mm; min-height: 297mm; padding: 20mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always;">
-        <div style="font-size: 9pt; color: #94a3b8; display: flex; justify-content: space-between; padding-bottom: 12px; margin-bottom: 16px;">
+      return `<div class="a4-sheet" style="width: 210mm; height: 297mm; max-height: 297mm; overflow: hidden; padding: 20mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; page-break-inside: avoid;">
+        <div style="font-size: 9pt; color: #94a3b8; display: flex; justify-content: space-between; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
           <span>${escapeHtml(config.headerText || config.docTitle || "Document")}</span>
-          <span style="font-family: monospace;">A4 Page ${page.pageNumber}</span>
+          <span style="font-family: monospace;">${page.isCover ? "Cover Page" : page.isToc ? "Table of Contents" : `A4 Page ${page.pageNumber}`}</span>
         </div>
-        <div style="flex: 1;">
+        <div style="flex: 1; overflow: hidden;">
           ${content}
         </div>
-        <div style="font-size: 9pt; font-family: monospace; color: #94a3b8; display: flex; justify-content: space-between; padding-top: 12px; margin-top: auto;">
-          <span>DocuMind Studio</span>
+        <div style="font-size: 9pt; font-family: monospace; color: #94a3b8; display: flex; justify-content: space-between; padding-top: 12px; margin-top: auto; border-top: 1px solid #e2e8f0;">
+          <span>DocuMind Studio · A4 Document</span>
           <span>Page ${page.pageNumber} of ${page.totalPages}</span>
         </div>
       </div>`;
@@ -3797,8 +3829,12 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
       border: none !important;
       box-shadow: none !important;
       page-break-after: always !important;
-      width: 100% !important;
-      height: 100% !important;
+      page-break-inside: avoid !important;
+      width: 210mm !important;
+      height: 297mm !important;
+      max-height: 297mm !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
     }
   }
   body {

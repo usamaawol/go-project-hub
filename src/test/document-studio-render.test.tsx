@@ -119,4 +119,74 @@ describe("Document Studio Verification", () => {
     expect(renderedList).toBeDefined();
     expect(renderedList.type).toBe("ul");
   });
+
+  it("strictly paginates documents into distinct A4 sheets and divides large TOCs into dedicated A4 pages", () => {
+    // Generate 48 distinct section topics matching the user's master project prompt
+    const mockSections: any[] = [];
+    for (let i = 1; i <= 48; i++) {
+      mockSections.push({
+        level: i % 4 === 0 ? 2 : 1,
+        numberStr: `${i}. `,
+        title: `Project Topic ${i} Specification`,
+        paragraphs: [`Detailed implementation and operational requirements for section ${i}.`],
+        blocks: [
+          {
+            type: "paragraph",
+            content: `Detailed implementation and operational requirements for section ${i}.`,
+          },
+        ],
+      });
+    }
+
+    const config: FormattingConfig = {
+      layoutArchetype: "executive",
+      hasCoverPage: false,
+      coverStyle: "modern",
+      docTitle: "Master Project Prompt — Eagle Technology",
+      docSubtitle: "System Blueprint",
+      authorName: "Senior Architect",
+      institution: "Eagle Technology",
+      dateStr: "October 2026",
+      fontFamily: "serif",
+      baseFontSize: "11pt",
+      lineSpacing: "1.5",
+      paragraphSpacing: "normal",
+      headingNumbering: "decimal",
+      headingCase: "title",
+      headingDivider: false,
+      margins: "academic",
+      headerText: "Master Project Prompt",
+      headerAlign: "right",
+      headerRule: true,
+      pageNumberPosition: "bottom-center",
+      pageNumberFormat: "page-x-of-y",
+      firstPageUnnumbered: false,
+      includeToc: true,
+      tocLevels: 2,
+      tocDotLeaders: true,
+    };
+
+    const pages = paginateSectionsIntoA4Pages(mockSections, config);
+
+    // 1. Dedicated TOC pages were created instead of dumping 48 items onto Page 1
+    const tocPages = pages.filter((p) => p.isToc);
+    expect(tocPages.length).toBeGreaterThanOrEqual(2);
+    expect(tocPages[0]?.pageNumber).toBe(1);
+    expect(tocPages[0]?.tocItems?.length).toBeLessThanOrEqual(24);
+    expect(tocPages[1]?.pageNumber).toBe(2);
+    expect(tocPages[1]?.tocItems?.length).toBeLessThanOrEqual(24);
+
+    // 2. First body page starts cleanly after TOC pages
+    const firstBodyPage = pages.find((p) => !p.isCover && !p.isToc);
+    expect(firstBodyPage).toBeDefined();
+    expect(firstBodyPage?.isFirstBodyPage).toBe(true);
+    expect(firstBodyPage?.pageNumber).toBe(tocPages.length + 1);
+
+    // 3. Every section has an exact authentic page number corresponding to its physical A4 sheet
+    for (const sec of mockSections) {
+      expect(sec.pageNumber).toBeDefined();
+      expect(sec.pageNumber).toBeGreaterThanOrEqual(firstBodyPage!.pageNumber);
+      expect(sec.pageNumber).toBeLessThanOrEqual(pages.length);
+    }
+  });
 });
