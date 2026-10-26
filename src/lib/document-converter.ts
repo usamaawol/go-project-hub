@@ -90,6 +90,39 @@ async function generateClientDocx(text: string, title?: string): Promise<Blob> {
 }
 
 /**
+ * Cache for font-character compatibility testing to accelerate PDF rendering.
+ */
+const pdfCharSupportCache = new Map<string, boolean>();
+
+function sanitizeLineForPdf(line: string, font: any): string {
+  let result = "";
+  const len = line.length;
+  for (let i = 0; i < len; i++) {
+    const ch = line[i]!;
+    if (ch === "\t") {
+      result += "    ";
+      continue;
+    }
+    let supported = pdfCharSupportCache.get(ch);
+    if (supported === undefined) {
+      try {
+        font.encodeText(ch);
+        supported = true;
+      } catch {
+        supported = false;
+      }
+      pdfCharSupportCache.set(ch, supported);
+    }
+    if (supported) {
+      result += ch;
+    } else {
+      result += " ";
+    }
+  }
+  return result;
+}
+
+/**
  * Text wrapping helper for PDF layout calculation.
  */
 function wrapPdfLines(text: string, font: any, fontSize: number, maxWidth: number): string[] {
@@ -105,7 +138,21 @@ function wrapPdfLines(text: string, font: any, fontSize: number, maxWidth: numbe
       currentLine = testLine;
     } else {
       if (currentLine) lines.push(currentLine);
-      currentLine = word;
+      if (font.widthOfTextAtSize(word, fontSize) > maxWidth) {
+        // Chunk overly long continuous words/paths
+        let rem = word;
+        while (rem.length > 0) {
+          let sliceLen = rem.length;
+          while (sliceLen > 1 && font.widthOfTextAtSize(rem.slice(0, sliceLen), fontSize) > maxWidth) {
+            sliceLen--;
+          }
+          lines.push(rem.slice(0, sliceLen));
+          rem = rem.slice(sliceLen);
+        }
+        currentLine = "";
+      } else {
+        currentLine = word;
+      }
     }
   }
 
@@ -164,19 +211,8 @@ async function generateClientPdf(text: string, title?: string): Promise<Blob> {
       continue;
     }
 
-    // Sanitize non-WinAnsi characters to prevent pdf-lib encoding errors
-    const sanitizedLine = rawLine
-      .replace(/\t/g, "    ")
-      .split("")
-      .filter((ch) => {
-        try {
-          fontRegular.encodeText(ch);
-          return true;
-        } catch {
-          return false;
-        }
-      })
-      .join("");
+    // Sanitize characters to prevent pdf-lib encoding errors
+    const sanitizedLine = sanitizeLineForPdf(rawLine, fontRegular);
 
     const wrapped = wrapPdfLines(sanitizedLine || rawLine, fontRegular, 10.5, contentWidth);
     for (const line of wrapped) {
@@ -261,6 +297,18 @@ export async function convertDocument(
       text = pdfRes.text.trim();
     } catch (e) {
       console.warn("Direct PDF extraction error:", e);
+    }
+  }
+
+  // Resilient secondary check for Word / DOC / RTF / HTML files
+  if (!text && (ext === "doc" || ext === "docx" || ext === "rtf" || file.type.includes("word") || file.type.includes("msword"))) {
+    try {
+      const { extractTextFromWordOrDoc } = await import("./doc-extractor");
+      const bytes = await getBytesFromBlobOrFile(file);
+      const docRes = await extractTextFromWordOrDoc(bytes, file.name);
+      text = docRes.text.trim();
+    } catch (e) {
+      console.warn("Direct Word/DOC extraction error:", e);
     }
   }
 

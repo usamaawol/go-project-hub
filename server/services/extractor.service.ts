@@ -8,7 +8,7 @@ export interface ExtractionResult {
   lineCount: number;
   charCount?: number;
   pageCount?: number;
-  format: "pdf" | "docx" | "txt" | "image" | "unknown";
+  format: "pdf" | "docx" | "doc" | "rtf" | "html" | "txt" | "image" | "unknown";
   isScannedOrEmpty?: boolean;
   warning?: string;
   ocrEngine?: "gemini-vision" | "tesseract" | "none";
@@ -271,17 +271,21 @@ export async function extractTextFromBuffer(
     }
   }
 
-  // 3. DOCX Extraction
+  // 3. Word (.docx, .doc), RTF, and HTML Document Extraction
   if (
     mimeType.includes("wordprocessingml") ||
+    mimeType.includes("msword") ||
+    mimeType.includes("rtf") ||
     lowerName.endsWith(".docx") ||
-    lowerName.endsWith(".doc")
+    lowerName.endsWith(".doc") ||
+    lowerName.endsWith(".rtf")
   ) {
     try {
-      const result = await mammoth.extractRawText({ buffer });
-      const text = (result.value || "").trim();
+      const { extractTextFromWordOrDoc } = await import("../../src/lib/doc-extractor");
+      const docResult = await extractTextFromWordOrDoc(new Uint8Array(buffer), filename);
+      const text = docResult.text.trim();
 
-      if (text.length < 15) {
+      if (text.length === 0) {
         return {
           text: "",
           wordCount: 0,
@@ -294,21 +298,18 @@ export async function extractTextFromBuffer(
         };
       }
 
-      const words = text.split(/\s+/).filter(Boolean).length;
-      const lines = text.split("\n").filter((l) => l.trim().length > 0).length;
-
       return {
         text,
-        wordCount: words,
-        lineCount: lines,
+        wordCount: docResult.wordCount,
+        lineCount: docResult.lineCount,
         charCount: text.length,
-        format: "docx",
+        format: docResult.format === "docx" ? "docx" : "doc",
         ocrEngine: "none",
       };
     } catch (err) {
-      console.error("Mammoth DOCX parse error:", err);
+      console.error("Word/Doc extraction error:", err);
       throw new Error(
-        "Could not read the Word document. The file may be damaged or saved in an incompatible legacy format.",
+        "Could not read the Word document. The file may be damaged or saved in an unsupported format.",
       );
     }
   }

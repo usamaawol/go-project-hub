@@ -140,23 +140,30 @@ export async function extractDocumentText(file: File): Promise<{
     }
   }
 
-  // Client-side DOCX text extraction
-  if (ext === "docx" || ext === "doc" || file.type.includes("wordprocessingml")) {
+  // Client-side Word (.docx, .doc), HTML .doc, RTF .doc extraction
+  if (
+    ext === "docx" ||
+    ext === "doc" ||
+    ext === "rtf" ||
+    file.type.includes("word") ||
+    file.type.includes("msword") ||
+    file.type.includes("rtf")
+  ) {
     try {
       const bytes = await getBytesFromBlobOrFile(file);
-      const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({ arrayBuffer: bytes.buffer });
-      const text = (result.value || "").trim();
+      const { extractTextFromWordOrDoc } = await import("./doc-extractor");
+      const docResult = await extractTextFromWordOrDoc(bytes, file.name);
+      const text = docResult.text.trim();
       if (text.length > 0) {
         return {
           text,
-          wordCount: text.split(/\s+/).filter(Boolean).length,
-          lineCount: text.split("\n").filter((l) => l.trim().length > 0).length,
-          format: "docx",
+          wordCount: docResult.wordCount,
+          lineCount: docResult.lineCount,
+          format: docResult.format === "docx" ? "docx" : docResult.format === "rtf" ? "rtf" : "doc",
         };
       }
-    } catch (mErr) {
-      console.warn("Client-side Mammoth extraction error:", mErr);
+    } catch (docErr) {
+      console.warn("Client-side Word extraction error:", docErr);
     }
   }
 

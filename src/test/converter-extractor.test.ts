@@ -235,5 +235,60 @@ All original topics, main ideas, and structure are preserved with zero data loss
       expect(docxResult.wordCount).toBeGreaterThan(1500);
       expect(docxResult.filename).toBe("Sof Omar Tech Academy - Tech Terminologies Glossary (1).docx");
     });
+
+    it("converts MASTER_PROJECT_PROMPT___EAGLE_TE.doc into PDF, DOCX, and TXT with zero data loss", async () => {
+      const filePath = "/home/usama/Downloads/MASTER_PROJECT_PROMPT___EAGLE_TE.doc";
+      if (!fs.existsSync(filePath)) {
+        return;
+      }
+      const buffer = fs.readFileSync(filePath);
+
+      // 1. Server-side conversion test
+      const serverPdf = await convertDocumentBuffer(
+        buffer,
+        "application/msword",
+        "PDF",
+        "MASTER_PROJECT_PROMPT___EAGLE_TE.doc",
+      );
+      expect(serverPdf.filename).toBe("MASTER_PROJECT_PROMPT___EAGLE_TE.pdf");
+      expect(serverPdf.sizeBytes).toBeGreaterThan(1000);
+      expect(serverPdf.wordCount).toBeGreaterThan(3000);
+      expect(serverPdf.previewText).toContain("MASTER PROJECT PROMPT — EAGLE TECHNOLOGY");
+      expect(serverPdf.previewText).toContain("Flutter Android Application");
+
+      // 2. Client-side conversion test (as run in browser and on Vercel)
+      const file = new File([buffer], "MASTER_PROJECT_PROMPT___EAGLE_TE.doc", {
+        type: "application/msword",
+      });
+      const { convertDocument } = await import("../lib/document-converter");
+
+      const clientPdf = await convertDocument(file, "PDF");
+      expect(clientPdf.filename).toBe("MASTER_PROJECT_PROMPT___EAGLE_TE.pdf");
+      expect(clientPdf.sizeBytes).toBeGreaterThan(1000);
+      expect(clientPdf.wordCount).toBeGreaterThan(3000);
+      expect(clientPdf.previewText).toContain("MASTER PROJECT PROMPT — EAGLE TECHNOLOGY");
+
+      const clientDocx = await convertDocument(file, "DOCX");
+      expect(clientDocx.filename).toBe("MASTER_PROJECT_PROMPT___EAGLE_TE.docx");
+      expect(clientDocx.wordCount).toBeGreaterThan(3000);
+
+      const clientTxt = await convertDocument(file, "TXT");
+      expect(clientTxt.filename).toBe("MASTER_PROJECT_PROMPT___EAGLE_TE.txt");
+      expect(clientTxt.wordCount).toBeGreaterThan(3000);
+    });
+
+    it("extracts text and converts RTF documents accurately", async () => {
+      const rtfContent = `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Courier;}}\\f0\\fs24 Eagle Technology Project Milestone\\par 1. Rebuild Flutter frontend\\par 2. Integrate Firebase Auth and Firestore.}`;
+      const buffer = Buffer.from(rtfContent, "latin1");
+
+      const res = await extractTextFromBuffer(buffer, "application/rtf", "milestones.doc");
+      expect(res.text).toContain("Eagle Technology Project Milestone");
+      expect(res.text).toContain("1. Rebuild Flutter frontend");
+      expect(res.text).toContain("2. Integrate Firebase Auth and Firestore.");
+
+      const pdfRes = await convertDocumentBuffer(buffer, "application/rtf", "PDF", "milestones.doc");
+      expect(pdfRes.filename).toBe("milestones.pdf");
+      expect(pdfRes.previewText).toContain("Eagle Technology Project Milestone");
+    });
   });
 });
