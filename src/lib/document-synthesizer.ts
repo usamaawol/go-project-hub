@@ -531,20 +531,33 @@ export async function renderExecutivePdf(
       y -= 2;
     } else if (block.type === "paragraph") {
       const text = sanitizeLine(block.text || "", fontRegular);
-      const wrapped = wrapPdfText(text, fontRegular, 9.5, contentWidth);
+      const isMeta =
+        text.includes("@") ||
+        text.includes("http") ||
+        /\+\d{2,}/.test(text) ||
+        text.includes("📍") ||
+        text.includes("📞") ||
+        text.includes("✉️") ||
+        (text.includes("|") && text.length < 120);
+
+      const fontSize = isMeta ? 8.5 : 9.5;
+      const lineH = isMeta ? 11.5 : 13.5;
+      const afterSpacing = isMeta ? 2.5 : 5.5;
+      const color = isMeta ? rgb(0.28, 0.35, 0.45) : rgb(0.12, 0.16, 0.23);
+      const wrapped = wrapPdfText(text, fontRegular, fontSize, contentWidth);
 
       for (const line of wrapped) {
         if (y < bottomMargin) addNewPage();
         currentPage.drawText(line, {
           x: margin,
           y,
-          size: 9.5,
+          size: fontSize,
           font: fontRegular,
-          color: rgb(0.12, 0.16, 0.23),
+          color,
         });
-        y -= 13.5;
+        y -= lineH;
       }
-      y -= 5;
+      y -= afterSpacing;
     } else if (block.type === "list" && block.items) {
       for (const item of block.items) {
         const text = sanitizeLine(item, fontRegular);
@@ -815,10 +828,28 @@ export async function renderExecutiveDocx(
         }),
       );
     } else if (block.type === "paragraph") {
+      const pText = block.text || "";
+      const isMetaLine =
+        pText.includes("@") ||
+        pText.includes("http") ||
+        /\+\d{2,}/.test(pText) ||
+        pText.includes("📍") ||
+        pText.includes("📞") ||
+        pText.includes("✉️") ||
+        (pText.includes("|") && pText.length < 120);
+
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: block.text || "", size: 21 })],
-          spacing: { after: 120, line: 276 },
+          children: [
+            new TextRun({
+              text: pText,
+              size: isMetaLine ? 19 : 21,
+              color: isMetaLine ? "475569" : "0f172a",
+            }),
+          ],
+          spacing: isMetaLine
+            ? { after: 40, line: 240 }
+            : { after: 120, line: 276 },
         }),
       );
     } else if (block.type === "list" && block.items) {

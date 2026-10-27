@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRightLeft,
@@ -17,12 +17,25 @@ import {
   ExternalLink,
   BookOpen,
   Search,
+  Sparkles,
+  Sliders,
+  AlignJustify,
+  Type,
+  Palette,
+  Maximize2,
+  Minimize2,
+  Mail,
+  Phone,
+  MapPin,
+  Globe,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { convertDocument, type ConversionTarget } from "@/lib/document-converter";
+import { parsePlainTextToBlocks, type DocSynthesizerBlock } from "@/lib/document-synthesizer";
 
 export const Route = createFileRoute("/converter")({
   head: () => ({
@@ -40,6 +53,486 @@ export const Route = createFileRoute("/converter")({
 
 const ALLOWED_EXTS = ["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp"];
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+
+function renderTextWithLinks(text: string) {
+  if (!text) return "";
+  const tokenRegex =
+    /(https?:\/\/[^\s]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\+?\d{2,4}[\s-]?\d{3,4}[\s-]?\d{3,4}[\s-]?\d{0,4})/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith("http://") || token.startsWith("https://")) {
+      parts.push(
+        <a
+          key={match.index}
+          href={token}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline font-medium inline-flex items-center gap-0.5 break-all"
+        >
+          {token}
+          <ExternalLink className="h-2.5 w-2.5 inline shrink-0 opacity-70" />
+        </a>,
+      );
+    } else if (token.includes("@") && !token.includes(" ") && token.length > 5) {
+      parts.push(
+        <a
+          key={match.index}
+          href={`mailto:${token}`}
+          className="text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+        >
+          {token}
+        </a>,
+      );
+    } else if (/^\+?\d[\d\s-]{7,}\d$/.test(token)) {
+      parts.push(
+        <a
+          key={match.index}
+          href={`tel:${token.replace(/[\s-]/g, "")}`}
+          className="text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+        >
+          {token}
+        </a>,
+      );
+    } else {
+      parts.push(token);
+    }
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts.length > 0 ? parts : text;
+}
+
+interface EditorialDocumentViewerProps {
+  text: string;
+  filename: string;
+  fileExt: string;
+  targetFormat: string;
+}
+
+function EditorialDocumentViewer({
+  text,
+  filename,
+  fileExt,
+  targetFormat,
+}: EditorialDocumentViewerProps) {
+  const [lineSpacing, setLineSpacing] = useState<"compact" | "balanced" | "relaxed">("balanced");
+  const [fontFamily, setFontFamily] = useState<"sans" | "serif" | "mono">("sans");
+  const [accentTheme, setAccentTheme] = useState<"blue" | "emerald" | "slate" | "amber">("blue");
+  const [isWide, setIsWide] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const blocks = useMemo(() => parsePlainTextToBlocks(text), [text]);
+
+  const titleBlock = blocks.find((b) => b.type === "title");
+  const rawTitle = titleBlock?.text || filename.replace(/\.(docx|doc|pdf|txt)$/i, "");
+
+  const initials = useMemo(() => {
+    if (!rawTitle) return "DM";
+    const parts = rawTitle.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return rawTitle.slice(0, 2).toUpperCase();
+  }, [rawTitle]);
+
+  const { headerMetaBlocks, bodyBlocks } = useMemo(() => {
+    if (blocks.length === 0) return { headerMetaBlocks: [], bodyBlocks: [] };
+
+    const firstIsTitle = blocks[0].type === "title";
+    if (!firstIsTitle) {
+      return { headerMetaBlocks: [], bodyBlocks: blocks };
+    }
+
+    const metas: DocSynthesizerBlock[] = [];
+    const remaining: DocSynthesizerBlock[] = [];
+    let inHeader = true;
+
+    for (let i = 1; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (
+        inHeader &&
+        b.type === "paragraph" &&
+        b.text &&
+        (b.text.includes("@") ||
+          b.text.includes("http") ||
+          /\+\d{2,}/.test(b.text) ||
+          b.text.includes("📍") ||
+          b.text.includes("📞") ||
+          b.text.includes("✉️") ||
+          b.text.includes("🔗") ||
+          (b.text.includes("|") && b.text.length < 150))
+      ) {
+        metas.push(b);
+      } else {
+        inHeader = false;
+        remaining.push(b);
+      }
+    }
+
+    return { headerMetaBlocks: metas, bodyBlocks: remaining };
+  }, [blocks]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success("Copied full document content!");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const themeClasses = {
+    blue: {
+      accentBorder: "border-blue-600 dark:border-blue-500",
+      accentBg: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
+      avatarBg: "from-blue-600 via-indigo-600 to-violet-600 text-white",
+      badge: "border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40",
+      accentBar: "bg-blue-600",
+    },
+    emerald: {
+      accentBorder: "border-emerald-600 dark:border-emerald-500",
+      accentBg: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
+      avatarBg: "from-emerald-600 via-teal-600 to-cyan-600 text-white",
+      badge: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40",
+      accentBar: "bg-emerald-600",
+    },
+    slate: {
+      accentBorder: "border-slate-600 dark:border-slate-400",
+      accentBg: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20",
+      avatarBg: "from-slate-700 via-slate-800 to-zinc-900 text-white",
+      badge: "border-slate-500/30 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-900",
+      accentBar: "bg-slate-700",
+    },
+    amber: {
+      accentBorder: "border-amber-600 dark:border-amber-500",
+      accentBg: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+      avatarBg: "from-amber-600 via-orange-600 to-rose-600 text-white",
+      badge: "border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40",
+      accentBar: "bg-amber-600",
+    },
+  }[accentTheme];
+
+  const fontClass = {
+    sans: "font-sans",
+    serif: "font-serif",
+    mono: "font-mono text-[11.5px]",
+  }[fontFamily];
+
+  const spacingStyles = {
+    compact: {
+      lineHeight: "leading-snug",
+      pMargin: "mb-2",
+      fontSize: "text-[12px]",
+      gap: "gap-1.5",
+    },
+    balanced: {
+      lineHeight: "leading-relaxed",
+      pMargin: "mb-3.5",
+      fontSize: "text-[12.5px]",
+      gap: "gap-2",
+    },
+    relaxed: {
+      lineHeight: "leading-loose",
+      pMargin: "mb-5",
+      fontSize: "text-[13px]",
+      gap: "gap-2.5",
+    },
+  }[lineSpacing];
+
+  return (
+    <div className="space-y-4">
+      {/* Modern Interactive Polish & Spacing Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-surface-2/70 border border-border">
+        {/* Line Spacing Controls (Solving "the size between the line") */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+            <AlignJustify className="h-3.5 w-3.5 text-primary" /> Spacing:
+          </span>
+          {(["compact", "balanced", "relaxed"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setLineSpacing(mode)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all cursor-pointer capitalize ${
+                lineSpacing === mode
+                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                  : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+
+        {/* Font Family Controls */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+            <Type className="h-3.5 w-3.5 text-primary" /> Font:
+          </span>
+          {(["sans", "serif", "mono"] as const).map((font) => (
+            <button
+              key={font}
+              type="button"
+              onClick={() => setFontFamily(font)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all cursor-pointer capitalize ${
+                fontFamily === font
+                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                  : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+              }`}
+            >
+              {font === "sans" ? "Modern" : font === "serif" ? "Editorial" : "Mono"}
+            </button>
+          ))}
+        </div>
+
+        {/* Theme Accent Dots */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1">
+            <Palette className="h-3.5 w-3.5 text-primary" /> Accent:
+          </span>
+          {(["blue", "emerald", "slate", "amber"] as const).map((th) => {
+            const dotColor = {
+              blue: "bg-blue-600",
+              emerald: "bg-emerald-600",
+              slate: "bg-slate-700",
+              amber: "bg-amber-600",
+            }[th];
+            return (
+              <button
+                key={th}
+                type="button"
+                onClick={() => setAccentTheme(th)}
+                className={`h-5 w-5 rounded-full ${dotColor} transition-all cursor-pointer ring-offset-2 hover:scale-110 ${
+                  accentTheme === th
+                    ? "ring-2 ring-primary ring-offset-background scale-110"
+                    : "opacity-70 hover:opacity-100"
+                }`}
+                title={`Accent: ${th}`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <button
+            type="button"
+            onClick={() => setIsWide(!isWide)}
+            className="p-1.5 text-xs text-muted-foreground hover:text-foreground bg-background border border-border/70 rounded-md transition-all cursor-pointer"
+            title={isWide ? "Normal width" : "Expand width"}
+          >
+            {isWide ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/20 transition-all cursor-pointer"
+            title="Copy all text"
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-500" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Realistic Executive Sheet Preview */}
+      <div className="rounded-2xl border border-border bg-surface-2/40 p-4 sm:p-8 overflow-hidden">
+        <div
+          className={`mx-auto transition-all duration-300 ${
+            isWide ? "max-w-4xl" : "max-w-2xl"
+          } bg-card rounded-2xl border border-border/80 shadow-paper p-8 sm:p-12 ${fontClass} ${
+            spacingStyles.fontSize
+          } text-foreground select-text min-h-[480px]`}
+        >
+          {/* Running Sheet Header */}
+          <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-6 text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>
+                {targetFormat === "PDF"
+                  ? "Adobe PDF Document"
+                  : `Microsoft Word (.${targetFormat.toLowerCase()})`}
+              </span>
+              <span>· Converted from {fileExt}</span>
+            </div>
+            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+              <CheckCircle2 className="h-3 w-3" /> Structure & Content 100% Preserved
+            </span>
+          </div>
+
+          {/* Executive Profile / Document Title Header Card */}
+          {rawTitle && (
+            <div className="mb-6 pb-6 border-b border-border/70">
+              <div className="flex items-start gap-4">
+                {/* Monogram Avatar Circle */}
+                <div
+                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${themeClasses.avatarBg} font-serif text-lg font-bold shadow-md ring-2 ring-white/20`}
+                >
+                  {initials}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="font-serif text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+                      {rawTitle}
+                    </h1>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border ${themeClasses.badge}`}
+                    >
+                      <Sparkles className="h-3 w-3" /> Executive Layout
+                    </span>
+                  </div>
+
+                  {/* Subtitle / Roles / Contact details from header meta blocks */}
+                  {headerMetaBlocks.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {headerMetaBlocks.map((mb, idx) => {
+                        const mText = mb.text || "";
+                        const isRoleLine = mText.includes("|") && !mText.includes("@");
+                        if (isRoleLine) {
+                          return (
+                            <div
+                              key={idx}
+                              className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-primary"
+                            >
+                              {mText.split("|").map((role, rIdx) => (
+                                <span key={rIdx} className="inline-flex items-center gap-1.5">
+                                  {rIdx > 0 && (
+                                    <span className="text-muted-foreground/40 font-normal">·</span>
+                                  )}
+                                  <span>{role.trim()}</span>
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        }
+
+                        // Compact Contact bar item
+                        return (
+                          <div
+                            key={idx}
+                            className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                          >
+                            <span className="inline-flex items-center gap-1.5 bg-surface-2 px-2.5 py-1 rounded-md border border-border/70 text-foreground text-[11px] font-medium shadow-xs">
+                              {renderTextWithLinks(mText)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Body Content Blocks */}
+          <div className="space-y-1">
+            {bodyBlocks.map((block, bIdx) => {
+              if (block.type === "heading1" || block.type === "heading2") {
+                return (
+                  <div
+                    key={bIdx}
+                    className="pt-5 pb-1 mt-5 mb-2.5 border-b border-border/60 flex items-center gap-2.5"
+                  >
+                    <span className={`h-4 w-1 rounded-full ${themeClasses.accentBar}`} />
+                    <h2 className="font-serif font-bold text-sm sm:text-base tracking-wider uppercase text-foreground">
+                      {block.text}
+                    </h2>
+                  </div>
+                );
+              }
+
+              if (block.type === "heading3") {
+                return (
+                  <div key={bIdx} className="pt-3 pb-0.5 mt-3 mb-1.5 flex items-center gap-2">
+                    <span
+                      className={`h-3 w-1 rounded-full ${themeClasses.accentBar} opacity-70`}
+                    />
+                    <h3 className="font-sans font-bold text-xs sm:text-sm tracking-wide text-foreground">
+                      {block.text}
+                    </h3>
+                  </div>
+                );
+              }
+
+              if (block.type === "list" && block.items) {
+                return (
+                  <ul key={bIdx} className="space-y-1.5 my-2.5 pl-4 list-disc marker:text-primary">
+                    {block.items.map((item, iIdx) => (
+                      <li key={iIdx} className={`${spacingStyles.lineHeight} pl-1`}>
+                        {renderTextWithLinks(item)}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              }
+
+              if (block.type === "table" && block.table) {
+                const tbl = block.table;
+                return (
+                  <div key={bIdx} className="my-4 overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full text-left text-xs border-collapse">
+                      {tbl.headers && tbl.headers.length > 0 && (
+                        <thead className="bg-surface-2 border-b border-border font-semibold text-foreground">
+                          <tr>
+                            {tbl.headers.map((h, hIdx) => (
+                              <th key={hIdx} className="p-2.5 font-mono text-[11px]">
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                      )}
+                      <tbody>
+                        {tbl.rows.map((row, rIdx) => (
+                          <tr key={rIdx} className={rIdx % 2 === 1 ? "bg-surface-2/40" : ""}>
+                            {row.map((c, cIdx) => (
+                              <td key={cIdx} className="p-2.5 border-t border-border/50">
+                                {renderTextWithLinks(c)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              }
+
+              // Paragraph
+              return (
+                <p
+                  key={bIdx}
+                  className={`${spacingStyles.lineHeight} ${spacingStyles.pMargin} text-foreground whitespace-pre-wrap`}
+                >
+                  {renderTextWithLinks(block.text || "")}
+                </p>
+              );
+            })}
+          </div>
+
+          {/* Running Sheet Footer */}
+          <div className="mt-10 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-2">
+            <span>DocuMind Converted Document · 100% Genuine File</span>
+            <span>Editorial Page 1 of 1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ConverterPage() {
   const [collapsed, setCollapsed] = useState(false);
@@ -479,12 +972,12 @@ function ConverterPage() {
               {/* View 1: Document View */}
               {viewMode === "document" && (
                 <div className="space-y-2">
-                  {/* If PDF target: Render genuine in-browser PDF viewer */}
+                  {/* If PDF target: Render genuine in-browser PDF viewer + interactive editorial sheet */}
                   {convertedResult.targetFormat === "PDF" && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
-                          <Eye className="h-3.5 w-3.5 text-primary" /> Live PDF Preview (Inspect Pages Directly Below)
+                          <Eye className="h-3.5 w-3.5 text-primary" /> Live PDF Verification & Editorial View
                         </span>
                         <a
                           href={convertedResult.blobUrl}
@@ -500,69 +993,40 @@ function ConverterPage() {
                         <iframe
                           src={convertedResult.blobUrl}
                           title="Converted PDF Document"
-                          className="w-full h-[520px] border-none bg-white dark:bg-slate-950"
+                          className="w-full h-[500px] border-none bg-white dark:bg-slate-950"
+                        />
+                      </div>
+
+                      <div className="pt-2">
+                        <EditorialDocumentViewer
+                          text={convertedResult.previewText || ""}
+                          filename={convertedResult.filename}
+                          fileExt={fileExt}
+                          targetFormat="PDF"
                         />
                       </div>
                     </div>
                   )}
 
                   {/* If DOCX or DOC target: Render authentic Word document layout preview */}
-                  {(convertedResult.targetFormat === "DOCX" || convertedResult.targetFormat === "DOC") && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground flex items-center gap-1.5">
-                          <BookOpen className="h-3.5 w-3.5 text-primary" /> Word Document (.{convertedResult.targetFormat.toLowerCase()}) Editorial Page Preview
-                        </span>
-                        <span className="font-mono text-[11px]">
-                          Word Document Structure Verified
-                        </span>
-                      </div>
-
-                      <div className="rounded-xl border border-border bg-surface-2/40 p-4 sm:p-6 overflow-hidden">
-                        <div className="mx-auto max-w-2xl bg-card rounded-lg border border-border/80 shadow-md p-8 sm:p-12 space-y-4 font-sans text-xs leading-relaxed text-foreground select-text min-h-[380px]">
-                          <div className="border-b border-border/60 pb-3 mb-4">
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-primary font-semibold block">
-                              Microsoft Word Document · Converted from {fileExt}
-                            </span>
-                            <h2 className="font-serif font-bold text-xl text-foreground mt-1">
-                              {convertedResult.filename.replace(/\.(docx|doc)$/i, "")}
-                            </h2>
-                          </div>
-
-                          {filteredLines.length > 0 ? (
-                            filteredLines.map((line, idx) => {
-                              const trimmed = line.trim();
-                              if (!trimmed) return <div key={idx} className="h-2" />;
-                              return (
-                                <p key={idx} className="leading-relaxed whitespace-pre-wrap">
-                                  {line}
-                                </p>
-                              );
-                            })
-                          ) : (
-                            <span className="text-muted-foreground italic">No content available to preview.</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                  {(convertedResult.targetFormat === "DOCX" ||
+                    convertedResult.targetFormat === "DOC") && (
+                    <EditorialDocumentViewer
+                      text={convertedResult.previewText || ""}
+                      filename={convertedResult.filename}
+                      fileExt={fileExt}
+                      targetFormat={convertedResult.targetFormat}
+                    />
                   )}
 
                   {/* If TXT target: Plaintext format */}
                   {convertedResult.targetFormat === "TXT" && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground flex items-center gap-1.5">
-                          <FileText className="h-3.5 w-3.5 text-primary" /> Plain Text Preview (.txt)
-                        </span>
-                        <span className="font-mono text-[11px]">
-                          {convertedResult.wordCount} words
-                        </span>
-                      </div>
-
-                      <div className="max-h-96 overflow-y-auto rounded-xl border border-border bg-surface-2/30 p-4 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap select-text">
-                        {convertedResult.previewText || "No text available."}
-                      </div>
-                    </div>
+                    <EditorialDocumentViewer
+                      text={convertedResult.previewText || ""}
+                      filename={convertedResult.filename}
+                      fileExt={fileExt}
+                      targetFormat="TXT"
+                    />
                   )}
                 </div>
               )}
