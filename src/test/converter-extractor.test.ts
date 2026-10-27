@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { convertDocumentBuffer } from "../../server/services/converter.service";
 import { extractTextFromBuffer } from "../../server/services/extractor.service";
+import { parsePlainTextToBlocks, renderExecutivePdf } from "../lib/document-synthesizer";
 import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 
@@ -394,6 +395,81 @@ Are vou interested in participating in the Huaw.`;
       expect(formatted).toContain(
         "This is a great opportunity to showcase your talents, share your ideas",
       );
+    });
+  });
+
+  // ----------------------------------------------------
+  // Test Suite 4: Executive A4 Document Synthesizer & Noise Filtering
+  // ----------------------------------------------------
+  describe("Executive A4 Document Synthesizer & Noise Filtering", () => {
+    it("strips out raw page artifacts and classifies major headings accurately", () => {
+      const noisyDocument = `
+• EXECUTIVE PLATFORM SUMMARY
+DocuMind converts complex documents into executive-ready outputs.
+
+Page 4
+
+• SCREENSHOTS AND VISUAL RECONSTRUCTION
+We extract diagrams and layout hierarchies with high fidelity.
+
+Page 5 of 12
+
+A. Home
+Overview of the primary landing screen.
+
+B. Explore
+Discovery dashboard for curated templates.
+
+--- Page 6 ---
+
+1.1 Architecture & Pipeline
+Backend pipeline verified against cloud storage and runtime models.
+`;
+
+      const blocks = parsePlainTextToBlocks(noisyDocument);
+
+      // Verify page number artifacts (Page 4, Page 5 of 12, --- Page 6 ---) are removed
+      const hasPageNoise = blocks.some(
+        (b) =>
+          b.text &&
+          /^(?:Page\s+\d+|---\s*Page\s+\d+)/i.test(b.text.trim()),
+      );
+      expect(hasPageNoise).toBe(false);
+
+      // Verify headings are classified properly
+      const heading1s = blocks.filter((b) => b.type === "heading1" || b.type === "title");
+      expect(heading1s.map((h) => h.text)).toContain("EXECUTIVE PLATFORM SUMMARY");
+      expect(heading1s.map((h) => h.text)).toContain("SCREENSHOTS AND VISUAL RECONSTRUCTION");
+
+      const heading2s = blocks.filter((b) => b.type === "heading2");
+      expect(heading2s.map((h) => h.text)).toContain("A. Home");
+      expect(heading2s.map((h) => h.text)).toContain("B. Explore");
+      expect(heading2s.map((h) => h.text)).toContain("1.1 Architecture & Pipeline");
+    });
+
+    it("renders executive PDF strictly on ISO A4 page geometry with clean styling", async () => {
+      const blocks = parsePlainTextToBlocks(`
+• ARCHITECTURE SPECIFICATION
+DocuMind Executive Engine.
+
+A. Cloud Firestore
+Scalable metadata and real-time preferences.
+
+B. In-Memory Clean Processing
+Zero permanent storage of sensitive documents.
+`);
+
+      const pdfBytes = await renderExecutivePdf("DocuMind_Architecture.pdf", blocks);
+      expect(pdfBytes).toBeDefined();
+      expect(pdfBytes.length).toBeGreaterThan(1000);
+
+      const loadedPdf = await PDFDocument.load(pdfBytes);
+      expect(loadedPdf.getPageCount()).toBeGreaterThanOrEqual(1);
+
+      // ISO A4 dimensions: 595.28 x 841.89 points
+      const firstPage = loadedPdf.getPage(0);
+      expect(firstPage.getWidth()).toBeCloseTo(595.28, 1);
+      expect(firstPage.getHeight()).toBeCloseTo(841.89, 1);
     });
   });
 });

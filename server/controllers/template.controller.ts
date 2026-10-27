@@ -1,51 +1,20 @@
 import type { Request, Response, NextFunction } from "express";
-import { TemplateModel } from "../models/Template";
-import { isDbConnected } from "../config/db";
-import { TEMPLATES } from "../../src/data/templates";
+import {
+  listTemplates as getTemplatesList,
+  getTemplateById as fetchTemplateById,
+  toggleTemplatePublish as togglePublish,
+} from "../services/templateService";
 
 export async function listTemplates(req: Request, res: Response, next: NextFunction) {
   try {
     const category = req.query.category as string;
     const search = req.query.search as string;
 
-    if (isDbConnected()) {
-      const query: Record<string, unknown> = { isPublished: true };
-      if (category && category !== "All") {
-        query.category = { $regex: new RegExp(`^${category}$`, "i") };
-      }
-      if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: "i" } },
-          { description: { $regex: search, $options: "i" } },
-          { tags: { $regex: search, $options: "i" } },
-        ];
-      }
-
-      const templates = await TemplateModel.find(query).sort({ createdAt: -1 });
-      if (templates.length > 0) {
-        return res.json({ success: true, count: templates.length, data: templates });
-      }
-    }
-
-    // In-memory / initial dataset fallback (110 templates)
-    let filtered = TEMPLATES;
-    if (category && category !== "All") {
-      filtered = filtered.filter((t) => t.category.toLowerCase() === category.toLowerCase());
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(
-        (t) =>
-          t.name.toLowerCase().includes(q) ||
-          t.description.toLowerCase().includes(q) ||
-          t.tags.some((tag) => tag.toLowerCase().includes(q)),
-      );
-    }
-
+    const templates = await getTemplatesList({ category, search });
     res.json({
       success: true,
-      count: filtered.length,
-      data: filtered,
+      count: templates.length,
+      data: templates,
     });
   } catch (error) {
     next(error);
@@ -55,22 +24,16 @@ export async function listTemplates(req: Request, res: Response, next: NextFunct
 export async function getTemplateById(req: Request, res: Response, next: NextFunction) {
   try {
     const id = req.params.id;
-    if (isDbConnected()) {
-      const found = await TemplateModel.findOne({ templateId: id });
-      if (found) {
-        return res.json({ success: true, data: found });
-      }
-    }
+    const found = await fetchTemplateById(id);
 
-    const staticFound = TEMPLATES.find((t) => t.id === id);
-    if (!staticFound) {
+    if (!found) {
       return res.status(404).json({
         success: false,
         error: { message: `Template with ID "${id}" not found.` },
       });
     }
 
-    res.json({ success: true, data: staticFound });
+    res.json({ success: true, data: found });
   } catch (error) {
     next(error);
   }
@@ -81,18 +44,11 @@ export async function toggleTemplatePublish(req: Request, res: Response, next: N
     const id = req.params.id;
     const { isPublished } = req.body;
 
-    if (isDbConnected()) {
-      const updated = await TemplateModel.findOneAndUpdate(
-        { templateId: id },
-        { isPublished: Boolean(isPublished) },
-        { new: true, upsert: false },
-      );
-      return res.json({ success: true, data: updated });
-    }
-
+    const result = await togglePublish(id, Boolean(isPublished));
     res.json({
       success: true,
-      message: `Template "${id}" publication status toggled to ${Boolean(isPublished)} (In-Memory).`,
+      data: result.data,
+      message: `Template "${id}" publication status toggled to ${Boolean(isPublished)}.`,
     });
   } catch (error) {
     next(error);

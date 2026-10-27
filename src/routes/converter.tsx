@@ -116,6 +116,7 @@ interface EditorialDocumentViewerProps {
   filename: string;
   fileExt: string;
   targetFormat: string;
+  onDownload?: () => void;
 }
 
 function EditorialDocumentViewer({
@@ -123,6 +124,7 @@ function EditorialDocumentViewer({
   filename,
   fileExt,
   targetFormat,
+  onDownload,
 }: EditorialDocumentViewerProps) {
   const [lineSpacing, setLineSpacing] = useState<"compact" | "balanced" | "relaxed">("balanced");
   const [fontFamily, setFontFamily] = useState<"sans" | "serif" | "mono">("sans");
@@ -186,6 +188,34 @@ function EditorialDocumentViewer({
 
     return { headerMetaBlocks: metas, bodyBlocks: remaining };
   }, [blocks]);
+
+  const handleCopyFormattedA4 = () => {
+    const formatted = blocks
+      .map((b) => {
+        if (b.type === "title") return `# ${b.text}\n`;
+        if (b.type === "heading1") return `\n## ${b.text}\n`;
+        if (b.type === "heading2") return `\n### ${b.text}\n`;
+        if (b.type === "heading3") return `\n#### ${b.text}\n`;
+        if (b.type === "list" && b.items) return b.items.map((i) => `• ${i}`).join("\n");
+        if (b.type === "table" && b.table) {
+          const h = b.table.headers
+            ? `| ${b.table.headers.join(" | ")} |\n| ${b.table.headers.map(() => "---").join(" | ")} |\n`
+            : "";
+          const r = b.table.rows.map((row) => `| ${row.join(" | ")} |`).join("\n");
+          return `${h}${r}\n`;
+        }
+        return b.text || "";
+      })
+      .join("\n")
+      .trim();
+
+    navigator.clipboard.writeText(formatted || text);
+    setCopied(true);
+    toast.success("Copied A4 structured text to clipboard!", {
+      description: "Clean format with preserved headers, hierarchy, and bullet lists.",
+    });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleCopyPlainText = () => {
     navigator.clipboard.writeText(text);
@@ -329,7 +359,7 @@ function EditorialDocumentViewer({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div className="flex flex-wrap items-center gap-1.5 ml-auto">
           <span className="hidden sm:inline-flex items-center gap-1 bg-background px-2 py-1 rounded text-[11px] font-mono text-muted-foreground border border-border/60">
             📄 ISO A4
           </span>
@@ -343,17 +373,28 @@ function EditorialDocumentViewer({
           </button>
           <button
             type="button"
-            onClick={handleCopyPlainText}
+            onClick={handleCopyFormattedA4}
             className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/25 transition-all cursor-pointer shadow-xs"
-            title="Copy pure unformatted plain text to clipboard"
+            title="Copy clean structured A4 text with headers and bullets"
           >
             {copied ? (
               <Check className="h-3.5 w-3.5 text-emerald-500" />
             ) : (
               <Copy className="h-3.5 w-3.5" />
             )}
-            <span>{copied ? "Copied Plain Text!" : "Copy Plain Text"}</span>
+            <span>{copied ? "Copied A4 Text!" : "Copy A4 Text"}</span>
           </button>
+          {onDownload && (
+            <button
+              type="button"
+              onClick={onDownload}
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-all cursor-pointer shadow-xs"
+              title={`Download converted ${targetFormat}`}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Download {targetFormat}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -538,12 +579,29 @@ function EditorialDocumentViewer({
           </div>
 
             {/* Running Sheet Footer */}
-            <div className="mt-10 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-2">
+            <div className="mt-10 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-3">
               <span className="flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span>DocuMind Converted Document · 100% Genuine File</span>
+                <span>DocuMind Converted Document · 100% Genuine ISO A4 File</span>
               </span>
-              <span>ISO A4 Sheet · Page 1 of 1</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyFormattedA4}
+                  className="px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded-md border border-primary/20 transition-all cursor-pointer inline-flex items-center gap-1 font-sans"
+                >
+                  <Copy className="h-3 w-3" /> Copy A4 Text
+                </button>
+                {onDownload && (
+                  <button
+                    type="button"
+                    onClick={onDownload}
+                    className="px-3 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-all cursor-pointer shadow-xs inline-flex items-center gap-1 font-sans"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download {targetFormat}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1035,6 +1093,7 @@ function ConverterPage() {
                           filename={convertedResult.filename}
                           fileExt={fileExt}
                           targetFormat="PDF"
+                          onDownload={handleDownload}
                         />
                       </div>
                     </div>
@@ -1048,6 +1107,7 @@ function ConverterPage() {
                       filename={convertedResult.filename}
                       fileExt={fileExt}
                       targetFormat={convertedResult.targetFormat}
+                      onDownload={handleDownload}
                     />
                   )}
 
@@ -1058,6 +1118,7 @@ function ConverterPage() {
                       filename={convertedResult.filename}
                       fileExt={fileExt}
                       targetFormat="TXT"
+                      onDownload={handleDownload}
                     />
                   )}
                 </div>
@@ -1143,6 +1204,53 @@ function ConverterPage() {
                     <Download className="h-4 w-4" /> Download Converted {convertedResult.targetFormat}
                   </Button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Persistent Floating Quick-Action Bar for easy 1-click download anywhere on page */}
+          {convertedResult && (
+            <div className="sticky bottom-4 z-30 mt-6 flex flex-wrap items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-card/95 backdrop-blur-md border-2 border-emerald-500/40 shadow-2xl max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shrink-0">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-xs text-foreground flex items-center gap-1.5 flex-wrap">
+                    <span>{convertedResult.filename}</span>
+                    <span className="font-mono text-[10px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded font-semibold">
+                      ISO A4 · {convertedResult.targetFormat}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {(convertedResult.sizeBytes / 1024).toFixed(1)} KB · 100% Content Preserved
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={handleCopyPlainText}
+                  className="text-xs gap-1.5 border-primary/20 hover:bg-primary/10"
+                  title="Copy document text"
+                >
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5 text-primary" />
+                  )}
+                  <span>{copied ? "Copied!" : "Copy A4 Text"}</span>
+                </Button>
+                <Button
+                  variant="hero"
+                  size="sm"
+                  onClick={handleDownload}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-md"
+                  title={`Download ${convertedResult.filename}`}
+                >
+                  <Download className="h-4 w-4" /> Download {convertedResult.targetFormat}
+                </Button>
               </div>
             </div>
           )}

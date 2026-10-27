@@ -468,7 +468,7 @@ export function PresentationPreviewPage() {
             <div className="mt-6 rounded-xl border border-border/80 bg-surface-2/40 p-4 text-left text-xs space-y-2 text-muted-foreground">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>Zero permanent storage in MongoDB or Cloud Buckets</span>
+                <span>Zero permanent storage in Cloud Firestore or Cloud Storage</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />

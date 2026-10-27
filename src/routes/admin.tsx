@@ -1213,7 +1213,7 @@ function AdminPage() {
                 Database:{" "}
                 <span className="text-foreground font-semibold">
                   {healthData?.database === "connected"
-                    ? "MongoDB Atlas"
+                    ? "Cloud Firestore"
                     : "Stateless Memory Shield"}
                 </span>
               </span>

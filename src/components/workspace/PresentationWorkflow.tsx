@@ -1079,7 +1079,7 @@ export function PresentationWorkflow({
                     <Info className="h-3.5 w-3.5" />
                     <span>
                       Original files are processed in ephemeral memory and discarded immediately.
-                      Never stored in MongoDB or persistent storage.
+                      Never stored in database or cloud storage.
                     </span>
                   </p>
                 </div>

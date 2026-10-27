@@ -202,7 +202,7 @@ describe("DocuMind 15-Point Workflow & Presentation Verification", () => {
     expect(fs.existsSync(session.filePath)).toBe(false);
   });
 
-  // Scenario 11: Privacy-first ephemeral storage (no Mongo write)
+  // Scenario 11: Privacy-first ephemeral storage (no database write)
   it("Scenario 11: Confirms storage is purely ephemeral in os.tmpdir and not database", async () => {
     const session = await createPresentationSession({
       title: "Ephemeral Privacy Check",

@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { isDbConnected } from "../config/db";
+import { isFirestoreConnected } from "../config/firebase";
 
 const router = Router();
 
-router.get("/health", (req, res) => {
+router.get("/health", async (req, res) => {
+  const connected = await isFirestoreConnected();
   res.json({
     status: "ok",
     service: "DocuMind API",
@@ -14,7 +15,8 @@ router.get("/health", (req, res) => {
       paywalls: "none",
       freeTemplatesCount: 110,
     },
-    database: isDbConnected() ? "connected" : "in-memory-fallback",
+    database: connected ? "connected" : "in-memory-fallback",
+    databaseType: connected ? "Cloud Firestore" : "Stateless Memory Shield",
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
   });

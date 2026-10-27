@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for authorization
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'admin@documind.app'
+      );
+    }
+
+    // Default deny all unknown collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health probe collection
+    match /healthCheck/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // User profiles & settings
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Feedback & feature requests
+    match /feedback/{feedbackId} {
+      // Anyone can submit valid feedback
+      allow create: if request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5
+                    && request.resource.data.comment is string
+                    && request.resource.data.comment.size() > 0;
+      // Only administrators can inspect or update feedback tickets
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Ephemeral document job telemetry & metrics (no file contents stored)
+    match /documentJobs/{jobId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow write: if (isAuthenticated() && request.resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    // Presentation Templates
+    match /templates/{templateId} {
+      // Publicly viewable if published
+      allow read: if resource.data.isPublished == true || isAdmin();
+      // Only administrators can edit or toggle publication
+      allow write: if isAdmin();
+    }
+  }
+}

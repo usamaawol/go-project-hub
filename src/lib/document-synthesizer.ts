@@ -206,7 +206,50 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
       continue;
     }
 
-    // 1. Markdown Table or Tab-delimited Table
+    // 0. Filter out page break / scan artifacts like "Page 4", "Page 5", "[Page 12]", "Page 3 of 10"
+    if (
+      /^(?:\[?\s*Page\s+\d+(?:\s+of\s+\d+)?\s*\]?|[-—–=]{1,3}\s*\d+\s*[-—–=]{1,3}|[-—–=]{3,}\s*Page\s*\d+.*)$/i.test(
+        trimmed,
+      )
+    ) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    // 1. All-Caps Major Headings with Bullet: e.g. "• SCREENSHOTS AND VISUAL RECONSTRUCTION", "• FIREBASE INTEGRATION"
+    const bulletHeadingMatch = trimmed.match(/^[•\-\*]\s+([A-Z0-9\s—–\-&/:,()]{3,75})$/);
+    if (bulletHeadingMatch && !trimmed.includes(".")) {
+      flushParagraph();
+      flushList();
+      const headingText = bulletHeadingMatch[1].trim();
+      if (blocks.length === 0) {
+        blocks.push({ type: "title", text: headingText });
+      } else {
+        blocks.push({ type: "heading1", text: headingText });
+      }
+      continue;
+    }
+
+    // 2. Alphabetic Section Headings: e.g. "A. Home", "B. Explore", "C. Saved Items and Favorites"
+    const alphaHeadingMatch = trimmed.match(/^([A-Z])\.\s+([A-Za-z0-9\s—–\-&/:,()]{2,75})$/);
+    if (alphaHeadingMatch && trimmed.length < 80) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading2", text: trimmed });
+      continue;
+    }
+
+    // 3. Numbered Subsections: e.g. "1.1 Introduction", "2.3 API Specification", "3.2.1 Data Models"
+    const numSubHeadingMatch = trimmed.match(/^(\d+\.\d+(?:\.\d+)*)\s+([A-Za-z0-9\s—–\-&/:,()]{2,85})$/);
+    if (numSubHeadingMatch && trimmed.length < 90) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading2", text: trimmed });
+      continue;
+    }
+
+    // 4. Markdown Table or Tab-delimited Table
     if (
       (/^\s*\|.+?\|\s*$/.test(trimmed) && i + 1 < lines.length && /\|/.test(lines[i + 1] || "")) ||
       (trimmed.includes("\t") && !trimmed.startsWith("•"))
@@ -464,51 +507,69 @@ export async function renderExecutivePdf(
       y -= 8;
     } else if (block.type === "heading1") {
       const text = sanitizeLine(block.text || "", fontBold);
-      const wrapped = wrapPdfText(text, fontBold, 14, contentWidth - 14);
+      const wrapped = wrapPdfText(text, fontBold, 13.5, contentWidth - 20);
       if (y - wrapped.length * 18 - 25 < bottomMargin) addNewPage();
 
-      y -= 10;
-      const barH = wrapped.length * 16;
+      y -= 12;
+      const barH = wrapped.length * 17;
+      // Soft executive accent background card
       currentPage.drawRectangle({
         x: margin,
-        y: y - barH + 12,
-        width: 3.5,
-        height: barH,
-        color: rgb(0.15, 0.39, 0.92),
+        y: y - barH + 8,
+        width: contentWidth,
+        height: barH + 10,
+        color: rgb(0.95, 0.97, 1.0),
+      });
+
+      // Left blue ribbon
+      currentPage.drawRectangle({
+        x: margin,
+        y: y - barH + 8,
+        width: 4,
+        height: barH + 10,
+        color: rgb(0.14, 0.38, 0.92),
       });
 
       for (const line of wrapped) {
         currentPage.drawText(line, {
-          x: margin + 10,
+          x: margin + 12,
           y,
-          size: 14,
+          size: 13.5,
           font: fontBold,
-          color: rgb(0.06, 0.09, 0.16),
+          color: rgb(0.08, 0.12, 0.22),
         });
-        y -= 18;
+        y -= 17;
       }
 
-      // Subtle horizontal rule
+      // Subtle horizontal rule below section card
       currentPage.drawLine({
-        start: { x: margin, y: y + 4 },
-        end: { x: margin + contentWidth, y: y + 4 },
-        thickness: 0.75,
-        color: rgb(0.88, 0.9, 0.94),
+        start: { x: margin, y: y + 2 },
+        end: { x: margin + contentWidth, y: y + 2 },
+        thickness: 0.5,
+        color: rgb(0.85, 0.88, 0.94),
       });
       y -= 8;
     } else if (block.type === "heading2") {
       const text = sanitizeLine(block.text || "", fontBold);
-      const wrapped = wrapPdfText(text, fontBold, 12, contentWidth);
+      const wrapped = wrapPdfText(text, fontBold, 11.5, contentWidth - 14);
       if (y - wrapped.length * 16 - 15 < bottomMargin) addNewPage();
 
       y -= 8;
+      // Accent bullet dot
+      currentPage.drawCircle({
+        x: margin + 4,
+        y: y + 4,
+        size: 3,
+        color: rgb(0.14, 0.38, 0.92),
+      });
+
       for (const line of wrapped) {
         currentPage.drawText(line, {
-          x: margin,
+          x: margin + 14,
           y,
-          size: 12,
+          size: 11.5,
           font: fontBold,
-          color: rgb(0.12, 0.16, 0.23),
+          color: rgb(0.10, 0.15, 0.25),
         });
         y -= 16;
       }

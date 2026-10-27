@@ -5,8 +5,7 @@ import { compressPdfBuffer } from "../services/compressor.service";
 import { convertDocumentBuffer, type SupportedFormat } from "../services/converter.service";
 import { generatePresentationBuffer } from "../services/presentation.service";
 import { analyzeDocumentAndGuide } from "../services/ai.service";
-import { DocumentJobModel } from "../models/DocumentJob";
-import { isDbConnected } from "../config/db";
+import { createDocumentJob } from "../services/documentJobService";
 
 export async function handleExtractText(
   req: AuthenticatedRequest,
@@ -39,26 +38,24 @@ export async function handleExtractText(
     const result = await extractTextFromBuffer(buffer, mimeType, filename);
     const duration = Date.now() - startTime;
 
-    // Log job if DB available
+    // Log job metadata in Firestore
     const jobId = "job_" + Math.random().toString(36).substring(2, 10);
-    if (isDbConnected()) {
-      try {
-        await DocumentJobModel.create({
-          jobId,
-          userId: req.user?.uid || null,
-          toolType: "extract",
-          originalFilename: filename,
-          fileSize: buffer.length,
-          mimeType,
-          status: "completed",
-          metrics: {
-            processingTimeMs: duration,
-            extractedWordCount: result.wordCount,
-          },
-        });
-      } catch (e) {
-        console.warn("Could not save job log to DB:", e);
-      }
+    try {
+      await createDocumentJob({
+        jobId,
+        userId: req.user?.uid || null,
+        toolType: "extract",
+        originalFilename: filename,
+        fileSize: buffer.length,
+        mimeType,
+        status: "completed",
+        metrics: {
+          processingTimeMs: duration,
+          extractedWordCount: result.wordCount,
+        },
+      });
+    } catch (e) {
+      console.warn("Could not save job log to Firestore:", e);
     }
 
     res.json({
@@ -101,25 +98,23 @@ export async function handleCompressDocument(
     const duration = Date.now() - startTime;
 
     const jobId = "job_" + Math.random().toString(36).substring(2, 10);
-    if (isDbConnected()) {
-      try {
-        await DocumentJobModel.create({
-          jobId,
-          userId: req.user?.uid || null,
-          toolType: "compress",
-          originalFilename: file.originalname,
-          fileSize: file.buffer.length,
-          mimeType: file.mimetype,
-          status: "completed",
-          metrics: {
-            processingTimeMs: duration,
-            reductionPercent: result.reductionPercent,
-            outputSizeBytes: result.compressedSize,
-          },
-        });
-      } catch (e) {
-        console.warn("Could not save job log to DB:", e);
-      }
+    try {
+      await createDocumentJob({
+        jobId,
+        userId: req.user?.uid || null,
+        toolType: "compress",
+        originalFilename: file.originalname,
+        fileSize: file.buffer.length,
+        mimeType: file.mimetype,
+        status: "completed",
+        metrics: {
+          processingTimeMs: duration,
+          reductionPercent: result.reductionPercent,
+          outputSizeBytes: result.compressedSize,
+        },
+      });
+    } catch (e) {
+      console.warn("Could not save job log to Firestore:", e);
     }
 
     // If query ?download=true, send file directly as attachment
@@ -179,25 +174,23 @@ export async function handleGeneratePresentation(
     const duration = Date.now() - startTime;
 
     const jobId = "job_" + Math.random().toString(36).substring(2, 10);
-    if (isDbConnected()) {
-      try {
-        await DocumentJobModel.create({
-          jobId,
-          userId: req.user?.uid || null,
-          toolType: "presentation",
-          originalFilename: `${title.replace(/\s+/g, "_")}.pptx`,
-          fileSize: pptxBuffer.length,
-          mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          status: "completed",
-          metrics: {
-            processingTimeMs: duration,
-            slideCount: slides.length + 1,
-            outputSizeBytes: pptxBuffer.length,
-          },
-        });
-      } catch (e) {
-        console.warn("Could not save job log to DB:", e);
-      }
+    try {
+      await createDocumentJob({
+        jobId,
+        userId: req.user?.uid || null,
+        toolType: "presentation",
+        originalFilename: `${title.replace(/\s+/g, "_")}.pptx`,
+        fileSize: pptxBuffer.length,
+        mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        status: "completed",
+        metrics: {
+          processingTimeMs: duration,
+          slideCount: slides.length + 1,
+          outputSizeBytes: pptxBuffer.length,
+        },
+      });
+    } catch (e) {
+      console.warn("Could not save job log to Firestore:", e);
     }
 
     // Direct download header
@@ -269,25 +262,23 @@ export async function handleConvertDocument(
     const duration = Date.now() - startTime;
 
     const jobId = "job_" + Math.random().toString(36).substring(2, 10);
-    if (isDbConnected()) {
-      try {
-        await DocumentJobModel.create({
-          jobId,
-          userId: req.user?.uid || null,
-          toolType: "convert",
-          originalFilename: file.originalname,
-          fileSize: file.buffer.length,
-          mimeType: file.mimetype,
-          status: "completed",
-          metrics: {
-            processingTimeMs: duration,
-            outputSizeBytes: result.sizeBytes,
-            extractedWordCount: result.wordCount,
-          },
-        });
-      } catch (e) {
-        console.warn("Could not save convert job log to DB:", e);
-      }
+    try {
+      await createDocumentJob({
+        jobId,
+        userId: req.user?.uid || null,
+        toolType: "convert",
+        originalFilename: file.originalname,
+        fileSize: file.buffer.length,
+        mimeType: file.mimetype,
+        status: "completed",
+        metrics: {
+          processingTimeMs: duration,
+          outputSizeBytes: result.sizeBytes,
+          extractedWordCount: result.wordCount,
+        },
+      });
+    } catch (e) {
+      console.warn("Could not save convert job log to Firestore:", e);
     }
 
     // Direct download attachment

@@ -1,9 +1,11 @@
 import { app } from "./app";
-import { connectDB } from "./config/db";
+import { initializeFirebaseAdmin, isFirestoreConnected } from "./config/firebase";
 import { ENV } from "./config/env";
 
 async function startServer() {
-  await connectDB();
+  initializeFirebaseAdmin();
+  const dbConnected = await isFirestoreConnected();
+  console.log(`[DocuMind API] Cloud Firestore: ${dbConnected ? "Connected" : "Offline Fallback"}`);
 
   const server = app.listen(ENV.PORT, () => {
     console.log(`[DocuMind API] Running on http://localhost:${ENV.PORT}`);
