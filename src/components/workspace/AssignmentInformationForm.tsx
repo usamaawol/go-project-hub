@@ -24,6 +24,11 @@ import {
   FileText,
   AlertCircle,
   Image as ImageIcon,
+  ArrowUp,
+  ArrowDown,
+  Sliders,
+  Palette,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,6 +38,7 @@ interface AssignmentInformationFormProps {
   extractedSuggestions?: ExtractedAssignmentSuggestions | null;
   onApplySuggestions?: (s: ExtractedAssignmentSuggestions) => void;
   onDismissSuggestions?: () => void;
+  onOpenCanvasEditor?: () => void;
 }
 
 const MAX_LOGO_SIZE_MB = 5;
@@ -43,6 +49,7 @@ export function AssignmentInformationForm({
   extractedSuggestions,
   onApplySuggestions,
   onDismissSuggestions,
+  onOpenCanvasEditor,
 }: AssignmentInformationFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -98,6 +105,24 @@ export function AssignmentInformationForm({
       return;
     }
     const updated = groupMembers.filter((_, i) => i !== index);
+    updateField("groupMembers", updated);
+  };
+
+  const handleMoveMemberUp = (index: number) => {
+    if (index === 0) return;
+    const updated = [...groupMembers];
+    const temp = updated[index - 1]!;
+    updated[index - 1] = updated[index]!;
+    updated[index] = temp;
+    updateField("groupMembers", updated);
+  };
+
+  const handleMoveMemberDown = (index: number) => {
+    if (index >= groupMembers.length - 1) return;
+    const updated = [...groupMembers];
+    const temp = updated[index + 1]!;
+    updated[index + 1] = updated[index]!;
+    updated[index] = temp;
     updateField("groupMembers", updated);
   };
 
@@ -395,23 +420,37 @@ export function AssignmentInformationForm({
               </div>
             </div>
           ) : (
-            /* If Group: Group Title + Repeatable Members */
+            /* If Group: Group Title + Group Name + Repeatable Members */
             <div className="space-y-3.5">
-              <div>
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Group Assignment Title <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g., Distributed Systems Scalability Analysis"
-                  value={metadata.assignmentTitle || ""}
-                  onChange={(e) => updateField("assignmentTitle", e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  required
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-foreground block mb-1">
+                    Group Assignment Title <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Distributed Systems Scalability Analysis"
+                    value={metadata.assignmentTitle || ""}
+                    onChange={(e) => updateField("assignmentTitle", e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground block mb-1">
+                    Group or Team Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Team Alpha, Systems Syndicate"
+                    value={metadata.groupName || ""}
+                    onChange={(e) => updateField("groupName", e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
               </div>
 
-              {/* Repeatable Members List */}
+              {/* Repeatable Members List with Re-Ordering */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-foreground">
@@ -453,18 +492,96 @@ export function AssignmentInformationForm({
                           className="px-2.5 py-1.5 text-xs font-mono rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
-                      {(safeMetadata.groupMembers || []).length > 1 && (
+                      <div className="flex items-center gap-0.5 shrink-0">
                         <button
                           type="button"
-                          onClick={() => handleRemoveMember(idx)}
-                          className="p-1.5 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                          title="Remove member"
+                          disabled={idx === 0}
+                          onClick={() => handleMoveMemberUp(idx)}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          title="Move member up in directory"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <ArrowUp className="h-3.5 w-3.5" />
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          disabled={idx >= (safeMetadata.groupMembers || []).length - 1}
+                          onClick={() => handleMoveMemberDown(idx)}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                          title="Move member down in directory"
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                        {(safeMetadata.groupMembers || []).length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMember(idx)}
+                            className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-1"
+                            title="Remove member"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Required Group-Name Placement Decision (Section 5) */}
+              <div className="p-3.5 rounded-xl border border-primary/25 bg-primary/5 space-y-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Sliders className="h-3.5 w-3.5 text-primary" />
+                    Required Group-Name Placement Decision <span className="text-destructive">*</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded font-semibold">
+                    Real Document Layout
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Choose where your team or group designation will be positioned in the finished document.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => updateField("groupNamePlacement", "cover")}
+                    className={`p-3 rounded-lg border text-left transition-all ${
+                      metadata.groupNamePlacement !== "first-body-page"
+                        ? "border-primary bg-background ring-2 ring-primary/30 shadow-xs"
+                        : "border-border bg-card/60 hover:bg-card"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center ${metadata.groupNamePlacement !== "first-body-page" ? "border-primary bg-primary" : "border-muted-foreground"}`}>
+                        {metadata.groupNamePlacement !== "first-body-page" && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="text-xs font-bold text-foreground">Option A — Display on Cover Page</span>
+                    </div>
+                    <p className="text-[10.5px] text-muted-foreground mt-1.5 pl-5 leading-relaxed">
+                      The group name is styled into the cover page. The first page of the assignment body starts cleanly without an extra group heading.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateField("groupNamePlacement", "first-body-page")}
+                    className={`p-3 rounded-lg border text-left transition-all ${
+                      metadata.groupNamePlacement === "first-body-page"
+                        ? "border-primary bg-background ring-2 ring-primary/30 shadow-xs"
+                        : "border-border bg-card/60 hover:bg-card"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center ${metadata.groupNamePlacement === "first-body-page" ? "border-primary bg-primary" : "border-muted-foreground"}`}>
+                        {metadata.groupNamePlacement === "first-body-page" && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="text-xs font-bold text-foreground">Option B — First Page of Body</span>
+                    </div>
+                    <p className="text-[10.5px] text-muted-foreground mt-1.5 pl-5 leading-relaxed">
+                      The cover page displays credentials without the group name. The group name is placed at the top of the first body page with heading hierarchy.
+                    </p>
+                  </button>
                 </div>
               </div>
             </div>

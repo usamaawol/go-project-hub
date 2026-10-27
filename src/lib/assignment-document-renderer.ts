@@ -6,6 +6,7 @@
 
 import type { AssignmentMetadata } from "./assignment-types";
 import { getDefaultAssignmentMetadata } from "./assignment-types";
+import { getCoverTemplateById } from "./cover-templates-registry";
 
 function escapeHtml(str: string): string {
   if (!str) return "";
@@ -380,9 +381,9 @@ export function generateAssignmentCoverHtml(metadata?: AssignmentMetadata | null
     // 10. SIMPLE STUDENT ASSIGNMENT
     // -------------------------------------------------------------
     case "simple-student":
-    default:
+    case "simple-student-assignment":
       return `
-        <div style="height: 100%; min-height: 250mm; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #e2e8f0; border-radius: 8px; padding: 32px; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <div data-template-id="simple-student-assignment" style="height: 100%; min-height: 250mm; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #e2e8f0; border-radius: 8px; padding: 32px; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
               <div>
@@ -395,6 +396,7 @@ export function generateAssignmentCoverHtml(metadata?: AssignmentMetadata | null
               <h1 style="font-size: 22pt; font-weight: bold; color: #0f172a; margin: 0 0 8px 0; line-height: 1.2;">${title}</h1>
               ${course ? `<p style="font-size: 12pt; color: #334155; margin: 0;">${courseCode ? courseCode + " — " : ""}${course}</p>` : ""}
             </div>
+            ${isGroup && safeMeta.groupName?.trim() && safeMeta.groupNamePlacement !== "first-body-page" ? `<div style="background-color: #f1f5f9; border: 1px solid ${accent}; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 10pt; color: ${accent}; margin-top: 10px;">TEAM: ${escapeHtml(safeMeta.groupName.toUpperCase())}</div>` : ""}
           </div>
           <div>
             ${renderStudentSection("cards")}
@@ -403,5 +405,71 @@ export function generateAssignmentCoverHtml(metadata?: AssignmentMetadata | null
             ${renderEvaluatorAndDates("left")}
           </div>
         </div>`;
+
+    default: {
+      const tmpl = getCoverTemplateById(templateId);
+      const tmplAccent = safeMeta.accentColor || tmpl.defaultAccent || "#1E3A8A";
+      const tmplSecondary = tmpl.secondaryColor || "#475569";
+      const tmplFont = tmpl.fontFamily || "Inter, sans-serif";
+
+      // Border style mapping
+      let borderCss = "border: 1px solid #e2e8f0; padding: 32px;";
+      if (tmpl.borderStyle === "double") {
+        borderCss = `border: 3px double ${tmplAccent}; padding: 28px;`;
+      } else if (tmpl.borderStyle === "frame") {
+        borderCss = `border: 2px solid ${tmplAccent}; border-radius: 6px; padding: 28px;`;
+      } else if (tmpl.borderStyle === "accent-bar") {
+        borderCss = `border-left: 8px solid ${tmplAccent}; padding: 16px 24px 16px 36px;`;
+      } else if (tmpl.borderStyle === "grid") {
+        borderCss = `border: 2px solid #cbd5e1; background-image: radial-gradient(#e2e8f0 1px, transparent 1px); background-size: 24px 24px; padding: 28px;`;
+      } else if (tmpl.borderStyle === "asymmetric") {
+        borderCss = `border: 1px solid #cbd5e1; border-top: 12px solid ${tmplAccent}; padding: 24px 28px;`;
+      }
+
+      // Metadata alignment & layout mapping
+      const align = tmpl.metadataLayout === "centered" ? "center" : "left";
+      const sectionStyle =
+        tmpl.metadataLayout === "card-frame"
+          ? "cards"
+          : tmpl.metadataLayout === "split-two-col"
+            ? "table"
+            : tmpl.metadataLayout === "left-stacked"
+              ? "minimal"
+              : "formal";
+
+      return `
+        <div data-template-id="${tmpl.id}" style="height: 100%; min-height: 250mm; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; font-family: ${tmplFont}; ${borderCss}">
+          <div>
+            <div style="display: flex; justify-content: ${tmpl.logoPosition === 'top-center' ? 'center' : 'space-between'}; align-items: center; margin-bottom: 20px; text-align: ${align};">
+              <div>
+                ${tmpl.tagline ? `<div style="font-size: 8.5pt; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold; color: ${tmplAccent}; margin-bottom: 4px;">${escapeHtml(tmpl.tagline)}</div>` : ""}
+                ${university ? `<h2 style="font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; margin: 0 0 2px 0;">${university}</h2>` : ""}
+                ${faculty || department ? `<p style="font-size: 9.5pt; color: ${tmplSecondary}; margin: 0;">${[faculty, department].filter(Boolean).join(" • ")}</p>` : ""}
+              </div>
+              ${logo && tmpl.logoPosition !== 'top-center' ? `<img src="${logo}" alt="University Emblem" style="max-height: 55px; max-width: 140px; object-fit: contain;" />` : ""}
+            </div>
+            ${logo && tmpl.logoPosition === 'top-center' ? `<div style="text-align: center; margin-bottom: 16px;"><img src="${logo}" alt="University Emblem" style="max-height: 60px; max-width: 160px; object-fit: contain;" /></div>` : ""}
+
+            <div style="margin: 36px 0 24px 0; text-align: ${align};">
+              ${courseCode ? `<span style="display: inline-block; padding: 3px 10px; font-size: 9pt; font-family: monospace; font-weight: bold; text-transform: uppercase; border-radius: 4px; background-color: ${tmplAccent}; color: #ffffff; margin-bottom: 12px;">${courseCode}</span>` : ""}
+              <h1 style="font-size: 24pt; font-weight: bold; color: #0f172a; margin: 0 0 10px 0; line-height: 1.25;">${title}</h1>
+              ${course ? `<p style="font-size: 12.5pt; color: ${tmplSecondary}; font-weight: 500; margin: 0;">Course: ${course}</p>` : ""}
+              ${isGroup && safeMeta.groupName?.trim() && safeMeta.groupNamePlacement !== "first-body-page" ? `<div style="display: inline-block; margin-top: 14px; background-color: #f1f5f9; border: 1.5px solid ${tmplAccent}; padding: 6px 14px; border-radius: 6px; font-weight: bold; font-size: 10.5pt; color: ${tmplAccent};">GROUP: ${escapeHtml(safeMeta.groupName.toUpperCase())}</div>` : ""}
+            </div>
+          </div>
+
+          <div>
+            ${renderStudentSection(sectionStyle)}
+          </div>
+
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: auto;">
+            ${renderEvaluatorAndDates(align)}
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8pt; color: #94a3b8; font-family: monospace; margin-top: 12px; padding-top: 8px; border-top: 1px dotted #cbd5e1;">
+              <span>DOCUMIND · TEMPLATE SPEC [${tmpl.id.toUpperCase()}]</span>
+              <span>CATEGORY: ${escapeHtml(tmpl.category.toUpperCase())}</span>
+            </div>
+          </div>
+        </div>`;
+    }
   }
 }

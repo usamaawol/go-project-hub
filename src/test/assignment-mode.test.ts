@@ -287,9 +287,9 @@ Instructor: Dr. Walter Lewin`;
     expect(html).toContain("Cambridge University");
   });
 
-  // Scenario 10: All 10 distinct cover templates
-  it("Scenario 10: All 10 distinct cover templates generate unique styling and structure", () => {
-    expect(COVER_TEMPLATES.length).toBe(10);
+  // Scenario 10: 50+ distinct cover templates
+  it("Scenario 10: All distinct cover templates generate unique styling and structure", () => {
+    expect(COVER_TEMPLATES.length).toBeGreaterThanOrEqual(50);
 
     const baseMeta: AssignmentMetadata = {
       isAssignment: true,
@@ -331,7 +331,7 @@ Instructor: Dr. Walter Lewin`;
       }
     }
 
-    expect(generatedHtmls.size).toBe(10);
+    expect(generatedHtmls.size).toBeGreaterThanOrEqual(50);
   });
 
   // Scenario 11: Presentation cover template + slide theme visual coherence

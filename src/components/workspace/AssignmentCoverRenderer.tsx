@@ -9,6 +9,7 @@
 import React from "react";
 import type { AssignmentMetadata } from "@/lib/assignment-types";
 import { COVER_TEMPLATES, getDefaultAssignmentMetadata } from "@/lib/assignment-types";
+import { getCoverTemplateById } from "@/lib/cover-templates-registry";
 import { GraduationCap, Users, User, Calendar, BookOpen, Building, Award } from "lucide-react";
 
 interface AssignmentCoverRendererProps {
@@ -899,7 +900,7 @@ export function AssignmentCoverRenderer({
     // 10. SIMPLE STUDENT ASSIGNMENT (Approachable & Lightweight)
     // -------------------------------------------------------------
     case "simple-student-assignment":
-    default:
+    case "simple-student":
       return (
         <div
           className={`bg-white text-slate-900 flex flex-col justify-between p-6 sm:p-9 select-none ${className}`}
@@ -979,5 +980,153 @@ export function AssignmentCoverRenderer({
           </div>
         </div>
       );
+
+    default: {
+      const tmpl = getCoverTemplateById(templateId);
+      const tmplAccent = safeMeta.accentColor || tmpl.defaultAccent || "#1E3A8A";
+      const isSerif = tmpl.fontFamily.toLowerCase().includes("serif") || tmpl.fontFamily.toLowerCase().includes("playfair");
+      const isCentered = tmpl.metadataLayout === "centered";
+
+      return (
+        <div
+          className={`bg-white text-slate-900 flex flex-col justify-between p-6 sm:p-8 select-none ${className}`}
+          style={{
+            ...containerStyle,
+            fontFamily: tmpl.fontFamily,
+            borderLeft: tmpl.borderStyle === "accent-bar" ? `6px solid ${tmplAccent}` : undefined,
+            borderTop: tmpl.borderStyle === "asymmetric" ? `8px solid ${tmplAccent}` : undefined,
+          }}
+        >
+          {tmpl.borderStyle === "double" && (
+            <div
+              className="absolute inset-2.5 border-2 pointer-events-none"
+              style={{ borderColor: tmplAccent }}
+            >
+              <div
+                className="absolute inset-1 border pointer-events-none"
+                style={{ borderColor: tmplAccent, opacity: 0.4 }}
+              />
+            </div>
+          )}
+
+          {tmpl.borderStyle === "frame" && (
+            <div
+              className="absolute inset-3 border-2 rounded-md pointer-events-none"
+              style={{ borderColor: tmplAccent }}
+            />
+          )}
+
+          {/* Header */}
+          <div className={`relative z-10 ${isCentered ? "text-center" : "text-left"}`}>
+            <div className={`flex items-center gap-2 ${isCentered ? "justify-center" : "justify-between"}`}>
+              <div>
+                {tmpl.tagline && (
+                  <span
+                    className="text-[9px] font-bold uppercase tracking-widest block mb-0.5"
+                    style={{ color: tmplAccent }}
+                  >
+                    {tmpl.tagline}
+                  </span>
+                )}
+                {university && (
+                  <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-800">
+                    {university}
+                  </h3>
+                )}
+                {(faculty || department) && (
+                  <p className="text-[10px] text-slate-500">
+                    {[faculty, department].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
+              {logo && (
+                <img
+                  src={logo}
+                  alt="Logo"
+                  className="max-h-8 sm:max-h-11 max-w-[100px] object-contain shrink-0"
+                />
+              )}
+            </div>
+            <div
+              className={`h-0.5 mt-2 ${isCentered ? "mx-auto w-16" : "w-16"}`}
+              style={{ backgroundColor: tmplAccent }}
+            />
+          </div>
+
+          {/* Center Title Hero */}
+          <div className={`relative z-10 my-auto py-3 ${isCentered ? "text-center" : "text-left"}`}>
+            {courseCode && (
+              <span
+                className="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wide text-white mb-1.5"
+                style={{ backgroundColor: tmplAccent }}
+              >
+                {courseCode}
+              </span>
+            )}
+            <h1
+              className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 leading-snug"
+              style={{ fontFamily: isSerif ? "Georgia, serif" : undefined }}
+            >
+              {title}
+            </h1>
+            <p className="text-xs text-slate-600 mt-1">
+              Course: <span className="font-semibold">{course}</span>
+            </p>
+            {isGroup && safeMeta.groupName?.trim() && safeMeta.groupNamePlacement !== "first-body-page" && (
+              <div
+                className={`mt-2 inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border`}
+                style={{ borderColor: tmplAccent, color: tmplAccent, backgroundColor: `${tmplAccent}10` }}
+              >
+                Team: {safeMeta.groupName}
+              </div>
+            )}
+          </div>
+
+          {/* Footer Credentials */}
+          <div className="relative z-10 grid grid-cols-2 gap-3 pt-3 border-t border-slate-200 text-xs">
+            <div>
+              <p
+                className="font-bold uppercase tracking-wider text-[9.5px] mb-1"
+                style={{ color: tmplAccent }}
+              >
+                {isGroup ? "Group Members" : "Submitted By"}
+              </p>
+              {isGroup && members.length > 0 ? (
+                <div className="space-y-0.5">
+                  {members.slice(0, 3).map((m, i) => (
+                    <div key={i} className="flex justify-between text-[11px]">
+                      <span className="font-medium text-slate-800">{m.fullName || `Member ${i + 1}`}</span>
+                      <span className="font-mono text-slate-500 text-[10px]">{m.studentId}</span>
+                    </div>
+                  ))}
+                  {members.length > 3 && (
+                    <span className="text-[9px] text-slate-400">+{members.length - 3} more</span>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <p className="font-bold text-slate-800 text-xs">{studentName}</p>
+                  {studentId && <p className="font-mono text-slate-500 text-[10px]">ID: {studentId}</p>}
+                </div>
+              )}
+            </div>
+
+            <div className="text-right">
+              <p
+                className="font-bold uppercase tracking-wider text-[9.5px] mb-1"
+                style={{ color: tmplAccent }}
+              >
+                Submitted To
+              </p>
+              <p className="font-semibold text-slate-800 text-xs">{instructor}</p>
+              <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                {date && <p>Date: {date}</p>}
+                {academicYear && <p>{academicYear}</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
   }
 }

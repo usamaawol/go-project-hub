@@ -75,8 +75,8 @@ describe("Document Studio Verification", () => {
     expect(pages[0]?.isCover).toBe(true);
   });
 
-  it("contains all 10 cover template definitions with valid properties", () => {
-    expect(COVER_TEMPLATES.length).toBe(10);
+  it("contains cover template definitions with valid properties (50+ templates)", () => {
+    expect(COVER_TEMPLATES.length).toBeGreaterThanOrEqual(50);
     for (const t of COVER_TEMPLATES) {
       expect(t.id).toBeDefined();
       expect(t.name).toBeDefined();

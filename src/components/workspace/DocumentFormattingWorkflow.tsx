@@ -45,6 +45,7 @@ import { extractAssignmentMetadataFromText } from "@/lib/assignment-metadata-ext
 import { AssignmentInformationForm } from "@/components/workspace/AssignmentInformationForm";
 import { CoverTemplateGallery } from "@/components/workspace/CoverTemplateGallery";
 import { AssignmentCoverRenderer } from "@/components/workspace/AssignmentCoverRenderer";
+import { CoverCanvasEditor } from "@/components/workspace/CoverCanvasEditor";
 import { generateAssignmentCoverHtml } from "@/lib/assignment-document-renderer";
 
 
@@ -1287,6 +1288,7 @@ export function DocumentFormattingWorkflow({
     typeof extractAssignmentMetadataFromText
   > | null>(null);
   const [isEditCoverModalOpen, setIsEditCoverModalOpen] = useState<boolean>(false);
+  const [isCanvasEditorOpen, setIsCanvasEditorOpen] = useState<boolean>(false);
 
   // File handling
   const handleFileUpload = async (file: File) => {
@@ -1630,9 +1632,39 @@ export function DocumentFormattingWorkflow({
         <div className="space-y-6">
           {/* Academic Assignment Information Form */}
           {assignmentMode && (
-            <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-paper space-y-5">
+              {/* Quick Canva Cover Editor Launch Banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-emerald-500/10 via-primary/5 to-transparent border border-emerald-500/30">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <Wand2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      Canva-Like Cover Page Design Editor
+                      <span className="text-[10px] font-mono text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">
+                        50+ Templates
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      Customize layout, typography, shapes, and logo directly on the canvas, then click Adjust & Apply.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => setIsCanvasEditorOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 px-3.5 gap-1.5 font-semibold shrink-0 shadow-xs"
+                >
+                  <Wand2 className="h-3.5 w-3.5" /> Launch Canvas Editor
+                </Button>
+              </div>
+
               <AssignmentInformationForm
                 metadata={assignmentMetadata}
+                onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                 onChange={(updated) => {
                   setAssignmentMetadata(updated);
                   setConfig((prev) => ({
@@ -1984,11 +2016,12 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </h2>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Choose from 10 distinct academic cover-page designs. Each template applies distinct framing, typography, and metadata layouts formatted specifically for A4 document pages.
+                Choose from 50+ distinct professional cover-page designs across 8 categories. Each template applies distinct framing, typography, and metadata layouts formatted specifically for A4 document pages.
               </p>
               <CoverTemplateGallery
                 mode="document"
                 metadata={assignmentMetadata}
+                onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                 onSelectTemplate={(templateId, defaultAccent) => {
                   setAssignmentMetadata((prev) => ({
                     ...prev,
@@ -2685,6 +2718,15 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="glass"
+                size="sm"
+                onClick={() => setIsCanvasEditorOpen(true)}
+                className="text-xs text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 gap-1.5 font-semibold"
+                title="Open Canva-like cover page design editor"
+              >
+                <Wand2 className="h-3.5 w-3.5" /> Customize Cover
+              </Button>
               {assignmentMode && (
                 <Button
                   variant="glass"
@@ -3195,12 +3237,22 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
 
             <div className="space-y-6">
               <div>
-                <h3 className="text-sm font-semibold text-foreground mb-3">
-                  Cover Template & Accent Color
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center justify-between">
+                  <span>Cover Template & Accent Color (50+ Layouts)</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsCanvasEditorOpen(true)}
+                    className="text-xs h-7 gap-1 font-semibold text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                  >
+                    <Wand2 className="h-3.5 w-3.5" /> Open in Canvas Editor
+                  </Button>
                 </h3>
                 <CoverTemplateGallery
                   mode="document"
                   metadata={assignmentMetadata}
+                  onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                   onSelectTemplate={(tid, defaultAccent) => {
                     setAssignmentMetadata((prev) => ({
                       ...prev,
@@ -3232,6 +3284,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </h3>
                 <AssignmentInformationForm
                   metadata={assignmentMetadata}
+                  onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                   onChange={(updated) => {
                     setAssignmentMetadata(updated);
                     setConfig((prev) => ({
@@ -3259,6 +3312,32 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
           </div>
         </div>
       )}
+
+      {/* Native Canva-Like Cover Page Canvas Editor */}
+      <CoverCanvasEditor
+        isOpen={isCanvasEditorOpen}
+        metadata={assignmentMetadata}
+        onClose={() => setIsCanvasEditorOpen(false)}
+        onApply={(updatedMeta) => {
+          setAssignmentMetadata(updatedMeta);
+          setConfig((prev) => ({
+            ...prev,
+            hasCoverPage: true,
+            assignmentMetadata: updatedMeta,
+            docTitle: updatedMeta.assignmentTitle || prev.docTitle,
+            institution: updatedMeta.universityName || prev.institution,
+            authorName:
+              updatedMeta.assignmentType === "individual"
+                ? (updatedMeta.studentName || prev.authorName)
+                : (updatedMeta.groupMembers[0]?.fullName || prev.authorName),
+          }));
+          setIsCanvasEditorOpen(false);
+          setIsEditCoverModalOpen(false);
+          if (step === 1) {
+            goToStep(2);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -3485,6 +3564,17 @@ function A4PageCard({
             {/* If First Body Page, render Document Header */}
             {page.isFirstBodyPage && (
               <div className="mb-6 space-y-2.5">
+                {/* Option B: Group Name placed on top of First Body Page */}
+                {config.assignmentMetadata?.isAssignment &&
+                  config.assignmentMetadata.assignmentType === "group" &&
+                  config.assignmentMetadata.groupName?.trim() &&
+                  config.assignmentMetadata.groupNamePlacement === "first-body-page" && (
+                    <div className="mb-2">
+                      <span className="font-mono text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-600">
+                        Group: {config.assignmentMetadata.groupName}
+                      </span>
+                    </div>
+                  )}
                 {config.institution && (
                   <div className="mb-1.5">
                     <span className="font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-primary/10 text-primary">
@@ -3911,7 +4001,16 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
         let bodyInner = "";
 
         if (page.isFirstBodyPage) {
+          const groupHeaderHtml =
+            config.assignmentMetadata?.isAssignment &&
+            config.assignmentMetadata.assignmentType === "group" &&
+            config.assignmentMetadata.groupName?.trim() &&
+            config.assignmentMetadata.groupNamePlacement === "first-body-page"
+              ? `<div style="display: inline-block; padding: 4px 14px; background-color: #f1f5f9; border: 1.5px solid #0284c7; border-radius: 6px; font-weight: bold; font-size: 11pt; color: #0284c7; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 1px;">Group: ${escapeHtml(config.assignmentMetadata.groupName)}</div>`
+              : "";
+
           bodyInner += `<div style="margin-bottom: 1.6rem;">
+            ${groupHeaderHtml}
             ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 1px; font-size: 9.5pt; color: #0284c7; font-weight: bold; margin-bottom: 6px;">${escapeHtml(config.institution)}</p>` : ""}
             <h1 style="font-size: 1.85rem; font-weight: bold; color: #0f172a; margin-bottom: 0.4rem;">${escapeHtml(config.docTitle)}</h1>
             ${config.docSubtitle ? `<p style="font-size: 1.05rem; color: #64748b; font-style: italic; margin-bottom: 0.6rem;">${escapeHtml(config.docSubtitle)}</p>` : ""}
