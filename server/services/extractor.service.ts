@@ -1,6 +1,7 @@
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { getAdminSettings } from "./adminSettings.service";
+import { cleanAndFormatOcrText } from "../../src/lib/ocr-cleaner";
 
 export interface ExtractionResult {
   text: string;
@@ -13,73 +14,6 @@ export interface ExtractionResult {
   warning?: string;
   ocrEngine?: "gemini-vision" | "tesseract" | "none";
   meta?: Record<string, unknown>;
-}
-
-/**
- * Cleans stray OCR artifacts, icon noise, and punctuation debris from screenshot text.
- */
-function cleanOcrArtifacts(text: string): string {
-  if (!text) return "";
-  const lines = text.split("\n");
-  const cleaned: string[] = [];
-
-  for (let rawLine of lines) {
-    let l = rawLine.trim();
-
-    if (!l) {
-      if (cleaned.length > 0 && cleaned[cleaned.length - 1] !== "") {
-        cleaned.push("");
-      }
-      continue;
-    }
-
-    if (
-      l.length <= 2 &&
-      /^[A-Za-z0-9~_|\^\*\]\)\(\>\<\#\$\@\+\=\-\.\,\;\:\!\?\/\\\{\}]+$/.test(l) &&
-      !/^\d+$/.test(l)
-    ) {
-      continue;
-    }
-
-    if (/^[~_|\^\*\]\)\(\>\<\#\$\@\+\=\-\.\,\;\:\!\?\/\\\{\}\s]{2,}$/.test(l)) {
-      continue;
-    }
-
-    l = l.replace(/^[\~_\*\^\|\>\<#\$@\+\=]+\s*/, "");
-    l = l.replace(/^[\]\)\(\}\s]*\|[\s\]\)]*/, "");
-    l = l.replace(/^[\*_\~\|\s]+/, "");
-    l = l.replace(/^[0-9]\s+(?=[A-Z][a-z])/, "");
-    l = l.replace(/^[JjIil1\)\(\]\[]\s+(?=[A-Z][a-z])/, "");
-    l = l.replace(/^[0-9\)\(\]\[]\s+(?=[a-z])/, "");
-
-    l = l.replace(/\[W\]\$?\s*@?/gi, "");
-    l = l.replace(/^[0-9\(\s]*\(DD\s*/gi, "");
-    l = l.replace(/^[0-9\s]*Leave a comment/i, "Leave a comment");
-    l = l.replace(/\(\s*\)\s*/g, " ");
-    l = l.replace(/\s*#$/g, "");
-
-    if (l.startsWith("[") && !l.includes("]")) {
-      l = l.replace(/^\[\s*/, "");
-    }
-    if (l.endsWith("]") && !l.includes("[")) {
-      l = l.replace(/\s*\]$/, "");
-    }
-
-    const wrappedHeadingMatch = l.match(/^\[\s*([A-Z0-9\s\-\:\!\?]{6,})\s*\]$/);
-    if (wrappedHeadingMatch && wrappedHeadingMatch[1]) {
-      l = wrappedHeadingMatch[1].trim();
-    }
-
-    l = l.replace(/[ \t]{2,}/g, " ").trim();
-
-    if (l) {
-      cleaned.push(l);
-    }
-  }
-
-  let result = cleaned.join("\n");
-  result = result.replace(/(\b[a-zA-Z]{2,})-\n\s*([a-zA-Z]{2,}\b)/g, "$1-$2");
-  return result.trim();
 }
 
 /**
@@ -137,7 +71,8 @@ async function extractTextFromImageBuffer(
         const json = (await res.json()) as any;
         const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text;
         if (candidate && candidate.trim().length > 0) {
-          return { text: candidate.trim(), engine: "gemini-vision" };
+          const cleanedText = cleanAndFormatOcrText(candidate.trim());
+          return { text: cleanedText || candidate.trim(), engine: "gemini-vision" };
         }
       } else {
         console.warn("Gemini Vision OCR returned status:", res.status);
@@ -163,7 +98,7 @@ async function extractTextFromImageBuffer(
     const ret = await worker.recognize(buffer);
     await worker.terminate();
     const rawText = (ret?.data?.text || "").trim();
-    const tesseractText = cleanOcrArtifacts(rawText);
+    const tesseractText = cleanAndFormatOcrText(rawText);
     return { text: tesseractText || rawText, engine: "tesseract" };
   } catch (tErr) {
     console.error("Tesseract OCR fallback failed:", tErr);

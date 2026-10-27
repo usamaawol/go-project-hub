@@ -177,8 +177,8 @@ export async function extractDocumentText(file: File): Promise<{
       await worker.terminate();
       const rawText = (ret?.data?.text || "").trim();
       if (rawText.length > 0) {
-        const { cleanOcrArtifacts } = await import("./ocr-cleaner");
-        const cleanedText = cleanOcrArtifacts(rawText);
+        const { cleanAndFormatOcrText } = await import("./ocr-cleaner");
+        const cleanedText = cleanAndFormatOcrText(rawText);
         const text = cleanedText || rawText;
         return {
           text,

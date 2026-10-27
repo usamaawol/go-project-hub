@@ -1,6 +1,11 @@
-import { Document, Paragraph, TextRun, HeadingLevel, Packer } from "docx";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import {
+  synthesizeDocument,
+  parsePlainTextToBlocks,
+  renderExecutivePdf,
+  renderExecutiveDocx,
+} from "../../src/lib/document-synthesizer";
 import { extractTextFromBuffer } from "./extractor.service";
+import { getBytesFromBlobOrFile } from "../../src/lib/api-client";
 
 export type SupportedFormat = "PDF" | "DOCX" | "DOC" | "TXT";
 
@@ -14,191 +19,31 @@ export interface ConversionResult {
 }
 
 /**
- * Builds a genuine Microsoft Word (.docx) document preserving all original content,
- * paragraphs, numbering, and structure verbatim without alterations.
+ * Builds an executive, publication-grade Microsoft Word (.docx) document preserving all original content,
+ * headings, tables, bullet points, and structure with executive typography.
  */
 export async function buildDocxBuffer(text: string, title?: string): Promise<Buffer> {
-  const children: Paragraph[] = [];
-
-  // Optional Document Title if explicitly requested
-  if (title) {
-    children.push(
-      new Paragraph({
-        text: title,
-        heading: HeadingLevel.HEADING_1,
-        spacing: { before: 240, after: 180 },
-      }),
-    );
-  }
-
-  // Preserve all original paragraphs and lines verbatim without stripping bullets, numbers, or markdown
-  const lines = text.split("\n");
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      children.push(
-        new Paragraph({
-          spacing: { after: 120 },
-          children: [],
-        }),
-      );
-      continue;
-    }
-
-    children.push(
-      new Paragraph({
-        children: [new TextRun({ text: rawLine, size: 22 })], // 11pt
-        spacing: { after: 120 },
-      }),
-    );
-  }
-
-  // Ensure at least one paragraph exists
-  if (children.length === 0) {
-    children.push(
-      new Paragraph({
-        children: [new TextRun({ text: text || "Empty document content.", size: 22 })],
-      }),
-    );
-  }
-
-  const doc = new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: 1440, // 1 inch = 1440 twips
-              right: 1440,
-              bottom: 1440,
-              left: 1440,
-            },
-          },
-        },
-        children,
-      },
-    ],
-  });
-
-  const arrayBuffer = await Packer.toBuffer(doc);
-  return Buffer.from(arrayBuffer);
+  const blocks = parsePlainTextToBlocks(text);
+  const data = await renderExecutiveDocx(blocks, title);
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof Uint8Array) return Buffer.from(data);
+  const bytes = await getBytesFromBlobOrFile(data as any);
+  return Buffer.from(bytes);
 }
 
 /**
- * Wraps text to fit within a given pixel/point width using font measurement.
- */
-function wrapText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-
-    if (testWidth <= maxWidth) {
-      currentLine = testLine;
-    } else {
-      if (currentLine) lines.push(currentLine);
-      currentLine = word;
-    }
-  }
-
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-
-  return lines.length > 0 ? lines : [text];
-}
-
-/**
- * Builds a genuine Adobe PDF document (.pdf) with standard typography, margins, and pagination,
- * preserving all original content verbatim without modifications.
+ * Builds an executive, publication-grade Adobe PDF document (.pdf) with standard typography, margins,
+ * tables, running headers, and pagination preserving all original content with high fidelity.
  */
 export async function buildPdfBuffer(text: string, title?: string): Promise<Buffer> {
-  const pdfDoc = await PDFDocument.create();
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-  // Letter Page standard: 612 x 792 pt
-  const pageWidth = 612;
-  const pageHeight = 792;
-  const margin = 54; // 0.75 in
-  const contentWidth = pageWidth - margin * 2;
-  const lineHeight = 16;
-
-  let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-  let y = pageHeight - margin;
-
-  const addNewPage = () => {
-    currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-    y = pageHeight - margin;
-  };
-
-  // Optional Document Title if explicitly requested
-  if (title) {
-    currentPage.drawText(title, {
-      x: margin,
-      y,
-      size: 18,
-      font: fontBold,
-      color: rgb(0.08, 0.12, 0.2),
-    });
-    y -= 12;
-
-    currentPage.drawLine({
-      start: { x: margin, y },
-      end: { x: pageWidth - margin, y },
-      thickness: 1,
-      color: rgb(0.8, 0.83, 0.88),
-    });
-    y -= 24;
-  }
-
-  // Preserve all original lines verbatim, wrapping lines that exceed width
-  const lines = text.split("\n");
-  for (const rawLine of lines) {
-    if (!rawLine.trim()) {
-      y -= lineHeight * 0.75;
-      if (y < margin) addNewPage();
-      continue;
-    }
-
-    // Sanitize non-WinAnsi characters to prevent pdf-lib encoding errors
-    const sanitizedLine = rawLine
-      .replace(/\t/g, "    ")
-      .split("")
-      .filter((ch) => {
-        try {
-          fontRegular.encodeText(ch);
-          return true;
-        } catch {
-          return false;
-        }
-      })
-      .join("");
-
-    const wrapped = wrapText(sanitizedLine || rawLine, fontRegular, 10.5, contentWidth);
-    for (const line of wrapped) {
-      if (y < margin) addNewPage();
-      currentPage.drawText(line, {
-        x: margin,
-        y,
-        size: 10.5,
-        font: fontRegular,
-        color: rgb(0.12, 0.16, 0.22),
-      });
-      y -= lineHeight;
-    }
-  }
-
-  const pdfBytes = await pdfDoc.save();
+  const blocks = parsePlainTextToBlocks(text);
+  const pdfBytes = await renderExecutivePdf(blocks, title);
   return Buffer.from(pdfBytes);
 }
 
 /**
  * Universal document conversion engine handling bidirectional conversions across PDF, DOCX, DOC, and TXT.
- * Preserves 100% of original content and simply changes the file extension and format.
+ * Preserves 100% of original content, semantic hierarchy, tables, and lists with executive presentation.
  */
 export async function convertDocumentBuffer(
   inputBuffer: Buffer,
@@ -206,59 +51,55 @@ export async function convertDocumentBuffer(
   targetFormat: SupportedFormat,
   originalFilename: string,
 ): Promise<ConversionResult> {
-  const baseName = originalFilename.replace(/\.[^/.]+$/, "");
+  // Extract text layer first (for PDF, TXT, DOC, OCR)
+  let text = "";
+  try {
+    const extraction = await extractTextFromBuffer(inputBuffer, inputMimeOrExt, originalFilename);
+    text = extraction.text.trim();
+  } catch (e) {
+    console.warn("Server buffer text extraction warning:", e);
+  }
 
-  // 1. Extract content and structure with zero data loss
-  const extraction = await extractTextFromBuffer(inputBuffer, inputMimeOrExt, originalFilename);
-  const text = extraction.text.trim();
+  // Check if input is HTML
+  let html: string | undefined = undefined;
+  const sample = inputBuffer.subarray(0, Math.min(inputBuffer.length, 2048)).toString("utf-8");
+  if (/<(!doctype|html|w:worddocument)/i.test(sample)) {
+    html = inputBuffer.toString("utf-8");
+  }
 
-  if (!text) {
-    throw new Error(
-      `Cannot convert "${originalFilename}": no readable text content could be extracted from the file.`,
+  const synthResult = await synthesizeDocument(
+    {
+      bytes: new Uint8Array(inputBuffer),
+      filename: originalFilename,
+      text,
+      html,
+    },
+    targetFormat,
+  );
+
+  let buffer: Buffer;
+  if (Buffer.isBuffer(synthResult.data)) {
+    buffer = synthResult.data;
+  } else if (ArrayBuffer.isView(synthResult.data)) {
+    buffer = Buffer.from(
+      synthResult.data.buffer,
+      synthResult.data.byteOffset,
+      synthResult.data.byteLength,
     );
+  } else if (typeof (synthResult.data as any).arrayBuffer === "function") {
+    const ab = await (synthResult.data as any).arrayBuffer();
+    buffer = Buffer.from(ab);
+  } else {
+    const bytes = await getBytesFromBlobOrFile(synthResult.data as any);
+    buffer = Buffer.from(bytes);
   }
 
-  // 2. Synthesize genuine target format preserving originality of content
-  if (targetFormat === "TXT") {
-    const buffer = Buffer.from(text, "utf-8");
-    return {
-      buffer,
-      mimeType: "text/plain; charset=utf-8",
-      filename: `${baseName}.txt`,
-      sizeBytes: buffer.length,
-      wordCount: extraction.wordCount,
-      previewText: text,
-    };
-  }
-
-  if (targetFormat === "DOCX" || targetFormat === "DOC") {
-    const buffer = await buildDocxBuffer(text);
-    const ext = targetFormat.toLowerCase();
-    const mimeType =
-      ext === "doc"
-        ? "application/msword"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    return {
-      buffer,
-      mimeType,
-      filename: `${baseName}.${ext}`,
-      sizeBytes: buffer.length,
-      wordCount: extraction.wordCount,
-      previewText: text,
-    };
-  }
-
-  if (targetFormat === "PDF") {
-    const buffer = await buildPdfBuffer(text);
-    return {
-      buffer,
-      mimeType: "application/pdf",
-      filename: `${baseName}.pdf`,
-      sizeBytes: buffer.length,
-      wordCount: extraction.wordCount,
-      previewText: text,
-    };
-  }
-
-  throw new Error(`Unsupported target conversion format: ${targetFormat}`);
+  return {
+    buffer,
+    mimeType: synthResult.mimeType,
+    filename: synthResult.filename,
+    sizeBytes: buffer.length,
+    wordCount: synthResult.wordCount,
+    previewText: synthResult.previewText,
+  };
 }

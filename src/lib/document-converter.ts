@@ -1,6 +1,10 @@
-import { Document, Paragraph, TextRun, HeadingLevel, Packer } from "docx";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { extractDocumentText, getBytesFromBlobOrFile } from "./api-client";
+import {
+  synthesizeDocument,
+  parsePlainTextToBlocks,
+  renderExecutivePdf,
+  renderExecutiveDocx,
+} from "./document-synthesizer";
 
 export type ConversionTarget = "PDF" | "DOCX" | "DOC" | "TXT";
 
@@ -27,215 +31,27 @@ function base64ToUint8Array(base64: string): Uint8Array {
 }
 
 /**
- * Generates a genuine Microsoft Word (.docx/.doc) file preserving all original content,
- * paragraphs, numbering, and structure verbatim without alterations.
+ * Generates an executive Microsoft Word (.docx/.doc) file preserving all original content,
+ * headings, tables, bullet points, and structure with publication-grade layout.
  */
-async function generateClientDocx(text: string, title?: string): Promise<Blob> {
-  const children: Paragraph[] = [];
-
-  if (title) {
-    children.push(
-      new Paragraph({
-        text: title,
-        heading: HeadingLevel.HEADING_1,
-        spacing: { before: 240, after: 180 },
-      }),
-    );
-  }
-
-  // Preserve all original paragraphs and lines verbatim without stripping bullets, numbers, or markdown
-  const lines = text.split("\n");
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      children.push(
-        new Paragraph({
-          spacing: { after: 120 },
-          children: [],
-        }),
-      );
-      continue;
-    }
-
-    children.push(
-      new Paragraph({
-        children: [new TextRun({ text: rawLine, size: 22 })], // 11pt
-        spacing: { after: 120 },
-      }),
-    );
-  }
-
-  if (children.length === 0) {
-    children.push(
-      new Paragraph({
-        children: [new TextRun({ text: text || "Empty document.", size: 22 })],
-      }),
-    );
-  }
-
-  const doc = new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1 inch
-          },
-        },
-        children,
-      },
-    ],
-  });
-
-  return await Packer.toBlob(doc);
+export async function generateClientDocx(text: string, title?: string): Promise<Blob> {
+  const blocks = parsePlainTextToBlocks(text);
+  return await renderExecutiveDocx(blocks, title);
 }
 
 /**
- * Cache for font-character compatibility testing to accelerate PDF rendering.
+ * Generates an executive Adobe PDF (.pdf) file in the browser using `pdf-lib`,
+ * preserving all original content, headings, tables, bullet points, and structure with publication-grade layout.
  */
-const pdfCharSupportCache = new Map<string, boolean>();
-
-function sanitizeLineForPdf(line: string, font: any): string {
-  let result = "";
-  const len = line.length;
-  for (let i = 0; i < len; i++) {
-    const ch = line[i]!;
-    if (ch === "\t") {
-      result += "    ";
-      continue;
-    }
-    let supported = pdfCharSupportCache.get(ch);
-    if (supported === undefined) {
-      try {
-        font.encodeText(ch);
-        supported = true;
-      } catch {
-        supported = false;
-      }
-      pdfCharSupportCache.set(ch, supported);
-    }
-    if (supported) {
-      result += ch;
-    } else {
-      result += " ";
-    }
-  }
-  return result;
-}
-
-/**
- * Text wrapping helper for PDF layout calculation.
- */
-function wrapPdfLines(text: string, font: any, fontSize: number, maxWidth: number): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-
-    if (testWidth <= maxWidth) {
-      currentLine = testLine;
-    } else {
-      if (currentLine) lines.push(currentLine);
-      if (font.widthOfTextAtSize(word, fontSize) > maxWidth) {
-        // Chunk overly long continuous words/paths
-        let rem = word;
-        while (rem.length > 0) {
-          let sliceLen = rem.length;
-          while (sliceLen > 1 && font.widthOfTextAtSize(rem.slice(0, sliceLen), fontSize) > maxWidth) {
-            sliceLen--;
-          }
-          lines.push(rem.slice(0, sliceLen));
-          rem = rem.slice(sliceLen);
-        }
-        currentLine = "";
-      } else {
-        currentLine = word;
-      }
-    }
-  }
-
-  if (currentLine) lines.push(currentLine);
-  return lines.length > 0 ? lines : [text];
-}
-
-/**
- * Generates a genuine Adobe PDF (.pdf) file in the browser using `pdf-lib`,
- * preserving all original content, paragraphs, numbering, and structure verbatim without alterations.
- */
-async function generateClientPdf(text: string, title?: string): Promise<Blob> {
-  const pdfDoc = await PDFDocument.create();
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-  const pageWidth = 612; // Letter
-  const pageHeight = 792;
-  const margin = 54;
-  const contentWidth = pageWidth - margin * 2;
-  const lineHeight = 16;
-
-  let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-  let y = pageHeight - margin;
-
-  const addNewPage = () => {
-    currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-    y = pageHeight - margin;
-  };
-
-  if (title) {
-    currentPage.drawText(title, {
-      x: margin,
-      y,
-      size: 18,
-      font: fontBold,
-      color: rgb(0.08, 0.12, 0.2),
-    });
-    y -= 12;
-
-    currentPage.drawLine({
-      start: { x: margin, y },
-      end: { x: pageWidth - margin, y },
-      thickness: 1,
-      color: rgb(0.8, 0.83, 0.88),
-    });
-    y -= 24;
-  }
-
-  // Preserve all original lines verbatim, wrapping lines that exceed width
-  const lines = text.split("\n");
-  for (const rawLine of lines) {
-    if (!rawLine.trim()) {
-      y -= lineHeight * 0.75;
-      if (y < margin) addNewPage();
-      continue;
-    }
-
-    // Sanitize characters to prevent pdf-lib encoding errors
-    const sanitizedLine = sanitizeLineForPdf(rawLine, fontRegular);
-
-    const wrapped = wrapPdfLines(sanitizedLine || rawLine, fontRegular, 10.5, contentWidth);
-    for (const line of wrapped) {
-      if (y < margin) addNewPage();
-      currentPage.drawText(line, {
-        x: margin,
-        y,
-        size: 10.5,
-        font: fontRegular,
-        color: rgb(0.12, 0.16, 0.22),
-      });
-      y -= lineHeight;
-    }
-  }
-
-  const pdfBytes = await pdfDoc.save();
+export async function generateClientPdf(text: string, title?: string): Promise<Blob> {
+  const blocks = parsePlainTextToBlocks(text);
+  const pdfBytes = await renderExecutivePdf(blocks, title);
   return new Blob([pdfBytes as any], { type: "application/pdf" });
 }
 
 /**
  * Converts any document (PDF, DOCX, DOC, TXT) to any target format (PDF, DOCX, DOC, TXT).
- * Tries server endpoint first in browser, with resilient client-side fallback.
- * Guarantees zero data loss, exact preservation of original text, and changes only the file extension.
+ * Uses high-fidelity semantic block synthesis to render publication-grade PDFs and DOCX files.
  */
 export async function convertDocument(
   file: File,
@@ -283,16 +99,22 @@ export async function convertDocument(
     }
   }
 
-  // 2. Client-side fallback engine
-  const extraction = await extractDocumentText(file);
-  let text = extraction.text.trim();
+  // 2. High-fidelity client synthesis engine
+  const bytes = await getBytesFromBlobOrFile(file);
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
 
-  // Resilient secondary check for PDF files
+  // Extract text for fallback or preview
+  let text = "";
+  try {
+    const extraction = await extractDocumentText(file);
+    text = extraction.text.trim();
+  } catch (e) {
+    console.warn("Extraction check error:", e);
+  }
+
   if (!text && (ext === "pdf" || file.type.includes("pdf"))) {
     try {
       const { extractTextFromPdfBytes } = await import("./pdf-extractor");
-      const bytes = await getBytesFromBlobOrFile(file);
       const pdfRes = await extractTextFromPdfBytes(bytes);
       text = pdfRes.text.trim();
     } catch (e) {
@@ -300,11 +122,9 @@ export async function convertDocument(
     }
   }
 
-  // Resilient secondary check for Word / DOC / RTF / HTML files
   if (!text && (ext === "doc" || ext === "docx" || ext === "rtf" || file.type.includes("word") || file.type.includes("msword"))) {
     try {
       const { extractTextFromWordOrDoc } = await import("./doc-extractor");
-      const bytes = await getBytesFromBlobOrFile(file);
       const docRes = await extractTextFromWordOrDoc(bytes, file.name);
       text = docRes.text.trim();
     } catch (e) {
@@ -312,33 +132,30 @@ export async function convertDocument(
     }
   }
 
-  if (!text) {
-    throw new Error(
-      `Could not convert "${file.name}": no readable text was found in the document. Please verify the document contains readable text and is not an empty or password-protected file.`,
-    );
-  }
+  const synthResult = await synthesizeDocument(
+    {
+      bytes,
+      filename: file.name,
+      text,
+    },
+    targetFormat,
+  );
 
   let resultBlob: Blob;
-
-  if (targetFormat === "TXT") {
-    resultBlob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  } else if (targetFormat === "DOCX") {
-    resultBlob = await generateClientDocx(text);
-  } else if (targetFormat === "DOC") {
-    const docxBlob = await generateClientDocx(text);
-    resultBlob = new Blob([docxBlob], { type: "application/msword" });
-  } else if (targetFormat === "PDF") {
-    resultBlob = await generateClientPdf(text);
+  if (ArrayBuffer.isView(synthResult.data)) {
+    resultBlob = new Blob([synthResult.data as any], { type: synthResult.mimeType });
+  } else if (synthResult.data instanceof Blob) {
+    resultBlob = synthResult.data;
   } else {
-    throw new Error(`Unsupported conversion format: ${targetFormat}`);
+    resultBlob = new Blob([synthResult.data as any], { type: synthResult.mimeType });
   }
 
   return {
     blob: resultBlob,
-    filename: outputFilename,
+    filename: synthResult.filename,
     targetFormat,
     sizeBytes: resultBlob.size,
-    wordCount: extraction.wordCount || text.split(/\s+/).filter(Boolean).length,
-    previewText: text,
+    wordCount: synthResult.wordCount,
+    previewText: synthResult.previewText,
   };
 }

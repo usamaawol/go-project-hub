@@ -28,7 +28,11 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
-import { cleanOcrArtifacts, mergeSentenceWraps } from "@/lib/ocr-cleaner";
+import {
+  cleanOcrArtifacts,
+  mergeSentenceWraps,
+  cleanAndFormatOcrText,
+} from "@/lib/ocr-cleaner";
 
 export const Route = createFileRoute("/text-extractor")({
   head: () => ({
@@ -122,8 +126,8 @@ function TextExtractorPage() {
     try {
       const result = await extractDocumentText(file);
       const rawText = result.text || "";
-      // If image OCR, clean stray symbols and icon artifacts automatically
-      const cleaned = isImageFile ? cleanOcrArtifacts(rawText) : rawText;
+      // Clean stray symbols, timestamps, social UI buttons, and format into natural paragraphs automatically
+      const cleaned = isImageFile ? cleanAndFormatOcrText(rawText) : rawText;
       const text = cleaned || rawText;
 
       const wordCount = text.split(/\s+/).filter(Boolean).length;
@@ -156,8 +160,8 @@ function TextExtractorPage() {
         setActiveTab("editor");
       }
 
-      toast.success(isImageFile ? "High-Accuracy OCR Complete!" : "Text Extracted!", {
-        description: `Successfully extracted ${wordCount} words verbatim with OCR noise cleaned.`,
+      toast.success(isImageFile ? "100% Clean Plain Text Extracted!" : "Text Extracted!", {
+        description: `Successfully extracted ${wordCount} words verbatim with all UI noise, timestamps, and symbols removed.`,
       });
 
       // Automatically scroll smoothly to the extracted text viewer
@@ -172,6 +176,20 @@ function TextExtractorPage() {
     } finally {
       setExtracting(false);
     }
+  };
+
+  const handleAutoCleanAll = () => {
+    if (!extractedData) return;
+    const cleaned = cleanAndFormatOcrText(extractedData.text);
+    if (cleaned === extractedData.text) {
+      toast.info("Text is already 100% clean and formatted — no noise detected!");
+      return;
+    }
+    const diff = extractedData.text.length - cleaned.length;
+    handleTextChange(cleaned);
+    toast.success("100% Plain Text Filter Applied!", {
+      description: `Removed approximately ${diff} unnecessary characters, UI debris, and merged paragraphs.`,
+    });
   };
 
   const handleCleanOcrNoise = () => {
@@ -506,12 +524,12 @@ function TextExtractorPage() {
                   {extracting ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>Extracting Clean Text...</span>
+                      <span>Extracting 100% Plain Text...</span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4 text-amber-300 animate-pulse" />
-                      <span>{extractedData ? "Re-Extract & Clean Text" : "Extract Text Now"}</span>
+                      <span>{extractedData ? "Re-Extract 100% Plain Text" : "Extract 100% Plain Text"}</span>
                       <ArrowRight className="h-4 w-4 ml-0.5 opacity-80" />
                     </>
                   )}
@@ -638,22 +656,45 @@ function TextExtractorPage() {
 
                   <button
                     type="button"
-                    onClick={handleCleanOcrNoise}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 transition-all shadow-xs cursor-pointer active:scale-95"
-                    title="Strip unnecessary OCR symbols, brackets, and icon debris"
+                    onClick={handleAutoCleanAll}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 transition-all shadow-xs cursor-pointer active:scale-95"
+                    title="Filter all UI buttons, timestamps, social badges, and flow into clean plain text paragraphs"
                   >
-                    <Eraser className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>Strip OCR Noise & Symbols</span>
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Auto-Clean 100% Plain Text</span>
+                    <span className="rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.2 text-[10px] font-mono">
+                      Active
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCleanOcrNoise}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-2 hover:bg-surface-3 text-foreground border border-border transition-all shadow-xs cursor-pointer active:scale-95"
+                    title="Strip unnecessary OCR symbols, UI buttons, timestamps, and icon debris"
+                  >
+                    <Eraser className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>Strip UI & Noise Debris</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleMergeParagraphs}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 transition-all shadow-xs cursor-pointer active:scale-95"
-                    title="Join wrapped lines into smooth, readable paragraphs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-2 hover:bg-surface-3 text-foreground border border-border transition-all shadow-xs cursor-pointer active:scale-95"
+                    title="Join narrow screenshot line breaks into smooth, flowing paragraphs"
                   >
-                    <AlignLeft className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <AlignLeft className="h-3.5 w-3.5 text-muted-foreground" />
                     <span>Merge Paragraph Lines</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 transition-all shadow-xs cursor-pointer active:scale-95"
+                    title="Copy verified plain text to clipboard"
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span>{copied ? "Copied!" : "Copy Clean Text"}</span>
                   </button>
 
                   {isEdited && (
@@ -777,19 +818,35 @@ function TextExtractorPage() {
 
                     {/* Editable Extracted Text */}
                     <div className="flex flex-col rounded-xl border border-border bg-surface-2/40 p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                          <Edit3 className="h-3.5 w-3.5 text-primary" /> Extracted Text (Editable)
-                        </span>
-                        {isEdited && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <Edit3 className="h-3.5 w-3.5 text-primary" /> Extracted Plain Text (Editable)
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                            <CheckCircle2 className="h-3 w-3" /> 100% Clean Plain Text
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={handleRevert}
-                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                            onClick={handleCopy}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/20 transition-all cursor-pointer"
+                            title="Copy plain text to clipboard"
                           >
-                            <Undo2 className="h-3 w-3" /> Revert
+                            {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                            <span>{copied ? "Copied!" : "Copy"}</span>
                           </button>
-                        )}
+                          {isEdited && (
+                            <button
+                              type="button"
+                              onClick={handleRevert}
+                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                            >
+                              <Undo2 className="h-3 w-3" /> Revert
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <textarea
                         value={extractedData.text}

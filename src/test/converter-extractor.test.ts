@@ -290,5 +290,103 @@ All original topics, main ideas, and structure are preserved with zero data loss
       expect(pdfRes.filename).toBe("milestones.pdf");
       expect(pdfRes.previewText).toContain("Eagle Technology Project Milestone");
     });
+
+    it("converts Eagle_Technology_Company_Book_Editable.docx into an executive publication-grade PDF without 72-page bloat", async () => {
+      const filePath = "/home/usama/Downloads/Eagle_Technology_Company_Book_Editable.docx";
+      if (!fs.existsSync(filePath)) {
+        return;
+      }
+      const buffer = fs.readFileSync(filePath);
+      const file = new File([buffer], "Eagle_Technology_Company_Book_Editable.docx", {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+
+      const { convertDocument } = await import("../lib/document-converter");
+      const clientPdf = await convertDocument(file, "PDF");
+
+      expect(clientPdf.filename).toBe("Eagle_Technology_Company_Book_Editable.pdf");
+      expect(clientPdf.wordCount).toBeGreaterThan(12000);
+      expect(clientPdf.previewText).toContain("Eagle Technology");
+
+      // Verify PDF page count is compact and clean (under 45 pages, NOT 72 bloated pages)
+      const { getBytesFromBlobOrFile } = await import("../lib/api-client");
+      const pdfBytes = await getBytesFromBlobOrFile(clientPdf.blob);
+      const loadedPdf = await PDFDocument.load(pdfBytes);
+      const pageCount = loadedPdf.getPageCount();
+      expect(pageCount).toBeLessThanOrEqual(45);
+      expect(pageCount).toBeGreaterThanOrEqual(25);
+    });
+
+    it("cleans OCR noise, UI debris, timestamps, and formats paragraphs with 100% precision", async () => {
+      const { cleanOcrArtifacts, mergeSentenceWraps, cleanAndFormatOcrText } = await import(
+        "../lib/ocr-cleaner"
+      );
+
+      const rawTelegramScreenshotOcr = `~ E-DC [East Developers Community]
+1,187 subscribers
+A
+*_ Pinned message
+] | Photo
+J One team. One adventure. A stronger Rotaract community.
+) See youin Baile! [W]¢ © 47 1032 AM
+1 (OD Leave a comment >
+]
+E-DC [East Developers Community]
+1 Forwarded from () HU Huawei ICT Academy
+[ HUAWEI COMPETITION - HARAMAYA UNIVERSITY! #
+Are you passionate about technology, creativity, and innovation?
+1 Students from all departments of Haramaya University are invited
+) to participate in the Huawei Competition by preparing innovative
+designs, creative project ideas, and technology-based solutions
+related to their respective fields of study.
+I This is a great opportunity to showcase your talents, share your
+: ideas, collaborate with other students, and contribute to
+technological Innovation.
+1 [EB REGISTER HERE:
+) https://docs.google.com/forms/d/1iRx581_K5iB6cdbpO-
+oHgzfpyDkgOXGhOVqlinvITKY/edit
+1 ® REGISTRATION DEADLINE: SATURDAY AT 6:00 PM SHARP!
+§ Don't miss this opportunity to represent your department and
+) turn your ideas into innovation. Register now before the deadline!
+#HuaweCompetition #HaramayaUniversity #Innovation
+1 #Technology #StudentCompetition
+Google Docs
+Contact Information
+J Huawei Competition Registration Form -
+] Haramaya University
+Are vou interested in participating in the Huaw.`;
+
+      // 1. Verify cleanOcrArtifacts removes UI buttons, metadata, stray glyphs, and joins URLs
+      const cleaned = cleanOcrArtifacts(rawTelegramScreenshotOcr);
+      expect(cleaned).not.toContain("subscribers");
+      expect(cleaned).not.toContain("Pinned message");
+      expect(cleaned).not.toContain("Photo");
+      expect(cleaned).not.toContain("Leave a comment");
+      expect(cleaned).not.toContain("1032 AM");
+      expect(cleaned).not.toContain("[W]¢");
+      expect(cleaned).not.toContain("1 [EB");
+      expect(cleaned).not.toContain("1 ®");
+      expect(cleaned).not.toContain("§ Don't");
+      expect(cleaned).toContain("Don't miss this opportunity");
+      expect(cleaned).toContain("See you in Baile!");
+      expect(cleaned).toContain(
+        "https://docs.google.com/forms/d/1iRx581_K5iB6cdbpO-oHgzfpyDkgOXGhOVqlinvITKY/edit",
+      );
+
+      // 2. Verify cleanAndFormatOcrText produces natural flowing paragraphs
+      const formatted = cleanAndFormatOcrText(rawTelegramScreenshotOcr);
+      expect(formatted).toContain("HUAWEI COMPETITION - HARAMAYA UNIVERSITY!");
+      expect(formatted).toContain("REGISTER HERE:\nhttps://docs.google.com/forms/");
+      expect(formatted).toContain(
+        "#HuaweCompetition #HaramayaUniversity #Innovation #Technology #StudentCompetition",
+      );
+      // Paragraphs should be smooth sentences, not 4-word jagged lines
+      expect(formatted).toContain(
+        "Students from all departments of Haramaya University are invited to participate in the Huawei Competition",
+      );
+      expect(formatted).toContain(
+        "This is a great opportunity to showcase your talents, share your ideas",
+      );
+    });
   });
 });

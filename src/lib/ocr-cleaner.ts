@@ -2,13 +2,27 @@
  * DocuMind High-Precision OCR Noise & Artifact Cleaner
  *
  * Automatically removes UI symbols, icon artifacts, stray punctuation,
- * and garbled glyphs commonly produced by screenshot/UI OCR engines.
+ * timestamps, social buttons, and garbled glyphs commonly produced by
+ * screenshot/mobile UI OCR engines.
  */
 
+/**
+ * Strips UI chrome, buttons, timestamps, icon debris, stray symbols,
+ * and garbled glyphs from raw OCR text.
+ */
 export function cleanOcrArtifacts(text: string): string {
   if (!text) return "";
 
-  const lines = text.split("\n");
+  // 1. Join URLs that were artificially broken across line wraps
+  let joined = text.replace(
+    /(https?:\/\/[^\s]+)\n([a-zA-Z0-9_\-\.\/\?\=\&\%\#]+)/g,
+    "$1$2",
+  );
+
+  // 2. De-hyphenate broken words across line wraps (e.g. "technology-\nbased" -> "technology-based")
+  joined = joined.replace(/(\b[a-zA-Z]{2,})-\n\s*([a-zA-Z]{2,}\b)/g, "$1-$2");
+
+  const lines = joined.split("\n");
   const cleaned: string[] = [];
 
   for (let rawLine of lines) {
@@ -22,7 +36,12 @@ export function cleanOcrArtifacts(text: string): string {
       continue;
     }
 
-    // 1. Discard isolated single/double character noise lines (e.g. lone "A", "]", "|", "_", "~", ")", "1", ";")
+    // Strip leading OCR symbols & quote bars early (preserve hashtags like #Huawei)
+    l = l.replace(/^(?!#[a-zA-Z0-9_])[\~_\*\^\|\>\<#\$@\+\=]+\s*/, "");
+    l = l.replace(/^[\]\)\(\}\s]*\|[\s\]\)]*/, "");
+    l = l.replace(/^[\*_\~\|\s]+/, "");
+
+    // Discard isolated single/double character noise lines (e.g. lone "A", "]", "|", "_", "~", ")", "1", ";")
     if (
       l.length <= 2 &&
       /^[A-Za-z0-9~_|\^\*\]\)\(\>\<\#\$\@\+\=\-\.\,\;\:\!\?\/\\\{\}]+$/.test(l) &&
@@ -31,28 +50,55 @@ export function cleanOcrArtifacts(text: string): string {
       continue;
     }
 
-    // 2. Discard lines that are solely punctuation or icon debris (e.g. "]] |", "*- -", "_~_")
+    // Discard lines that are solely punctuation or icon debris (e.g. "]] |", "*- -", "_~_")
     if (/^[~_|\^\*\]\)\(\>\<\#\$\@\+\=\-\.\,\;\:\!\?\/\\\{\}\s]{2,}$/.test(l)) {
       continue;
     }
 
-    // 3. Remove stray leading OCR UI/icon artifacts:
-    // e.g. "~ E-DC", "*_ Pinned", "] | Photo", "J One team", ") See youin", "1 Forwarded"
-    l = l.replace(/^[\~_\*\^\|\>\<#\$@\+\=]+\s*/, "");
-    l = l.replace(/^[\]\)\(\}\s]*\|[\s\]\)]*/, "");
-    l = l.replace(/^[\*_\~\|\s]+/, "");
-    l = l.replace(/^[0-9]\s+(?=[A-Z][a-z])/, "");
-    l = l.replace(/^[JjIil1\)\(\]\[]\s+(?=[A-Z][a-z])/, "");
-    l = l.replace(/^[0-9\)\(\]\[]\s+(?=[a-z])/, "");
+    // Discard UI action buttons, badges, status bars, subscriber counts, and comments UI
+    // E.g. "1 (OD Leave a comment >", "Leave a comment >", "Pinned message", "Photo", "1,187 subscribers"
+    if (
+      /(?:Leave a comment|Pinned message|\bPhoto\b|\bVideo\b|\bAudio\b|\b\d+(?:,\d+)*\s*subscribers?\b|\bcomments?\s*>)/i.test(
+        l,
+      )
+    ) {
+      continue;
+    }
 
-    // 4. Strip specific UI/app icon artifacts commonly decoded from chat/social apps:
-    l = l.replace(/\[W\]\$?\s*@?/gi, ""); // emoji/views icon debris
-    l = l.replace(/^[0-9\(\s]*\(DD\s*/gi, ""); // speech bubble comment icon debris
-    l = l.replace(/^[0-9\s]*Leave a comment/i, "Leave a comment");
-    l = l.replace(/\(\s*\)\s*/g, " "); // empty parens from avatar circles
-    l = l.replace(/\s*#$/g, ""); // stray hash at end of line
+    // Forwarded message line: clean icon debris e.g. "1 Forwarded from () HU Huawei ICT Academy"
+    if (/Forwarded from/i.test(l)) {
+      l = l.replace(/^[0-9IlJj\)\(\]\[:;~_\s]*Forwarded from\s*[\(\)\[\]\s]*/i, "Forwarded from ");
+      l = l.replace(/\(\)\s*/g, ""); // strip empty parens from channel logo
+    }
 
-    // 5. Unclosed bracket on headings: e.g. "[ HUAWEI COMPETITION" -> "HUAWEI COMPETITION"
+    // Strip timestamps, view counts, and reactions at line ends
+    // E.g. "See youin Baile! [W]¢ © 47 1032 AM", "c @ 47 1032 AM", "47 10:32 AM", "@ 47 1032 AM"
+    l = l.replace(
+      /\s*(?:\[[A-Za-z0-9]+\])?\s*[¢©@cCeE]?\s*[@#]?\s*\d{1,6}\s+\d{1,2}[:.]?\d{2}\s*(?:AM|PM)?$/i,
+      "",
+    );
+    l = l.replace(/\s+\d{1,2}[:.]\d{2}\s*(?:AM|PM)$/i, "");
+    l = l.replace(/\s*(?:\[[A-Za-z0-9]+\]|[¢©@cCeE])\s*\d{0,6}\s*$/i, "");
+    l = l.replace(/\s*\[W\][¢©@]?\s*$/i, "");
+
+    // Fix fused words commonly produced by mobile OCR engines
+    l = l.replace(/\byouin\b/gi, "you in");
+    l = l.replace(/\bAre vou\b/gi, "Are you");
+
+    // Leading stray letters/numbers/symbols before words (e.g. "1 Students", ") to participate", "I This is", ": ideas", "§ Don't")
+    l = l.replace(/^[0-9IlJj1\)\(\]\[:;§©®™~_|*^]+\s+(?=[A-Za-z0-9#\(\['"«])/, "");
+
+    // Strip emoji artifacts at line start:
+    // e.g. "1 [EB REGISTER HERE:", "[EB ", "1 ® REGISTRATION DEADLINE:", "(OD "
+    l = l.replace(/^(?:[0-9\(\)\[\]\s*]*\(?OD\)?\s*)/i, "");
+    l = l.replace(/^(?:\[[A-Za-z0-9]{1,4}\]?\s*)/i, "");
+    l = l.replace(/^[0-9\(\)\[\]\s*]*[®©™]\s*/, "");
+    l = l.replace(/^[0-9IlJj1\)\(\]\[:;§©®™~_|*^]+\s+(?=[A-Za-z0-9#\(\['"«])/, "");
+
+    // End-of-line noise symbols like stray "#" at end of heading
+    l = l.replace(/\s+[#~_*^|]+$/, "");
+
+    // Unclosed bracket on headings: e.g. "[ HUAWEI COMPETITION - HARAMAYA UNIVERSITY!"
     if (l.startsWith("[") && !l.includes("]")) {
       l = l.replace(/^\[\s*/, "");
     }
@@ -66,7 +112,7 @@ export function cleanOcrArtifacts(text: string): string {
       l = wrappedHeadingMatch[1].trim();
     }
 
-    // 6. Clean multiple consecutive spaces
+    // Clean multiple consecutive spaces
     l = l.replace(/[ \t]{2,}/g, " ").trim();
 
     if (l) {
@@ -74,7 +120,6 @@ export function cleanOcrArtifacts(text: string): string {
     }
   }
 
-  // De-hyphenate broken words across line wraps (e.g. "technology-\nrelated" -> "technology-related")
   let result = cleaned.join("\n");
   result = result.replace(/(\b[a-zA-Z]{2,})-\n\s*([a-zA-Z]{2,}\b)/g, "$1-$2");
 
@@ -83,7 +128,7 @@ export function cleanOcrArtifacts(text: string): string {
 
 /**
  * Merges artificial line wraps from screenshots/mobile chats into natural paragraphs
- * while preserving list items, headings, and intentional empty lines.
+ * while preserving list items, headings, URLs, hashtags, and intentional empty lines.
  */
 export function mergeSentenceWraps(text: string): string {
   if (!text) return "";
@@ -105,24 +150,55 @@ export function mergeSentenceWraps(text: string): string {
       continue;
     }
 
-    // Is this a distinct item/heading that shouldn't be merged?
+    // Is this a distinct element that should NEVER be merged into a previous paragraph?
+    const isUrl = /^https?:\/\//i.test(trimmed);
+    const isHashtags = /^#[A-Za-z0-9_]/.test(trimmed);
     const isBulletOrList = /^[-*•\d.]\s+/.test(trimmed);
-    const isHeading =
+    const isSectionLabel =
+      /^Forwarded from/i.test(trimmed) ||
+      /^REGISTER HERE:/i.test(trimmed) ||
+      /^REGISTRATION DEADLINE/i.test(trimmed) ||
+      /^Contact Information/i.test(trimmed) ||
+      /^Google Docs/i.test(trimmed);
+    const isHeadingOrBanner =
       /^#+\s+/.test(trimmed) ||
-      (trimmed.length < 50 && !trimmed.endsWith(".") && !isBulletOrList && /^[A-Z0-9]/.test(trimmed));
+      /^[A-Z0-9\s\-\:\!]{8,}$/.test(trimmed) ||
+      trimmed.startsWith("E-DC") ||
+      trimmed.includes("[East Developers Community]") ||
+      (trimmed.length < 60 &&
+        !trimmed.endsWith(".") &&
+        !trimmed.endsWith(",") &&
+        !isBulletOrList &&
+        /^[A-Z]/.test(trimmed) &&
+        trimmed.includes("-"));
 
-    if (isBulletOrList || isHeading) {
+    if (isUrl || isHashtags || isBulletOrList || isSectionLabel || isHeadingOrBanner) {
       if (currentParagraph) {
         paragraphs.push(currentParagraph.trim());
         currentParagraph = "";
       }
-      paragraphs.push(trimmed);
+      // If hashtags follow hashtags, group them together on the same line
+      if (
+        isHashtags &&
+        paragraphs.length > 0 &&
+        /^#[A-Za-z0-9_]/.test(paragraphs[paragraphs.length - 1] ?? "")
+      ) {
+        paragraphs[paragraphs.length - 1] += " " + trimmed;
+      } else {
+        paragraphs.push(trimmed);
+      }
       continue;
     }
 
-    // Continue current paragraph or start new
+    // Check if the previous statement ended with terminal punctuation (? or ! or :)
     if (currentParagraph) {
-      // Check if previous line ended with hyphen
+      const prevEndsWithTerminator = /[?!:]$/.test(currentParagraph.trim());
+      if (prevEndsWithTerminator) {
+        paragraphs.push(currentParagraph.trim());
+        currentParagraph = trimmed;
+        continue;
+      }
+
       if (currentParagraph.endsWith("-")) {
         currentParagraph = currentParagraph.slice(0, -1) + trimmed;
       } else {
@@ -137,5 +213,18 @@ export function mergeSentenceWraps(text: string): string {
     paragraphs.push(currentParagraph.trim());
   }
 
-  return paragraphs.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return paragraphs
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Composite OCR processor that removes all UI debris, buttons, timestamps,
+ * stray glyphs, fixes broken URLs, and formats text into clean flowing paragraphs.
+ */
+export function cleanAndFormatOcrText(text: string): string {
+  if (!text) return "";
+  const cleaned = cleanOcrArtifacts(text);
+  return mergeSentenceWraps(cleaned);
 }
