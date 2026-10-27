@@ -1694,6 +1694,37 @@ export function DocumentFormattingWorkflow({
             </div>
           )}
 
+          {/* Quick Canva Cover Editor Launch Banner for Standard Documents */}
+          {!assignmentMode && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-primary/5 to-transparent border border-emerald-500/30 shadow-paper">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Wand2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    Cover Page Design Editor & Templates
+                    <span className="text-[10px] font-mono text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">
+                      50+ Templates & Logo Upload
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Choose from 50+ templates across Business, Academic, Research & Modern styles. Upload your university or business logo and customize in our Canva-like canvas.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={() => setIsCanvasEditorOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 px-4 gap-1.5 font-semibold shrink-0 shadow-xs"
+              >
+                <Wand2 className="h-3.5 w-3.5" /> Launch Canvas Editor
+              </Button>
+            </div>
+          )}
+
           <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
             {/* Input Mode Selector */}
             <div className="flex items-center justify-between border-b border-border pb-4 mb-5">
@@ -2006,17 +2037,34 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
       {/* ============================================================== */}
       {step === 2 && (
         <div className="space-y-6">
-          {/* Academic Cover Page Template Picker in Assignment Mode */}
-          {assignmentMode && (
+          {/* Cover Page Template Picker (Available for both Assignment Mode & Standard Documents with Cover Page) */}
+          {(assignmentMode || config.hasCoverPage) && (
             <div className="rounded-2xl border border-border bg-card p-6 shadow-paper">
-              <div className="flex items-center gap-2 border-b border-border pb-3 mb-4">
-                <GraduationCap className="h-4 w-4 text-primary" />
-                <h2 className="font-serif text-base font-bold text-foreground">
-                  Academic Cover Page Template
-                </h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  {assignmentMode ? (
+                    <GraduationCap className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 text-emerald-600" />
+                  )}
+                  <h2 className="font-serif text-base font-bold text-foreground">
+                    {assignmentMode
+                      ? "Academic Cover Page Template (50+ Layouts)"
+                      : "Document Cover Page Templates & Design Studio (50+ Layouts)"}
+                  </h2>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  onClick={() => setIsCanvasEditorOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 px-3.5 gap-1.5 font-semibold shadow-xs"
+                >
+                  <Wand2 className="h-3.5 w-3.5" /> Customize in Canvas Editor
+                </Button>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Choose from 50+ distinct professional cover-page designs across 8 categories. Each template applies distinct framing, typography, and metadata layouts formatted specifically for A4 document pages.
+                Choose from 50+ distinct professional cover-page designs across 8 categories (Academic, Modern, Formal, Research, Business, Minimalist, Geometric, Creative). Upload institutional crests, university logos, or company branding and position elements freely on the canvas.
               </p>
               <CoverTemplateGallery
                 mode="document"
@@ -2030,6 +2078,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                   }));
                   setConfig((prev) => ({
                     ...prev,
+                    hasCoverPage: true,
                     assignmentMetadata: {
                       ...assignmentMetadata,
                       coverTemplateId: templateId,
@@ -2168,9 +2217,18 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                   </div>
                 ) : config.hasCoverPage ? (
                   <div className="space-y-3.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setIsCanvasEditorOpen(true)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold text-xs py-2 shadow-xs"
+                    >
+                      <Wand2 className="h-3.5 w-3.5" /> Customize in Canva Editor (50+ Templates & Logo)
+                    </Button>
+
                     <div>
                       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        Cover Page Style
+                        Quick Layout Presets
                       </label>
                       <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
                         {[
@@ -2719,13 +2777,16 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
 
             <div className="flex flex-wrap items-center gap-2">
               <Button
-                variant="glass"
+                variant="default"
                 size="sm"
                 onClick={() => setIsCanvasEditorOpen(true)}
-                className="text-xs text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 gap-1.5 font-semibold"
+                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-bold shadow-xs px-3.5"
                 title="Open Canva-like cover page design editor"
               >
                 <Wand2 className="h-3.5 w-3.5" /> Customize Cover
+                <span className="rounded-full bg-emerald-800/90 px-1.5 py-0.5 text-[9px] font-mono tracking-tight text-emerald-100">
+                  50+ Templates & Logo
+                </span>
               </Button>
               {assignmentMode && (
                 <Button
@@ -2752,6 +2813,30 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 <Download className="h-3.5 w-3.5" /> Download Editable (.DOC)
               </Button>
             </div>
+          </div>
+
+          {/* Cover Customization Notification Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-emerald-500/10 via-primary/5 to-transparent border border-emerald-500/30">
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Wand2 className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-foreground">
+                  Want to change the cover template or add your University / Business logo?
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Click <strong className="text-emerald-600 font-semibold">Customize Cover</strong> above to browse 50+ templates across 8 categories, upload any logo, drag/resize elements on our Canva-like canvas, and click <strong className="text-foreground">Adjust & Apply</strong>.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsCanvasEditorOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 px-3.5 gap-1.5 font-semibold shrink-0 shadow-xs"
+            >
+              <Wand2 className="h-3.5 w-3.5" /> Launch Canvas Editor
+            </Button>
           </div>
 
           {/* Preview Viewport Switcher & Multi-Page A4 Canvas */}

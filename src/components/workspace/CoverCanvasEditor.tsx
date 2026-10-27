@@ -1025,29 +1025,98 @@ export function CoverCanvasEditor({
                   Logo & Image Upload
                 </h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Upload university seals, department emblems, or company logos (PNG, JPG, WebP up to 5MB).
+                  Upload your university seal, college emblem, department crest, or business logo (PNG, SVG, JPG up to 5MB).
                 </p>
               </div>
 
               <div
                 onClick={() => logoInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-primary/60 rounded-xl p-5 text-center cursor-pointer transition-colors bg-slate-950/60"
+                className="border-2 border-dashed border-emerald-500/50 hover:border-emerald-400 rounded-xl p-5 text-center cursor-pointer transition-colors bg-emerald-950/20 group"
               >
-                <Upload className="h-6 w-6 text-primary mx-auto mb-2" />
-                <p className="text-xs font-medium text-slate-200">
-                  Click to upload emblem or logo
+                <div className="h-10 w-10 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-2 text-emerald-400 group-hover:scale-110 transition-transform">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <p className="text-xs font-bold text-slate-100">
+                  Click to upload University or Business Logo
                 </p>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Transparency preserved • No distortion
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Supports PNG, SVG, JPG • Background transparency preserved
                 </p>
               </div>
               <input
                 ref={logoInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
                 onChange={handleUploadImage}
                 className="hidden"
               />
+
+              <div className="pt-2 border-t border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  Quick Sample Logos (1-Click Insert)
+                </span>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const svgUri = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="%231E3A8A" stroke="%23F59E0B" stroke-width="4"/><polygon points="50,18 78,78 22,78" fill="none" stroke="%23FFFFFF" stroke-width="3"/><text x="50" y="62" font-family="serif" font-size="28" font-weight="bold" fill="%23F59E0B" text-anchor="middle">U</text></svg>`;
+                      const newId = `sample-uni-${Date.now()}`;
+                      const maxZ = Math.max(...elements.map((e) => e.zIndex), 1) + 1;
+                      const newEl: CanvasCoverElement = {
+                        id: newId,
+                        type: "image",
+                        name: "University Crest",
+                        x: pageW / 2 - 50,
+                        y: 75,
+                        width: 100,
+                        height: 100,
+                        imageUrl: svgUri,
+                        imageFit: "contain",
+                        zIndex: maxZ,
+                      };
+                      pushState([...elements, newEl]);
+                      setSelectedId(newId);
+                      toast.success("University Crest added to canvas");
+                    }}
+                    className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 flex flex-col items-center gap-1.5 transition-all text-xs group"
+                  >
+                    <div className="h-8 w-8 rounded-full bg-blue-900 border-2 border-amber-500 flex items-center justify-center font-serif text-amber-400 font-bold text-xs">
+                      U
+                    </div>
+                    <span className="text-[10px] text-slate-300 font-medium">University Crest</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const svgUri = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><rect width="120" height="40" rx="8" fill="%230F172A"/><text x="60" y="26" font-family="sans-serif" font-size="16" font-weight="900" fill="%2310B981" letter-spacing="2" text-anchor="middle">CORP</text></svg>`;
+                      const newId = `sample-corp-${Date.now()}`;
+                      const maxZ = Math.max(...elements.map((e) => e.zIndex), 1) + 1;
+                      const newEl: CanvasCoverElement = {
+                        id: newId,
+                        type: "image",
+                        name: "Business Logo",
+                        x: pageW / 2 - 60,
+                        y: 80,
+                        width: 120,
+                        height: 40,
+                        imageUrl: svgUri,
+                        imageFit: "contain",
+                        zIndex: maxZ,
+                      };
+                      pushState([...elements, newEl]);
+                      setSelectedId(newId);
+                      toast.success("Corporate Logo added to canvas");
+                    }}
+                    className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 flex flex-col items-center gap-1.5 transition-all text-xs group"
+                  >
+                    <div className="h-8 w-14 rounded bg-slate-800 border border-emerald-500 flex items-center justify-center font-sans text-emerald-400 font-black text-[9px] tracking-wider">
+                      CORP
+                    </div>
+                    <span className="text-[10px] text-slate-300 font-medium">Business Logo</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
