@@ -36,12 +36,13 @@ export interface CanvasCoverElement {
   letterSpacing?: number;
   isMetadataField?: keyof AssignmentMetadata | "groupMembersList" | "instructorBlock" | "institutionBlock";
   // Shape properties
-  shapeType?: "rectangle" | "rounded-card" | "circle" | "accent-bar" | "badge-pill" | "ribbon";
+  shapeType?: "rectangle" | "rounded-card" | "circle" | "accent-bar" | "badge-pill" | "ribbon" | "polygon" | "svg";
   fillColor?: string;
   borderColor?: string;
   borderWidth?: number;
   borderRadius?: number;
   opacity?: number;
+  svgContent?: string;
   // Image / Logo properties
   imageUrl?: string;
   imageFit?: "contain" | "cover";

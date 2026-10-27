@@ -361,12 +361,81 @@ export function CoverCanvasEditor({
     toast.success("Text block added to canvas");
   };
 
-  const handleAddShape = (shapeType: "rectangle" | "rounded-card" | "circle" | "accent-bar" | "divider") => {
+  const handleAddShape = (
+    shapeType: "rectangle" | "rounded-card" | "circle" | "accent-bar" | "divider" | "wedge" | "chevron" | "dots" | "stripe",
+  ) => {
     const newId = `shape-${Date.now()}`;
     const maxZ = Math.max(...elements.map((e) => e.zIndex), 1) + 1;
     let newEl: CanvasCoverElement;
 
-    if (shapeType === "divider") {
+    const accent = currentTemplate.defaultAccent || "#1B365D";
+
+    if (shapeType === "wedge") {
+      newEl = {
+        id: newId,
+        type: "shape",
+        name: "Geometric Corner Wedge",
+        shapeType: "svg",
+        x: pageW - 160,
+        y: 0,
+        width: 160,
+        height: 160,
+        fillColor: accent,
+        svgContent: `<svg viewBox="0 0 160 160" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 160,0 160,160 0,0" fill="${accent}"/></svg>`,
+        zIndex: maxZ,
+      };
+    } else if (shapeType === "chevron") {
+      newEl = {
+        id: newId,
+        type: "shape",
+        name: "Geometric Chevron",
+        shapeType: "svg",
+        x: pageW - 100,
+        y: pageH / 2 - 80,
+        width: 100,
+        height: 160,
+        fillColor: accent,
+        svgContent: `<svg viewBox="0 0 100 160" width="100%" height="100%" preserveAspectRatio="none"><polygon points="100,0 100,160 0,160 60,80" fill="${accent}"/></svg>`,
+        zIndex: maxZ,
+      };
+    } else if (shapeType === "dots") {
+      newEl = {
+        id: newId,
+        type: "shape",
+        name: "Dot Matrix Grid",
+        shapeType: "svg",
+        x: pageW - 70,
+        y: 80,
+        width: 32,
+        height: 80,
+        fillColor: "#3B82F6",
+        svgContent: `<svg viewBox="0 0 32 80" width="100%" height="100%">
+          <circle cx="8" cy="10" r="3" fill="#3B82F6" opacity="0.8"/>
+          <circle cx="24" cy="10" r="3" fill="#3B82F6" opacity="0.8"/>
+          <circle cx="8" cy="30" r="3" fill="#3B82F6" opacity="0.8"/>
+          <circle cx="24" cy="30" r="3" fill="#3B82F6" opacity="0.8"/>
+          <circle cx="8" cy="50" r="3" fill="#3B82F6" opacity="0.8"/>
+          <circle cx="24" cy="50" r="3" fill="#3B82F6" opacity="0.8"/>
+          <circle cx="8" cy="70" r="3" fill="#3B82F6" opacity="0.8"/>
+          <circle cx="24" cy="70" r="3" fill="#3B82F6" opacity="0.8"/>
+        </svg>`,
+        zIndex: maxZ,
+      };
+    } else if (shapeType === "stripe") {
+      newEl = {
+        id: newId,
+        type: "shape",
+        name: "Diagonal Speed Stripe",
+        shapeType: "svg",
+        x: 0,
+        y: 0,
+        width: 220,
+        height: 110,
+        fillColor: "#F59E0B",
+        svgContent: `<svg viewBox="0 0 220 110" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 220,0 110,110 0,110" fill="#F59E0B"/></svg>`,
+        zIndex: maxZ,
+      };
+    } else if (shapeType === "divider") {
       newEl = {
         id: newId,
         type: "divider",
@@ -376,7 +445,7 @@ export function CoverCanvasEditor({
         y: pageH / 2,
         width: 240,
         height: 2,
-        fillColor: currentTemplate.defaultAccent || "#2563EB",
+        fillColor: accent,
         zIndex: maxZ,
       };
     } else if (shapeType === "circle") {
@@ -389,8 +458,8 @@ export function CoverCanvasEditor({
         y: pageH / 2 - 45,
         width: 90,
         height: 90,
-        fillColor: `${currentTemplate.defaultAccent || "#2563EB"}22`,
-        borderColor: currentTemplate.defaultAccent || "#2563EB",
+        fillColor: `${accent}22`,
+        borderColor: accent,
         borderWidth: 2,
         borderRadius: 45,
         zIndex: maxZ,
@@ -405,7 +474,7 @@ export function CoverCanvasEditor({
         y: pageH / 2 - 80,
         width: 6,
         height: 160,
-        fillColor: currentTemplate.defaultAccent || "#2563EB",
+        fillColor: accent,
         borderRadius: 3,
         zIndex: maxZ,
       };
@@ -980,11 +1049,42 @@ export function CoverCanvasEditor({
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => handleAddShape("rounded-card")}
+                  onClick={() => handleAddShape("wedge")}
                   className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
                 >
-                  <div className="h-8 w-12 rounded border-2 border-primary bg-primary/10" />
-                  <span className="text-[11px] text-slate-300">Card Frame</span>
+                  <div className="h-8 w-8 bg-primary rounded-xs [clip-path:polygon(0_0,100%_0,100%_100%)]" />
+                  <span className="text-[11px] text-slate-300">Corner Wedge</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleAddShape("chevron")}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
+                >
+                  <div className="h-8 w-6 bg-primary rounded-xs [clip-path:polygon(100%_0,100%_100%,0_100%,60%_50%)]" />
+                  <span className="text-[11px] text-slate-300">Edge Chevron</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleAddShape("dots")}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
+                >
+                  <div className="flex gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                  </div>
+                  <span className="text-[11px] text-slate-300">Dot Grid Matrix</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleAddShape("stripe")}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
+                >
+                  <div className="h-6 w-12 bg-amber-500 rounded-xs [clip-path:polygon(0_0,100%_0,60%_100%,0_100%)]" />
+                  <span className="text-[11px] text-slate-300">Diagonal Stripe</span>
                 </button>
 
                 <button
@@ -1012,6 +1112,15 @@ export function CoverCanvasEditor({
                 >
                   <div className="h-8 w-8 rounded-full border-2 border-primary bg-primary/10" />
                   <span className="text-[11px] text-slate-300">Circle Frame</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleAddShape("rounded-card")}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
+                >
+                  <div className="h-8 w-12 rounded border-2 border-primary bg-primary/10" />
+                  <span className="text-[11px] text-slate-300">Card Frame</span>
                 </button>
               </div>
             </div>
@@ -1268,23 +1377,35 @@ export function CoverCanvasEditor({
 
                     {/* 2. SHAPE ELEMENT */}
                     {el.type === "shape" && (
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          backgroundColor: el.fillColor || "transparent",
-                          borderColor: el.borderColor || "transparent",
-                          borderWidth: el.borderWidth ? `${el.borderWidth}px` : 0,
-                          borderStyle: el.borderWidth ? "solid" : "none",
-                          borderRadius:
-                            el.shapeType === "circle"
-                              ? "50%"
-                              : el.borderRadius
-                                ? `${el.borderRadius}px`
-                                : 0,
-                          opacity: el.opacity ?? 1,
-                        }}
-                      />
+                      el.svgContent ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            opacity: el.opacity ?? 1,
+                            pointerEvents: "none",
+                          }}
+                          dangerouslySetInnerHTML={{ __html: el.svgContent }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            backgroundColor: el.fillColor || "transparent",
+                            borderColor: el.borderColor || "transparent",
+                            borderWidth: el.borderWidth ? `${el.borderWidth}px` : 0,
+                            borderStyle: el.borderWidth ? "solid" : "none",
+                            borderRadius:
+                              el.shapeType === "circle"
+                                ? "50%"
+                                : el.borderRadius
+                                  ? `${el.borderRadius}px`
+                                  : 0,
+                            opacity: el.opacity ?? 1,
+                          }}
+                        />
+                      )
                     )}
 
                     {/* 3. DIVIDER ELEMENT */}

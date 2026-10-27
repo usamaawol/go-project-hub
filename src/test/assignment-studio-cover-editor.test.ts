@@ -282,5 +282,62 @@ describe("DocuMind Document Studio 50+ Cover Templates & Native Editor Verificat
       expect(movedBadge?.x).toBe(220);
       expect(movedBadge?.y).toBe(300);
     });
+
+    it("generates authentic Canva Blue & Yellow Minimalist Modern Proposal matching user specification", () => {
+      const template = getCoverTemplateById("canva-modern-proposal");
+      expect(template).toBeDefined();
+      expect(template.name).toContain("Blue & Yellow Minimalist Modern Proposal");
+      expect(template.category).toBe("Modern");
+
+      const meta: AssignmentMetadata = {
+        ...getDefaultAssignmentMetadata(),
+        assignmentTitle: "PROJECT PROPOSAL",
+        studentName: "Benjamin Shah",
+        universityName: "Studio Shodwe",
+        academicYear: "2026",
+      };
+
+      const elements = generateDefaultCoverElements(template, meta);
+
+      // Check pure white background (no ugly green or clumsy card containers)
+      const bg = elements.find((e) => e.id === "canvas-bg");
+      expect(bg?.fillColor).toBe("#FFFFFF");
+
+      // Check geometric SVG polygons: wedges, chevrons, dot matrix
+      const trNavy = elements.find((e) => e.id === "canva-tr-navy");
+      expect(trNavy).toBeDefined();
+      expect(trNavy?.svgContent).toContain("polygon");
+
+      const trYellow = elements.find((e) => e.id === "canva-tr-yellow");
+      expect(trYellow).toBeDefined();
+
+      const dots = elements.find((e) => e.id === "canva-tr-dots");
+      expect(dots).toBeDefined();
+      expect(dots?.svgContent).toContain("circle");
+
+      const brChevron = elements.find((e) => e.id === "canva-br-navy");
+      expect(brChevron).toBeDefined();
+
+      const tlNavy = elements.find((e) => e.id === "canva-tl-navy");
+      expect(tlNavy).toBeDefined();
+
+      // Check bold typography elements
+      const yearEl = elements.find((e) => e.id === "canva-title-year");
+      expect(yearEl?.text).toBe("2026");
+
+      const titleEl = elements.find((e) => e.id === "canva-title-main");
+      expect(titleEl?.text).toBe("PROJECT PROPOSAL");
+
+      const authorEl = elements.find((e) => e.id === "canva-meta-name");
+      expect(authorEl?.text).toBe("Benjamin Shah");
+
+      // Verify elements can be freely repositioned (e.g. moving top-right shapes to bottom, left, or right)
+      const repositioned = elements.map((e) =>
+        e.id === "canva-tr-navy" ? { ...e, x: 20, y: 800 } : e,
+      );
+      const movedWedge = repositioned.find((e) => e.id === "canva-tr-navy");
+      expect(movedWedge?.x).toBe(20);
+      expect(movedWedge?.y).toBe(800);
+    });
   });
 });

@@ -9,7 +9,7 @@
 import React from "react";
 import type { AssignmentMetadata } from "@/lib/assignment-types";
 import { COVER_TEMPLATES, getDefaultAssignmentMetadata } from "@/lib/assignment-types";
-import { getCoverTemplateById } from "@/lib/cover-templates-registry";
+import { getCoverTemplateById, generateDefaultCoverElements } from "@/lib/cover-templates-registry";
 import { GraduationCap, Users, User, Calendar, BookOpen, Building, Award } from "lucide-react";
 
 interface AssignmentCoverRendererProps {
@@ -66,6 +66,133 @@ export function AssignmentCoverRenderer({
 
   // Base font sizing helper based on thumbnail vs presentation vs document
   const scale = isThumbnail ? 0.38 : aspectRatio === "16:9" ? 0.95 : 1.0;
+
+  // Priority 1: If custom cover elements exist OR if it's a Canva template archetype
+  const hasCustomElements = Boolean(safeMeta.customCoverElements && safeMeta.customCoverElements.length > 0);
+  const isCanvaTemplate = templateId.startsWith("canva-");
+
+  if (hasCustomElements || isCanvaTemplate) {
+    const rawElements = hasCustomElements
+      ? safeMeta.customCoverElements!
+      : generateDefaultCoverElements(getCoverTemplateById(templateId), safeMeta);
+
+    const sorted = [...rawElements].sort((a, b) => a.zIndex - b.zIndex);
+
+    return (
+      <div
+        className={`bg-white text-slate-900 select-none ${className}`}
+        style={{ ...containerStyle, position: "relative", width: "100%", height: "100%", overflow: "hidden" }}
+      >
+        {sorted.map((el) => {
+          const leftPct = (el.x / 794) * 100;
+          const topPct = (el.y / 1123) * 100;
+          const widthPct = (el.width / 794) * 100;
+          const heightPct = (el.height / 1123) * 100;
+
+          return (
+            <div
+              key={el.id}
+              style={{
+                position: "absolute",
+                left: `${leftPct}%`,
+                top: `${topPct}%`,
+                width: `${widthPct}%`,
+                height: `${heightPct}%`,
+                zIndex: el.zIndex,
+                transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                overflow: "hidden",
+                boxSizing: "border-box",
+              }}
+            >
+              {el.type === "text" && (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    fontFamily: el.fontFamily,
+                    fontSize: `${(el.fontSize || 14) * scale}px`,
+                    fontWeight: el.fontWeight || "normal",
+                    fontStyle: el.fontStyle || "normal",
+                    textAlign: el.textAlign || "left",
+                    color: el.textColor || "#0F172A",
+                    textTransform: el.textTransform || "none",
+                    letterSpacing: el.letterSpacing ? `${el.letterSpacing * scale}px` : undefined,
+                    lineHeight: el.lineHeight || 1.25,
+                    backgroundColor: el.fillColor || "transparent",
+                    borderRadius: el.borderRadius ? `${el.borderRadius}px` : undefined,
+                    padding: el.fillColor ? "2px 6px" : undefined,
+                    boxSizing: "border-box",
+                    wordBreak: "break-word",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent:
+                      el.textAlign === "center"
+                        ? "center"
+                        : el.textAlign === "right"
+                          ? "flex-end"
+                          : "flex-start",
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  {el.text}
+                </div>
+              )}
+
+              {el.type === "shape" && (
+                el.svgContent ? (
+                  <div
+                    style={{ width: "100%", height: "100%", opacity: el.opacity ?? 1 }}
+                    dangerouslySetInnerHTML={{ __html: el.svgContent }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      backgroundColor: el.fillColor || "transparent",
+                      borderColor: el.borderColor || "transparent",
+                      borderWidth: el.borderWidth ? `${el.borderWidth}px` : 0,
+                      borderStyle: el.borderWidth ? "solid" : "none",
+                      borderRadius:
+                        el.shapeType === "circle"
+                          ? "50%"
+                          : el.borderRadius
+                            ? `${el.borderRadius}px`
+                            : 0,
+                      opacity: el.opacity ?? 1,
+                    }}
+                  />
+                )
+              )}
+
+              {el.type === "divider" && (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    backgroundColor: el.fillColor || "#CBD5E1",
+                  }}
+                />
+              )}
+
+              {el.type === "image" && el.imageUrl && (
+                <img
+                  src={el.imageUrl}
+                  alt={el.name || "Cover Image"}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: el.imageFit || "contain",
+                    opacity: el.opacity ?? 1,
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   // Render individual template layouts
   switch (templateId) {

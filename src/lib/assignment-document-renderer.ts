@@ -6,7 +6,7 @@
 
 import type { AssignmentMetadata } from "./assignment-types";
 import { getDefaultAssignmentMetadata } from "./assignment-types";
-import { getCoverTemplateById } from "./cover-templates-registry";
+import { getCoverTemplateById, generateDefaultCoverElements } from "./cover-templates-registry";
 
 function escapeHtml(str: string): string {
   if (!str) return "";
@@ -23,6 +23,46 @@ export function generateAssignmentCoverHtml(metadata?: AssignmentMetadata | null
   const templateId = safeMeta.coverTemplateId || "classic-university";
   const accent = safeMeta.accentColor || "#1E3A8A";
   const isGroup = safeMeta.assignmentType === "group";
+
+  // Priority 1: If custom cover elements exist OR if it's a Canva template archetype
+  const hasCustomElements = Boolean(safeMeta.customCoverElements && safeMeta.customCoverElements.length > 0);
+  const isCanvaTemplate = templateId.startsWith("canva-");
+
+  if (hasCustomElements || isCanvaTemplate) {
+    const rawElements = hasCustomElements
+      ? safeMeta.customCoverElements!
+      : generateDefaultCoverElements(getCoverTemplateById(templateId), safeMeta);
+
+    const sorted = [...rawElements].sort((a, b) => a.zIndex - b.zIndex);
+
+    const innerHtml = sorted
+      .map((el) => {
+        const leftPct = (el.x / 794) * 100;
+        const topPct = (el.y / 1123) * 100;
+        const widthPct = (el.width / 794) * 100;
+        const heightPct = (el.height / 1123) * 100;
+
+        let elBody = "";
+        if (el.type === "text") {
+          elBody = `<div style="width: 100%; height: 100%; font-family: ${el.fontFamily || 'sans-serif'}; font-size: ${el.fontSize || 14}px; font-weight: ${el.fontWeight || 'normal'}; color: ${el.textColor || '#0F172A'}; text-align: ${el.textAlign || 'left'}; line-height: ${el.lineHeight || 1.25}; letter-spacing: ${el.letterSpacing ? el.letterSpacing + 'px' : 'normal'}; display: flex; align-items: center; justify-content: ${el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start'}; white-space: pre-line;">${escapeHtml(el.text || '')}</div>`;
+        } else if (el.type === "shape") {
+          if (el.svgContent) {
+            elBody = `<div style="width: 100%; height: 100%; opacity: ${el.opacity ?? 1};">${el.svgContent}</div>`;
+          } else {
+            elBody = `<div style="width: 100%; height: 100%; background-color: ${el.fillColor || 'transparent'}; border: ${el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor || 'transparent'}` : 'none'}; border-radius: ${el.shapeType === 'circle' ? '50%' : (el.borderRadius ? `${el.borderRadius}px` : '0')}; opacity: ${el.opacity ?? 1};"></div>`;
+          }
+        } else if (el.type === "divider") {
+          elBody = `<div style="width: 100%; height: 100%; background-color: ${el.fillColor || '#CBD5E1'};"></div>`;
+        } else if (el.type === "image" && el.imageUrl) {
+          elBody = `<img src="${el.imageUrl}" alt="${escapeHtml(el.name || 'Logo')}" style="width: 100%; height: 100%; object-fit: ${el.imageFit || 'contain'}; opacity: ${el.opacity ?? 1};" />`;
+        }
+
+        return `<div style="position: absolute; left: ${leftPct.toFixed(2)}%; top: ${topPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; height: ${heightPct.toFixed(2)}%; z-index: ${el.zIndex}; overflow: hidden; box-sizing: border-box;">${elBody}</div>`;
+      })
+      .join("\n");
+
+    return `<div style="position: relative; width: 100%; height: 100%; min-height: 270mm; background: #FFFFFF; overflow: hidden; box-sizing: border-box;">${innerHtml}</div>`;
+  }
 
   const title = escapeHtml(
     safeMeta.assignmentTitle?.trim() ||

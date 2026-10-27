@@ -49,6 +49,10 @@ export function generateDefaultCoverElements(
   pageW: number = CANVAS_A4_WIDTH,
   pageH: number = CANVAS_A4_HEIGHT,
 ): CanvasCoverElement[] {
+  if (template.generateElements) {
+    return template.generateElements(meta, pageW, pageH);
+  }
+
   const elements: CanvasCoverElement[] = [];
   let zIndex = 1;
 
@@ -453,29 +457,13 @@ export function generateDefaultCoverElements(
       });
     });
   } else {
-    // Individual Student Section
-    elements.push({
-      id: "card-student-box",
-      type: "shape",
-      name: "Student Info Card",
-      shapeType: "rounded-card",
-      x: univAlign === "left" ? 64 : pageW / 2 - 160,
-      y: studentStartY,
-      width: univAlign === "left" ? 340 : 320,
-      height: 84,
-      fillColor: "#F8FAFC",
-      borderColor: "#E2E8F0",
-      borderWidth: 1,
-      borderRadius: 8,
-      zIndex: zIndex++,
-    });
-
+    // Individual Student Section (Clean Typography, No Clunky Boxes)
     elements.push({
       id: "text-submitted-by-label",
       type: "text",
       name: "Submitted By Label",
-      x: univAlign === "left" ? 80 : pageW / 2 - 140,
-      y: studentStartY + 10,
+      x: univAlign === "left" ? 64 : pageW / 2 - 140,
+      y: studentStartY,
       width: 280,
       height: 18,
       text: "SUBMITTED BY",
@@ -493,13 +481,13 @@ export function generateDefaultCoverElements(
       id: "text-student-name",
       type: "text",
       name: "Student Full Name",
-      x: univAlign === "left" ? 80 : pageW / 2 - 140,
-      y: studentStartY + 30,
+      x: univAlign === "left" ? 64 : pageW / 2 - 140,
+      y: studentStartY + 20,
       width: 280,
-      height: 24,
+      height: 26,
       text: meta.studentName?.trim() || "Student Full Name",
       fontFamily: font,
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: "700",
       textAlign: univAlign,
       textColor: "#0F172A",
@@ -507,23 +495,25 @@ export function generateDefaultCoverElements(
       zIndex: zIndex++,
     });
 
-    elements.push({
-      id: "text-student-id",
-      type: "text",
-      name: "Student ID",
-      x: univAlign === "left" ? 80 : pageW / 2 - 140,
-      y: studentStartY + 54,
-      width: 280,
-      height: 20,
-      text: `ID: ${meta.studentId?.trim() || "Student ID"}`,
-      fontFamily: "monospace",
-      fontSize: 11,
-      fontWeight: "600",
-      textAlign: univAlign,
-      textColor: secondary,
-      isMetadataField: "studentId",
-      zIndex: zIndex++,
-    });
+    if (meta.studentId?.trim()) {
+      elements.push({
+        id: "text-student-id",
+        type: "text",
+        name: "Student ID",
+        x: univAlign === "left" ? 64 : pageW / 2 - 140,
+        y: studentStartY + 48,
+        width: 280,
+        height: 20,
+        text: `ID: ${meta.studentId.trim()}`,
+        fontFamily: "monospace",
+        fontSize: 11,
+        fontWeight: "600",
+        textAlign: univAlign,
+        textColor: secondary,
+        isMetadataField: "studentId",
+        zIndex: zIndex++,
+      });
+    }
   }
 
   // Footer Metadata Block (Instructor, Academic Year, Date)
@@ -579,9 +569,1024 @@ export function generateDefaultCoverElements(
 }
 
 // -------------------------------------------------------------
-// Scalable Registry of 52+ Distinct Cover Templates
+// CANVA ARCHETYPE GENERATORS (Direct Canva Design Fidelity)
+// -------------------------------------------------------------
+
+export function generateCanvaBlueYellowProposal(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+
+  const navy = meta.accentColor || "#1B365D";
+  const yellow = "#F59E0B";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Group Project Team")
+    : (meta.studentName || "Benjamin Shah");
+
+  const institution = meta.universityName || meta.department || "Studio Shodwe";
+  const title = meta.assignmentTitle || (isGroup ? "PROJECT PROPOSAL" : "PROJECT PROPOSAL");
+  const course = meta.courseName || meta.courseCode || "";
+  const studentId = meta.studentId || "";
+
+  // 1. Crisp White Background
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    borderColor: "transparent",
+    borderWidth: 0,
+    zIndex: zIndex++,
+  });
+
+  // 2. Top-Left Corner Wedges
+  elements.push({
+    id: "canva-tl-navy",
+    type: "shape",
+    name: "Top-Left Navy Triangle",
+    shapeType: "svg",
+    x: 0,
+    y: 0,
+    width: 90,
+    height: 90,
+    fillColor: navy,
+    svgContent: `<svg viewBox="0 0 90 90" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 90,0 0,90" fill="${navy}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "canva-tl-yellow",
+    type: "shape",
+    name: "Top-Left Yellow Accent",
+    shapeType: "svg",
+    x: 0,
+    y: 0,
+    width: 55,
+    height: 55,
+    fillColor: yellow,
+    svgContent: `<svg viewBox="0 0 55 55" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 55,0 0,55" fill="${yellow}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 3. Top-Right Big Navy Polygon & Yellow Underlay
+  elements.push({
+    id: "canva-tr-yellow",
+    type: "shape",
+    name: "Top-Right Yellow Stripe Angle",
+    shapeType: "svg",
+    x: pageW - 270,
+    y: 0,
+    width: 270,
+    height: 270,
+    fillColor: yellow,
+    svgContent: `<svg viewBox="0 0 270 270" width="100%" height="100%" preserveAspectRatio="none"><polygon points="60,0 270,0 270,270 0,0" fill="${yellow}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "canva-tr-navy",
+    type: "shape",
+    name: "Top-Right Navy Wedge Polygon",
+    shapeType: "svg",
+    x: pageW - 240,
+    y: 0,
+    width: 240,
+    height: 240,
+    fillColor: navy,
+    svgContent: `<svg viewBox="0 0 240 240" width="100%" height="100%" preserveAspectRatio="none"><polygon points="50,0 240,0 240,240 0,0" fill="${navy}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 4. Top-Right Dot Matrix Grid
+  elements.push({
+    id: "canva-tr-dots",
+    type: "shape",
+    name: "Top-Right Dot Grid Matrix",
+    shapeType: "svg",
+    x: pageW - 65,
+    y: 90,
+    width: 32,
+    height: 90,
+    fillColor: "#60A5FA",
+    svgContent: `<svg viewBox="0 0 32 90" width="100%" height="100%">
+      <circle cx="8" cy="10" r="3" fill="#60A5FA" opacity="0.85"/>
+      <circle cx="24" cy="10" r="3" fill="#60A5FA" opacity="0.85"/>
+      <circle cx="8" cy="32" r="3" fill="#60A5FA" opacity="0.85"/>
+      <circle cx="24" cy="32" r="3" fill="#60A5FA" opacity="0.85"/>
+      <circle cx="8" cy="54" r="3" fill="#60A5FA" opacity="0.85"/>
+      <circle cx="24" cy="54" r="3" fill="#60A5FA" opacity="0.85"/>
+      <circle cx="8" cy="76" r="3" fill="#60A5FA" opacity="0.85"/>
+      <circle cx="24" cy="76" r="3" fill="#60A5FA" opacity="0.85"/>
+    </svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 5. Bottom-Right Chevron Layered Angle
+  elements.push({
+    id: "canva-br-yellow",
+    type: "shape",
+    name: "Bottom-Right Yellow Chevron Stripe",
+    shapeType: "svg",
+    x: pageW - 150,
+    y: pageH - 280,
+    width: 150,
+    height: 280,
+    fillColor: yellow,
+    svgContent: `<svg viewBox="0 0 150 280" width="100%" height="100%" preserveAspectRatio="none"><polygon points="150,0 150,280 0,280 95,140" fill="${yellow}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "canva-br-navy",
+    type: "shape",
+    name: "Bottom-Right Navy Chevron",
+    shapeType: "svg",
+    x: pageW - 120,
+    y: pageH - 230,
+    width: 120,
+    height: 230,
+    fillColor: navy,
+    svgContent: `<svg viewBox="0 0 120 230" width="100%" height="100%" preserveAspectRatio="none"><polygon points="120,0 120,230 0,230 75,115" fill="${navy}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 6. Bottom-Left Navy Corner Wedge
+  elements.push({
+    id: "canva-bl-navy",
+    type: "shape",
+    name: "Bottom-Left Navy Corner",
+    shapeType: "svg",
+    x: 0,
+    y: pageH - 85,
+    width: 85,
+    height: 85,
+    fillColor: navy,
+    svgContent: `<svg viewBox="0 0 85 85" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 0,85 85,85" fill="${navy}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 7. Brand / Studio / University Header
+  if (meta.logoDataUrl) {
+    elements.push({
+      id: "cover-logo",
+      type: "image",
+      name: "Institutional / Company Logo",
+      x: 100,
+      y: 140,
+      width: 140,
+      height: 55,
+      imageUrl: meta.logoDataUrl,
+      imageFit: "contain",
+      zIndex: zIndex++,
+    });
+  } else {
+    elements.push({
+      id: "canva-brand-dot",
+      type: "shape",
+      name: "Yellow Accent Dot",
+      shapeType: "circle",
+      x: 100,
+      y: 160,
+      width: 14,
+      height: 14,
+      fillColor: yellow,
+      borderRadius: 7,
+      zIndex: zIndex++,
+    });
+
+    elements.push({
+      id: "canva-brand-name",
+      type: "text",
+      name: "Company / Studio / University Name",
+      x: 124,
+      y: 156,
+      width: 340,
+      height: 22,
+      text: institution,
+      fontFamily: "Inter, Montserrat, sans-serif",
+      fontSize: 13,
+      fontWeight: "700",
+      textColor: navy,
+      zIndex: zIndex++,
+    });
+  }
+
+  // 8. Main Proposal Title
+  elements.push({
+    id: "canva-title-year",
+    type: "text",
+    name: "Year / Category Lead",
+    x: 100,
+    y: 235,
+    width: 480,
+    height: 52,
+    text: meta.academicYear || "2026",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 48,
+    fontWeight: "800",
+    textColor: navy,
+    letterSpacing: -1,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "canva-title-main",
+    type: "text",
+    name: "Main Title Heading",
+    x: 100,
+    y: 285,
+    width: 480,
+    height: 120,
+    text: title || "PROJECT PROPOSAL",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 46,
+    fontWeight: "800",
+    textColor: navy,
+    textTransform: "uppercase",
+    lineHeight: 1.05,
+    letterSpacing: -1,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  // 9. Prepared By / Author Metadata
+  elements.push({
+    id: "canva-meta-label",
+    type: "text",
+    name: "Prepared By Label",
+    x: 100,
+    y: 445,
+    width: 360,
+    height: 20,
+    text: "Prepared by :",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 13,
+    fontWeight: "500",
+    textColor: "#64748B",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "canva-meta-name",
+    type: "text",
+    name: "Author / Student Name",
+    x: 100,
+    y: 470,
+    width: 360,
+    height: 30,
+    text: author,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 18,
+    fontWeight: "700",
+    textColor: navy,
+    isMetadataField: "studentName",
+    zIndex: zIndex++,
+  });
+
+  if (course || studentId) {
+    elements.push({
+      id: "canva-meta-course",
+      type: "text",
+      name: "Course / Student ID",
+      x: 100,
+      y: 505,
+      width: 360,
+      height: 24,
+      text: [course, studentId].filter(Boolean).join(" · "),
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#64748B",
+      zIndex: zIndex++,
+    });
+  }
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "canva-meta-instructor",
+      type: "text",
+      name: "Instructor Name",
+      x: 100,
+      y: 535,
+      width: 360,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#64748B",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  // 10. Footer Contact & Institutional Coordinates
+  elements.push({
+    id: "canva-footer-contact",
+    type: "text",
+    name: "Footer Coordinates / Links",
+    x: 100,
+    y: pageH - 180,
+    width: 360,
+    height: 50,
+    text: "📞 +123-456-7890\n🌐 www.reallygreatsite.com",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 11,
+    fontWeight: "500",
+    textColor: "#475569",
+    lineHeight: 1.6,
+    zIndex: zIndex++,
+  });
+
+  return elements;
+}
+
+export function generateCanvaDiagonalStripes(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const blue = meta.accentColor || "#2563EB";
+  const yellow = "#F59E0B";
+
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    zIndex: zIndex++,
+  });
+
+  // Top-Left Speed Bands
+  elements.push({
+    id: "stripes-tl-blue",
+    type: "shape",
+    name: "Top Diagonal Band",
+    shapeType: "svg",
+    x: 0,
+    y: 0,
+    width: 260,
+    height: 140,
+    fillColor: blue,
+    svgContent: `<svg viewBox="0 0 260 140" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 260,0 120,140 0,140" fill="${blue}"/></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "stripes-tl-yellow",
+    type: "shape",
+    name: "Top Yellow Pinstripe",
+    shapeType: "svg",
+    x: 10,
+    y: 145,
+    width: 220,
+    height: 16,
+    fillColor: yellow,
+    svgContent: `<svg viewBox="0 0 220 16" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 220,0 200,16 0,16" fill="${yellow}"/></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "stripes-dots",
+    type: "shape",
+    name: "Dot Cluster",
+    shapeType: "svg",
+    x: 40,
+    y: 175,
+    width: 60,
+    height: 24,
+    fillColor: blue,
+    svgContent: `<svg viewBox="0 0 60 24" width="100%" height="100%">
+      <circle cx="8" cy="8" r="3.5" fill="${blue}"/>
+      <circle cx="24" cy="8" r="3.5" fill="${blue}"/>
+      <circle cx="40" cy="8" r="3.5" fill="${blue}"/>
+    </svg>`,
+    zIndex: zIndex++,
+  });
+
+  // Main Title
+  elements.push({
+    id: "stripes-title",
+    type: "text",
+    name: "Document Title",
+    x: 80,
+    y: 360,
+    width: pageW - 160,
+    height: 90,
+    text: meta.assignmentTitle || "ANNUAL BUSINESS REPORT",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 42,
+    fontWeight: "800",
+    textColor: "#0F172A",
+    textTransform: "uppercase",
+    lineHeight: 1.1,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "stripes-author",
+    type: "text",
+    name: "Author Name",
+    x: 80,
+    y: 470,
+    width: 400,
+    height: 28,
+    text: meta.studentName || "Lead Researcher",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 16,
+    fontWeight: "700",
+    textColor: blue,
+    isMetadataField: "studentName",
+    zIndex: zIndex++,
+  });
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "stripes-instructor",
+      type: "text",
+      name: "Instructor Name",
+      x: 80,
+      y: 505,
+      width: 400,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#64748B",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  return elements;
+}
+
+export function generateCanvaCoralArchitectural(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const coral = "#F87171";
+
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    zIndex: zIndex++,
+  });
+
+  // Intersecting Coral and Slate Frames
+  elements.push({
+    id: "coral-frame-1",
+    type: "shape",
+    name: "Coral Architectural Frame",
+    shapeType: "rectangle",
+    x: 80,
+    y: 120,
+    width: 240,
+    height: 480,
+    fillColor: "transparent",
+    borderColor: coral,
+    borderWidth: 2,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "coral-frame-2",
+    type: "shape",
+    name: "Offset Inner Frame",
+    shapeType: "rectangle",
+    x: 120,
+    y: 160,
+    width: 240,
+    height: 480,
+    fillColor: "transparent",
+    borderColor: "#0F172A",
+    borderWidth: 1.5,
+    opacity: 0.35,
+    zIndex: zIndex++,
+  });
+
+  // Clean Editorial Typography
+  elements.push({
+    id: "coral-title",
+    type: "text",
+    name: "Editorial Title",
+    x: 100,
+    y: 700,
+    width: pageW - 200,
+    height: 80,
+    text: meta.assignmentTitle || "ARCHITECTURAL PORTFOLIO",
+    fontFamily: "'Playfair Display', Georgia, serif",
+    fontSize: 36,
+    fontWeight: "700",
+    textColor: "#0F172A",
+    textTransform: "uppercase",
+    letterSpacing: 2,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  if (meta.studentName) {
+    elements.push({
+      id: "coral-author",
+      type: "text",
+      name: "Author Name",
+      x: 100,
+      y: 790,
+      width: 400,
+      height: 24,
+      text: meta.studentName,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 14,
+      fontWeight: "600",
+      textColor: coral,
+      isMetadataField: "studentName",
+      zIndex: zIndex++,
+    });
+  }
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "coral-instructor",
+      type: "text",
+      name: "Instructor Name",
+      x: 100,
+      y: 820,
+      width: 400,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#64748B",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  return elements;
+}
+
+export function generateCanvaGoldWave(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const gold = "#D97706";
+
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    zIndex: zIndex++,
+  });
+
+  // Flowing Gold Fluid Waves at Top-Right
+  elements.push({
+    id: "gold-wave-top",
+    type: "shape",
+    name: "Gold Fluid Ribbon",
+    shapeType: "svg",
+    x: pageW - 320,
+    y: 0,
+    width: 320,
+    height: 260,
+    fillColor: gold,
+    svgContent: `<svg viewBox="0 0 320 260" width="100%" height="100%" preserveAspectRatio="none">
+      <path d="M 0 0 C 140 40, 220 160, 320 240 L 320 0 Z" fill="${gold}"/>
+      <path d="M 40 0 C 160 50, 240 190, 320 260 L 320 0 Z" fill="#FBBF24" opacity="0.6"/>
+    </svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "gold-title",
+    type: "text",
+    name: "Luxury Title",
+    x: 80,
+    y: 380,
+    width: pageW - 160,
+    height: 80,
+    text: meta.assignmentTitle || "EXECUTIVE STRATEGY REVIEW",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 38,
+    fontWeight: "800",
+    textColor: "#0F172A",
+    textTransform: "uppercase",
+    letterSpacing: -0.5,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  if (meta.studentName) {
+    elements.push({
+      id: "gold-author",
+      type: "text",
+      name: "Author Name",
+      x: 80,
+      y: 470,
+      width: 400,
+      height: 26,
+      text: meta.studentName,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 16,
+      fontWeight: "700",
+      textColor: gold,
+      isMetadataField: "studentName",
+      zIndex: zIndex++,
+    });
+  }
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "gold-instructor",
+      type: "text",
+      name: "Instructor Name",
+      x: 80,
+      y: 505,
+      width: 400,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#64748B",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  return elements;
+}
+
+export function generateCanvaOceanFluid(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    zIndex: zIndex++,
+  });
+
+  // Layered Ocean Waves (Adora Montminy style)
+  elements.push({
+    id: "ocean-waves",
+    type: "shape",
+    name: "Ocean Fluid Curves",
+    shapeType: "svg",
+    x: pageW - 280,
+    y: 0,
+    width: 280,
+    height: 340,
+    fillColor: "#0284C7",
+    svgContent: `<svg viewBox="0 0 280 340" width="100%" height="100%" preserveAspectRatio="none">
+      <path d="M 0 0 C 120 80, 200 180, 280 320 L 280 0 Z" fill="#0C4A6E" />
+      <path d="M 40 0 C 140 100, 220 210, 280 340 L 280 0 Z" fill="#0284C7" opacity="0.8" />
+    </svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "ocean-label",
+    type: "text",
+    name: "Brand Lead",
+    x: 80,
+    y: 120,
+    width: 300,
+    height: 30,
+    text: meta.universityName || "ADORA MONTMINT",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 14,
+    fontWeight: "700",
+    textColor: "#0C4A6E",
+    textTransform: "uppercase",
+    letterSpacing: 3,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "ocean-title",
+    type: "text",
+    name: "Main Title",
+    x: 80,
+    y: 700,
+    width: pageW - 160,
+    height: 80,
+    text: meta.assignmentTitle || "PORTFOLIO",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 52,
+    fontWeight: "900",
+    textColor: "#0C4A6E",
+    textTransform: "uppercase",
+    letterSpacing: 2,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  if (meta.studentName) {
+    elements.push({
+      id: "ocean-author",
+      type: "text",
+      name: "Author Name",
+      x: 80,
+      y: 790,
+      width: 400,
+      height: 26,
+      text: meta.studentName,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 16,
+      fontWeight: "700",
+      textColor: "#0284C7",
+      isMetadataField: "studentName",
+      zIndex: zIndex++,
+    });
+  }
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "ocean-instructor",
+      type: "text",
+      name: "Instructor Name",
+      x: 80,
+      y: 825,
+      width: 400,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#64748B",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  return elements;
+}
+
+export function generateCanvaWarmEditorial(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "warm-banner",
+    type: "shape",
+    name: "Warm Sand Split Banner",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: 320,
+    fillColor: "#F5F0EB",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "warm-brand",
+    type: "text",
+    name: "Studio / Company Lead",
+    x: 60,
+    y: 80,
+    width: pageW - 120,
+    height: 30,
+    text: (meta.universityName || "Keithston and Partners").toUpperCase(),
+    fontFamily: "Georgia, serif",
+    fontSize: 15,
+    fontWeight: "700",
+    textAlign: "center",
+    textColor: "#1E293B",
+    letterSpacing: 2,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "warm-title",
+    type: "text",
+    name: "Editorial Title",
+    x: 60,
+    y: 440,
+    width: pageW - 120,
+    height: 80,
+    text: meta.assignmentTitle || "ANNUAL CONSULTANCY DOSSIER",
+    fontFamily: "Georgia, serif",
+    fontSize: 32,
+    fontWeight: "700",
+    textAlign: "center",
+    textColor: "#0F172A",
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  if (meta.studentName) {
+    elements.push({
+      id: "warm-author",
+      type: "text",
+      name: "Author Name",
+      x: 60,
+      y: 530,
+      width: pageW - 120,
+      height: 28,
+      text: meta.studentName,
+      fontFamily: "Georgia, serif",
+      fontSize: 16,
+      fontWeight: "700",
+      textAlign: "center",
+      textColor: "#475569",
+      isMetadataField: "studentName",
+      zIndex: zIndex++,
+    });
+  }
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "warm-instructor",
+      type: "text",
+      name: "Instructor Name",
+      x: 60,
+      y: 565,
+      width: pageW - 120,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Georgia, serif",
+      fontSize: 13,
+      fontWeight: "500",
+      textAlign: "center",
+      textColor: "#64748B",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  return elements;
+}
+
+// -------------------------------------------------------------
+// Scalable Registry of 60+ Distinct Cover Templates
 // -------------------------------------------------------------
 export const COVER_TEMPLATES_REGISTRY: ExtendedCoverTemplateDefinition[] = [
+  // -----------------------------------------------------------
+  // 0. CANVA PREMIER ARCHETYPES (Directly matching Canva Studio)
+  // -----------------------------------------------------------
+  {
+    id: "canva-modern-proposal",
+    name: "Blue & Yellow Minimalist Modern Proposal",
+    tagline: "Canva Flagship Geometric Proposal",
+    description: "Iconic Canva layout featuring sharp deep navy and vibrant yellow corner polygons, layered edge chevrons, dot matrix grid, and bold modern sans-serif typography.",
+    category: "Modern",
+    defaultAccent: "#1B365D",
+    secondaryColor: "#F59E0B",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Proposal", "Modern", "Geometric", "Minimalist"],
+    generateElements: generateCanvaBlueYellowProposal,
+  },
+  {
+    id: "canva-diagonal-stripes",
+    name: "Modern Diagonal Tech Stripes",
+    tagline: "Dynamic Angular Slices & Dot Accents",
+    description: "Cobalt and amber angular speed stripes slicing across top and bottom with dot matrix clusters on clean white paper.",
+    category: "Modern",
+    defaultAccent: "#2563EB",
+    secondaryColor: "#F59E0B",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Tech", "Stripes", "Dynamic"],
+    generateElements: generateCanvaDiagonalStripes,
+  },
+  {
+    id: "canva-coral-architectural",
+    name: "Minimal Coral Architectural",
+    tagline: "Offset Minimalist Line Frame",
+    description: "Clean white background with intersecting terracotta/coral fine rectangular lines and bold modern editorial typography.",
+    category: "Minimalist",
+    defaultAccent: "#F87171",
+    secondaryColor: "#1E293B",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "'Playfair Display', Georgia, serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Architectural", "Coral", "Editorial"],
+    generateElements: generateCanvaCoralArchitectural,
+  },
+  {
+    id: "canva-gold-wave",
+    name: "Luxury Gold Fluid Waves",
+    tagline: "Organic Flowing Metallic Ribbons",
+    description: "Flowing metallic gold wave curve ribbons sweeping dynamically from top corner on crisp white editorial layout.",
+    category: "Creative",
+    defaultAccent: "#D97706",
+    secondaryColor: "#FBBF24",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Gold", "Waves", "Fluid", "Luxury"],
+    generateElements: generateCanvaGoldWave,
+  },
+  {
+    id: "canva-ocean-fluid",
+    name: "Deep Ocean Fluid Curve",
+    tagline: "Adora Organic Coastal Waves",
+    description: "Layered cyan and deep ocean blue curved fluid ribbons on pure white with elegant centered modern title.",
+    category: "Creative",
+    defaultAccent: "#0284C7",
+    secondaryColor: "#0F766E",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Fluid", "Ocean", "Waves"],
+    generateElements: generateCanvaOceanFluid,
+  },
+  {
+    id: "canva-warm-editorial",
+    name: "Warm Beige Editorial Split",
+    tagline: "Keithston & Partners Architectural Split",
+    description: "Warm sand and slate architectural split banner with logo frame and executive serif layout.",
+    category: "Business",
+    defaultAccent: "#475569",
+    secondaryColor: "#D97706",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Georgia, serif",
+    borderStyle: "none",
+    logoPosition: "top-center",
+    metadataLayout: "centered",
+    tags: ["Canva", "Warm", "Editorial", "Split"],
+    generateElements: generateCanvaWarmEditorial,
+  },
   // -----------------------------------------------------------
   // 1. ACADEMIC ARCHETYPES (1 - 8)
   // -----------------------------------------------------------
@@ -1377,6 +2382,7 @@ export const COVER_TEMPLATES_REGISTRY: ExtendedCoverTemplateDefinition[] = [
 export function getCoverTemplateById(id: string): ExtendedCoverTemplateDefinition {
   return (
     COVER_TEMPLATES_REGISTRY.find((t) => t.id === id) ||
+    COVER_TEMPLATES_REGISTRY.find((t) => t.id === "classic-university") ||
     COVER_TEMPLATES_REGISTRY[0]!
   );
 }
