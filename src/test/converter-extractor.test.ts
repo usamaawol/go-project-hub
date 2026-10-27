@@ -54,6 +54,13 @@ All original topics, main ideas, and structure are preserved with zero data loss
       const header = result.buffer.subarray(0, 5).toString("utf-8");
       expect(header).toBe("%PDF-");
 
+      // Verify that the generated PDF has standard ISO A4 dimensions (595.28 x 841.89 pt)
+      const uint8 = new Uint8Array(result.buffer.buffer, result.buffer.byteOffset, result.buffer.byteLength);
+      const pdfDocLoaded = await PDFDocument.load(uint8);
+      const p1 = pdfDocLoaded.getPage(0);
+      expect(p1.getWidth()).toBeCloseTo(595.28, 1);
+      expect(p1.getHeight()).toBeCloseTo(841.89, 1);
+
       // Verify that the generated PDF can be re-extracted
       const reExtracted = await extractTextFromBuffer(result.buffer, result.mimeType, result.filename);
       expect(reExtracted.text).toContain("Executive Architecture & Implementation");

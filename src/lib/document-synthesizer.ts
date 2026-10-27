@@ -399,11 +399,12 @@ export async function renderExecutivePdf(
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const pageWidth = 612; // Standard Letter
-  const pageHeight = 792;
-  const margin = 50;
+  // Standard ISO A4 dimensions (210mm x 297mm at 72 dpi)
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 48;
   const contentWidth = pageWidth - margin * 2;
-  const bottomMargin = 55;
+  const bottomMargin = 52;
 
   let currentPage: PDFPage = pdfDoc.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin - 15;
@@ -918,6 +919,10 @@ export async function renderExecutiveDocx(
       {
         properties: {
           page: {
+            size: {
+              width: 11906, // Standard ISO A4 width (210mm in twips)
+              height: 16838, // Standard ISO A4 height (297mm in twips)
+            },
             margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
           },
         },

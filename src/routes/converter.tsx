@@ -132,16 +132,22 @@ function EditorialDocumentViewer({
 
   const blocks = useMemo(() => parsePlainTextToBlocks(text), [text]);
 
-  const titleBlock = blocks.find((b) => b.type === "title");
-  const rawTitle = titleBlock?.text || filename.replace(/\.(docx|doc|pdf|txt)$/i, "");
+  const rawTitle = useMemo(() => {
+    const titleBlock = blocks.find((b) => b.type === "title");
+    if (titleBlock?.text) return titleBlock.text;
+    const base = filename.replace(/\.(docx|doc|pdf|txt)$/i, "");
+    return base.replace(/[_-]+/g, " ");
+  }, [blocks, filename]);
 
   const initials = useMemo(() => {
     if (!rawTitle) return "DM";
-    const parts = rawTitle.trim().split(/\s+/).filter(Boolean);
+    const cleaned = rawTitle.replace(/optimized|professional|resume|cv/gi, "").trim();
+    const target = cleaned.length >= 2 ? cleaned : rawTitle;
+    const parts = target.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }
-    return rawTitle.slice(0, 2).toUpperCase();
+    return target.slice(0, 2).toUpperCase();
   }, [rawTitle]);
 
   const { headerMetaBlocks, bodyBlocks } = useMemo(() => {
@@ -181,10 +187,12 @@ function EditorialDocumentViewer({
     return { headerMetaBlocks: metas, bodyBlocks: remaining };
   }, [blocks]);
 
-  const handleCopy = () => {
+  const handleCopyPlainText = () => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    toast.success("Copied full document content!");
+    toast.success("Copied clean plain text to clipboard!", {
+      description: "Unformatted plain text ready to paste anywhere.",
+    });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -322,54 +330,60 @@ function EditorialDocumentViewer({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-1.5 ml-auto">
+          <span className="hidden sm:inline-flex items-center gap-1 bg-background px-2 py-1 rounded text-[11px] font-mono text-muted-foreground border border-border/60">
+            📄 ISO A4
+          </span>
           <button
             type="button"
             onClick={() => setIsWide(!isWide)}
             className="p-1.5 text-xs text-muted-foreground hover:text-foreground bg-background border border-border/70 rounded-md transition-all cursor-pointer"
-            title={isWide ? "Normal width" : "Expand width"}
+            title={isWide ? "A4 sheet width" : "Expand width"}
           >
             {isWide ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"
-            onClick={handleCopy}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/20 transition-all cursor-pointer"
-            title="Copy all text"
+            onClick={handleCopyPlainText}
+            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/25 transition-all cursor-pointer shadow-xs"
+            title="Copy pure unformatted plain text to clipboard"
           >
             {copied ? (
               <Check className="h-3.5 w-3.5 text-emerald-500" />
             ) : (
               <Copy className="h-3.5 w-3.5" />
             )}
-            <span>{copied ? "Copied" : "Copy"}</span>
+            <span>{copied ? "Copied Plain Text!" : "Copy Plain Text"}</span>
           </button>
         </div>
       </div>
 
-      {/* Realistic Executive Sheet Preview */}
-      <div className="rounded-2xl border border-border bg-surface-2/40 p-4 sm:p-8 overflow-hidden">
+      {/* Realistic Executive A4 Sheet Preview */}
+      <div className="rounded-2xl border border-border bg-surface-2/40 p-4 sm:p-8 overflow-hidden flex flex-col items-center">
         <div
-          className={`mx-auto transition-all duration-300 ${
-            isWide ? "max-w-4xl" : "max-w-2xl"
-          } bg-card rounded-2xl border border-border/80 shadow-paper p-8 sm:p-12 ${fontClass} ${
+          className={`w-full transition-all duration-300 ${
+            isWide ? "max-w-4xl" : "max-w-[794px]"
+          } bg-card rounded-2xl border border-border/80 shadow-paper p-8 sm:p-14 ${fontClass} ${
             spacingStyles.fontSize
-          } text-foreground select-text min-h-[480px]`}
+          } text-foreground select-text min-h-[1050px] flex flex-col justify-between`}
         >
-          {/* Running Sheet Header */}
-          <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-6 text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>
-                {targetFormat === "PDF"
-                  ? "Adobe PDF Document"
-                  : `Microsoft Word (.${targetFormat.toLowerCase()})`}
+          <div>
+            {/* Running Sheet Header */}
+            <div className="flex flex-wrap items-center justify-between border-b border-border/60 pb-3 mb-6 text-[10px] font-mono text-muted-foreground uppercase tracking-widest gap-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">
+                  📄 Standard A4 (210 × 297 mm)
+                </span>
+                <span>
+                  {targetFormat === "PDF"
+                    ? "Adobe PDF Document"
+                    : `Microsoft Word (.${targetFormat.toLowerCase()})`}
+                </span>
+                <span>· Converted from {fileExt}</span>
+              </div>
+              <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                <CheckCircle2 className="h-3 w-3" /> Structure & Content 100% Preserved
               </span>
-              <span>· Converted from {fileExt}</span>
             </div>
-            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-              <CheckCircle2 className="h-3 w-3" /> Structure & Content 100% Preserved
-            </span>
-          </div>
 
           {/* Executive Profile / Document Title Header Card */}
           {rawTitle && (
@@ -523,10 +537,14 @@ function EditorialDocumentViewer({
             })}
           </div>
 
-          {/* Running Sheet Footer */}
-          <div className="mt-10 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-2">
-            <span>DocuMind Converted Document · 100% Genuine File</span>
-            <span>Editorial Page 1 of 1</span>
+            {/* Running Sheet Footer */}
+            <div className="mt-10 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-2">
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span>DocuMind Converted Document · 100% Genuine File</span>
+              </span>
+              <span>ISO A4 Sheet · Page 1 of 1</span>
+            </div>
           </div>
         </div>
       </div>
@@ -655,11 +673,13 @@ function ConverterPage() {
     }
   };
 
-  const handleCopy = () => {
+  const handleCopyPlainText = () => {
     if (!convertedResult?.previewText) return;
     navigator.clipboard.writeText(convertedResult.previewText);
     setCopied(true);
-    toast.success("Copied converted text to clipboard!");
+    toast.success("Copied clean plain text to clipboard!", {
+      description: "Unformatted plain text ready to paste anywhere.",
+    });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -883,11 +903,22 @@ function ConverterPage() {
                     <h2 className="font-serif text-lg font-bold text-foreground mt-1">
                       {convertedResult.filename}
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Format:{" "}
-                      <span className="font-bold text-primary">{convertedResult.targetFormat}</span> ·{" "}
-                      {(convertedResult.sizeBytes / 1024).toFixed(1)} KB{" "}
-                      {convertedResult.wordCount ? `· ${convertedResult.wordCount} words preserved` : ""}
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                      <span>
+                        Format: <span className="font-bold text-primary">{convertedResult.targetFormat}</span>
+                      </span>
+                      <span>·</span>
+                      <span className="inline-flex items-center gap-1 font-mono text-[11px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.2 rounded font-semibold">
+                        📄 ISO A4
+                      </span>
+                      <span>·</span>
+                      <span>{(convertedResult.sizeBytes / 1024).toFixed(1)} KB</span>
+                      {convertedResult.wordCount ? (
+                        <>
+                          <span>·</span>
+                          <span>{convertedResult.wordCount} words preserved</span>
+                        </>
+                      ) : null}
                     </p>
                   </div>
                 </div>
@@ -897,16 +928,17 @@ function ConverterPage() {
                     <Button
                       variant="glass"
                       size="sm"
-                      onClick={handleCopy}
-                      className="text-xs gap-1.5"
+                      onClick={handleCopyPlainText}
+                      className="text-xs gap-1.5 border-primary/25 hover:bg-primary/10"
+                      title="Copy pure unformatted plain text to clipboard"
                     >
                       {copied ? (
                         <>
-                          <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied Text
+                          <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied Plain Text!
                         </>
                       ) : (
                         <>
-                          <Copy className="h-3.5 w-3.5" /> Copy Text
+                          <Copy className="h-3.5 w-3.5 text-primary" /> Copy Plain Text
                         </>
                       )}
                     </Button>
@@ -1034,13 +1066,32 @@ function ConverterPage() {
               {/* View 2: Raw / Plain Text Structure View */}
               {viewMode === "raw" && (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center justify-between text-xs text-muted-foreground gap-2">
                     <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <FileText className="h-3.5 w-3.5 text-primary" /> Preserved Text Content (Verbatim Stream)
+                      <FileText className="h-3.5 w-3.5 text-primary" /> Pure Plain Text Stream (Verbatim)
                     </span>
-                    <span className="font-mono text-[11px]">
-                      {convertedResult.wordCount} words · {convertedResult.previewText?.length || 0} characters
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        onClick={handleCopyPlainText}
+                        className="text-xs gap-1.5 h-7 border-primary/25 hover:bg-primary/10"
+                        title="Copy pure unformatted plain text to clipboard"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="h-3 w-3 text-emerald-600" /> Copied Plain Text!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3 text-primary" /> Copy Plain Text
+                          </>
+                        )}
+                      </Button>
+                      <span className="font-mono text-[11px]">
+                        {convertedResult.wordCount} words · {convertedResult.previewText?.length || 0} characters
+                      </span>
+                    </div>
                   </div>
 
                   <div className="max-h-96 overflow-y-auto rounded-xl border border-border bg-surface-2/30 p-4 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap select-text">
@@ -1053,11 +1104,36 @@ function ConverterPage() {
 
               {/* Step 3: Download Footer */}
               <div className="border-t border-border pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <p className="text-xs text-muted-foreground">
-                  Content previewed and verified on DocuMind. Click download to save your genuine {convertedResult.targetFormat} file.
-                </p>
+                <div className="space-y-0.5">
+                  <p className="text-xs text-foreground font-semibold flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.2 rounded">
+                      📄 ISO A4
+                    </span>
+                    <span>Document converted & verified on DocuMind.</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    All original topics, layout, and content are 100% preserved.
+                  </p>
+                </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="glass"
+                    size="lg"
+                    onClick={handleCopyPlainText}
+                    className="gap-1.5 text-xs font-semibold px-4 border-border"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-4 w-4 text-emerald-600" /> Copied Plain Text!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4 text-primary" /> Copy Plain Text
+                      </>
+                    )}
+                  </Button>
+
                   <Button
                     variant="hero"
                     size="lg"
