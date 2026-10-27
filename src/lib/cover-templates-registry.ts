@@ -206,6 +206,182 @@ export function generateDefaultCoverElements(
     });
   }
 
+  // Canva-Grade Category Vector Geometries (Dynamic SVGs, Wedges & Matrices)
+  const cat = template.category || "Academic";
+
+  if (cat === "Academic" || template.borderStyle === "frame" || template.borderStyle === "double") {
+    // 1. Top-Left Heraldic Corner Accent Wedge
+    elements.push({
+      id: "accent-tl-anchor",
+      type: "shape",
+      name: "Top-Left Corner Wedge",
+      shapeType: "svg",
+      x: 0,
+      y: 0,
+      width: 75,
+      height: 75,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 75 75" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 75,0 0,75" fill="${accent}" /><polygon points="0,0 45,0 0,45" fill="${secondary}" opacity="0.4" /></svg>`,
+      zIndex: zIndex++,
+    });
+
+    // 2. Bottom-Right Collegiate Anchor Wedge
+    elements.push({
+      id: "accent-br-anchor",
+      type: "shape",
+      name: "Bottom-Right Corner Anchor",
+      shapeType: "svg",
+      x: pageW - 75,
+      y: pageH - 75,
+      width: 75,
+      height: 75,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 75 75" width="100%" height="100%" preserveAspectRatio="none"><polygon points="75,0 75,75 0,75" fill="${accent}" /><polygon points="75,30 75,75 30,75" fill="${secondary}" opacity="0.4" /></svg>`,
+      zIndex: zIndex++,
+    });
+
+    // 3. Dot Matrix Accent
+    elements.push({
+      id: "accent-dot-matrix",
+      type: "shape",
+      name: "Collegiate Dot Accent",
+      shapeType: "svg",
+      x: pageW - 65,
+      y: 90,
+      width: 28,
+      height: 60,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 28 60" width="100%" height="100%"><circle cx="6" cy="8" r="2.5" fill="${accent}" opacity="0.7"/><circle cx="20" cy="8" r="2.5" fill="${accent}" opacity="0.7"/><circle cx="6" cy="24" r="2.5" fill="${accent}" opacity="0.7"/><circle cx="20" cy="24" r="2.5" fill="${accent}" opacity="0.7"/><circle cx="6" cy="40" r="2.5" fill="${accent}" opacity="0.7"/><circle cx="20" cy="40" r="2.5" fill="${accent}" opacity="0.7"/></svg>`,
+      zIndex: zIndex++,
+    });
+  } else if (cat === "Modern" || cat === "Geometric") {
+    elements.push({
+      id: "accent-tr-wedge",
+      type: "shape",
+      name: "Top-Right Angle Polygon",
+      shapeType: "svg",
+      x: pageW - 200,
+      y: 0,
+      width: 200,
+      height: 180,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 200 180" width="100%" height="100%" preserveAspectRatio="none"><polygon points="50,0 200,0 200,180 0,0" fill="${accent}" /><polygon points="120,0 200,0 200,120" fill="${secondary}" opacity="0.5" /></svg>`,
+      zIndex: zIndex++,
+    });
+
+    elements.push({
+      id: "accent-bl-wedge",
+      type: "shape",
+      name: "Bottom-Left Angle Wedge",
+      shapeType: "svg",
+      x: 0,
+      y: pageH - 120,
+      width: 120,
+      height: 120,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 120 120" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 0,120 120,120" fill="${accent}" /></svg>`,
+      zIndex: zIndex++,
+    });
+
+    elements.push({
+      id: "accent-dot-matrix",
+      type: "shape",
+      name: "Modern Dot Matrix Grid",
+      shapeType: "svg",
+      x: pageW - 60,
+      y: 200,
+      width: 30,
+      height: 80,
+      fillColor: secondary,
+      svgContent: `<svg viewBox="0 0 30 80" width="100%" height="100%"><circle cx="7" cy="8" r="3" fill="${secondary}" opacity="0.8"/><circle cx="21" cy="8" r="3" fill="${secondary}" opacity="0.8"/><circle cx="7" cy="24" r="3" fill="${secondary}" opacity="0.8"/><circle cx="21" cy="24" r="3" fill="${secondary}" opacity="0.8"/><circle cx="7" cy="40" r="3" fill="${secondary}" opacity="0.8"/><circle cx="21" cy="40" r="3" fill="${secondary}" opacity="0.8"/><circle cx="7" cy="56" r="3" fill="${secondary}" opacity="0.8"/><circle cx="21" cy="56" r="3" fill="${secondary}" opacity="0.8"/><circle cx="7" cy="72" r="3" fill="${secondary}" opacity="0.8"/><circle cx="21" cy="72" r="3" fill="${secondary}" opacity="0.8"/></svg>`,
+      zIndex: zIndex++,
+    });
+  } else if (cat === "Business" || cat === "Formal") {
+    elements.push({
+      id: "accent-top-ribbon",
+      type: "shape",
+      name: "Executive Diagonal Ribbon",
+      shapeType: "svg",
+      x: 0,
+      y: 0,
+      width: 220,
+      height: 130,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 220 130" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 220,0 120,130 0,130" fill="${accent}" /><polygon points="120,130 150,130 220,0 190,0" fill="${secondary}" opacity="0.85" /></svg>`,
+      zIndex: zIndex++,
+    });
+
+    elements.push({
+      id: "accent-br-angle",
+      type: "shape",
+      name: "Bottom-Right Executive Wedge",
+      shapeType: "svg",
+      x: pageW - 160,
+      y: pageH - 120,
+      width: 160,
+      height: 120,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 160 120" width="100%" height="100%" preserveAspectRatio="none"><polygon points="60,0 160,120 0,120" fill="${accent}" /></svg>`,
+      zIndex: zIndex++,
+    });
+  } else if (cat === "Research") {
+    elements.push({
+      id: "accent-circuit-angle",
+      type: "shape",
+      name: "Technical Blueprint Angle",
+      shapeType: "svg",
+      x: 0,
+      y: 0,
+      width: 150,
+      height: 150,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 150 150" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 150,0 0,150" fill="${accent}" opacity="0.9" /><circle cx="40" cy="40" r="4" fill="#FFFFFF" /><line x1="40" y1="40" x2="100" y2="40" stroke="#FFFFFF" stroke-width="2" /><circle cx="100" cy="40" r="3" fill="#FFFFFF" /></svg>`,
+      zIndex: zIndex++,
+    });
+
+    elements.push({
+      id: "accent-dot-matrix",
+      type: "shape",
+      name: "STEM Data Matrix",
+      shapeType: "svg",
+      x: pageW - 75,
+      y: 100,
+      width: 36,
+      height: 70,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 36 70" width="100%" height="100%"><circle cx="6" cy="8" r="2.5" fill="${accent}"/><circle cx="18" cy="8" r="2.5" fill="${accent}"/><circle cx="30" cy="8" r="2.5" fill="${accent}"/><circle cx="6" cy="24" r="2.5" fill="${accent}"/><circle cx="18" cy="24" r="2.5" fill="${accent}"/><circle cx="30" cy="24" r="2.5" fill="${accent}"/><circle cx="6" cy="40" r="2.5" fill="${accent}"/><circle cx="18" cy="40" r="2.5" fill="${accent}"/><circle cx="30" cy="40" r="2.5" fill="${accent}"/></svg>`,
+      zIndex: zIndex++,
+    });
+  } else if (cat === "Creative") {
+    elements.push({
+      id: "accent-creative-wave",
+      type: "shape",
+      name: "Creative Wave Fluid Ribbon",
+      shapeType: "svg",
+      x: pageW - 260,
+      y: 0,
+      width: 260,
+      height: 220,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 260 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 C 100,60 180,140 260,220 L 260,0 Z" fill="${accent}" /><path d="M 40,0 C 120,70 190,160 260,240 L 260,0 Z" fill="${secondary}" opacity="0.6" /></svg>`,
+      zIndex: zIndex++,
+    });
+  } else if (cat === "Minimalist") {
+    elements.push({
+      id: "accent-minimal-frame",
+      type: "shape",
+      name: "Minimalist Architectural Line",
+      shapeType: "svg",
+      x: 48,
+      y: 48,
+      width: 80,
+      height: 80,
+      fillColor: accent,
+      svgContent: `<svg viewBox="0 0 80 80" width="100%" height="100%"><line x1="0" y1="0" x2="80" y2="0" stroke="${accent}" stroke-width="3" /><line x1="0" y1="0" x2="0" y2="80" stroke="${accent}" stroke-width="3" /></svg>`,
+      zIndex: zIndex++,
+    });
+  }
+
   // Logo / University Crest Element
   if (logo) {
     const logoX =
@@ -571,6 +747,951 @@ export function generateDefaultCoverElements(
 // -------------------------------------------------------------
 // CANVA ARCHETYPE GENERATORS (Direct Canva Design Fidelity)
 // -------------------------------------------------------------
+
+export function generateCanvaSalfordWave(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+
+  const navy = meta.accentColor || "#1B365D";
+  const yellow = "#F59E0B";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Project Team")
+    : (meta.studentName || "Benjamin Shah");
+
+  const brand = meta.universityName || meta.department || "Salford & Co.";
+  const title = meta.assignmentTitle || "Project Proposal";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Delivering innovative solutions for modern infrastructure";
+
+  // 1. Crisp White Background
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    borderColor: "transparent",
+    borderWidth: 0,
+    zIndex: zIndex++,
+  });
+
+  // 2. Top-Left Yellow Wave Underlay Ribbon
+  elements.push({
+    id: "salford-top-yellow",
+    type: "shape",
+    name: "Top Yellow Wave Ribbon",
+    shapeType: "svg",
+    x: 0,
+    y: 0,
+    width: 480,
+    height: 220,
+    fillColor: yellow,
+    svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${yellow}" opacity="0.9" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 3. Top-Left Deep Navy Fluid Wave Header
+  elements.push({
+    id: "salford-top-navy",
+    type: "shape",
+    name: "Top Navy Fluid Wave",
+    shapeType: "svg",
+    x: 0,
+    y: 0,
+    width: 450,
+    height: 195,
+    fillColor: navy,
+    svgContent: `<svg viewBox="0 0 450 195" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 450,0 C 370,85 260,160 140,160 C 80,160 25,180 0,195 Z" fill="${navy}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 4. Top-Right Brand Pill Badge ("Salford & Co.")
+  elements.push({
+    id: "salford-brand-pill",
+    type: "badge",
+    name: "Brand Pill Badge",
+    shapeType: "badge-pill",
+    x: pageW - 220,
+    y: 45,
+    width: 160,
+    height: 40,
+    fillColor: navy,
+    borderRadius: 20,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "salford-brand-text",
+    type: "text",
+    name: "Brand Label Text",
+    x: pageW - 215,
+    y: 54,
+    width: 150,
+    height: 22,
+    text: brand,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+    textColor: "#FFFFFF",
+    letterSpacing: 1,
+    zIndex: zIndex++,
+  });
+
+  // 5. Title Area
+  elements.push({
+    id: "salford-title-main",
+    type: "text",
+    name: "Proposal Title",
+    x: 80,
+    y: 280,
+    width: pageW - 160,
+    height: 110,
+    text: `${title} ${year}`,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 48,
+    fontWeight: "800",
+    textColor: navy,
+    lineHeight: 1.1,
+    letterSpacing: -1,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  // 6. Subtitle / Course Description
+  elements.push({
+    id: "salford-subtitle",
+    type: "text",
+    name: "Proposal Subtitle",
+    x: 80,
+    y: 400,
+    width: pageW - 160,
+    height: 40,
+    text: subtitle,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 14,
+    fontWeight: "500",
+    textColor: "#64748B",
+    zIndex: zIndex++,
+  });
+
+  // 7. Prepared by Metadata
+  elements.push({
+    id: "salford-meta-label",
+    type: "text",
+    name: "Prepared by Label",
+    x: 80,
+    y: 480,
+    width: 320,
+    height: 20,
+    text: "Prepared by :",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 13,
+    fontWeight: "500",
+    textColor: "#64748B",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "salford-meta-name",
+    type: "text",
+    name: "Author Name",
+    x: 80,
+    y: 505,
+    width: 360,
+    height: 32,
+    text: author,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 20,
+    fontWeight: "800",
+    textColor: navy,
+    isMetadataField: "studentName",
+    zIndex: zIndex++,
+  });
+
+  if (meta.studentId) {
+    elements.push({
+      id: "salford-meta-id",
+      type: "text",
+      name: "Student ID",
+      x: 80,
+      y: 540,
+      width: 320,
+      height: 22,
+      text: `Student ID: ${meta.studentId}`,
+      fontFamily: "monospace",
+      fontSize: 12,
+      fontWeight: "600",
+      textColor: "#64748B",
+      isMetadataField: "studentId",
+      zIndex: zIndex++,
+    });
+  }
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "salford-meta-instructor",
+      type: "text",
+      name: "Submitted To Instructor",
+      x: 80,
+      y: meta.studentId ? 566 : 542,
+      width: 360,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "600",
+      textColor: "#475569",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  // 8. Bottom-Right Yellow Underlay Ribbon
+  elements.push({
+    id: "salford-br-yellow",
+    type: "shape",
+    name: "Bottom-Right Yellow Wave",
+    shapeType: "svg",
+    x: pageW - 380,
+    y: pageH - 250,
+    width: 380,
+    height: 250,
+    fillColor: yellow,
+    svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${yellow}" opacity="0.9" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 9. Bottom-Right Deep Navy Fluid Curve
+  elements.push({
+    id: "salford-br-navy",
+    type: "shape",
+    name: "Bottom-Right Navy Fluid Curve",
+    shapeType: "svg",
+    x: pageW - 350,
+    y: pageH - 220,
+    width: 350,
+    height: 220,
+    fillColor: navy,
+    svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${navy}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 10. Footer Coordinates
+  elements.push({
+    id: "salford-footer-contact",
+    type: "text",
+    name: "Contact Information",
+    x: 80,
+    y: pageH - 120,
+    width: 360,
+    height: 55,
+    text: "📞 +123-456-7890\n✉️ hello@reallygreatsite.com\n🌐 www.reallygreatsite.com",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 11,
+    fontWeight: "500",
+    textColor: "#64748B",
+    lineHeight: 1.5,
+    zIndex: zIndex++,
+  });
+
+  return elements;
+}
+
+export function generateCanvaHanoverRedGeometric(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+
+  const red = meta.accentColor || "#DC2626";
+  const charcoal = "#1E293B";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Proposal Strategy Team")
+    : (meta.studentName || "Eleanor Fitzgerald");
+
+  const brand = meta.universityName || meta.department || "HANOVER CO";
+  const title = meta.assignmentTitle || "STRATEGIC PROPOSAL";
+  const subtitle = meta.courseName || meta.courseCode || "Delivering Results Through Innovation";
+  const instructor = meta.instructorName || "Connor Hamilton";
+
+  // 1. White Background
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    borderColor: "transparent",
+    borderWidth: 0,
+    zIndex: zIndex++,
+  });
+
+  // 2. Left Edge Red Facet Wedge
+  elements.push({
+    id: "hanover-left-red-top",
+    type: "shape",
+    name: "Top-Left Red Facet",
+    shapeType: "svg",
+    x: 0,
+    y: 0,
+    width: 140,
+    height: 320,
+    fillColor: red,
+    svgContent: `<svg viewBox="0 0 140 320" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 140,0 45,320 0,320" fill="${red}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 3. Left Edge Charcoal Facet Polygon
+  elements.push({
+    id: "hanover-left-charcoal",
+    type: "shape",
+    name: "Left Charcoal Facet",
+    shapeType: "svg",
+    x: 0,
+    y: 280,
+    width: 120,
+    height: 280,
+    fillColor: charcoal,
+    svgContent: `<svg viewBox="0 0 120 280" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 55,0 120,280 0,280" fill="${charcoal}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 4. Left Edge Mid Red Wedge
+  elements.push({
+    id: "hanover-left-red-mid",
+    type: "shape",
+    name: "Mid-Left Red Wedge",
+    shapeType: "svg",
+    x: 0,
+    y: 530,
+    width: 60,
+    height: 180,
+    fillColor: red,
+    svgContent: `<svg viewBox="0 0 60 180" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 50,0 20,180 0,180" fill="${red}" opacity="0.9" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 5. Bottom-Left Charcoal & Red Diagonal Cut Wedges
+  elements.push({
+    id: "hanover-bl-charcoal",
+    type: "shape",
+    name: "Bottom-Left Charcoal Wedge",
+    shapeType: "svg",
+    x: 0,
+    y: pageH - 180,
+    width: 260,
+    height: 180,
+    fillColor: charcoal,
+    svgContent: `<svg viewBox="0 0 260 180" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,40 0,180 260,180 140,0" fill="${charcoal}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "hanover-bl-red",
+    type: "shape",
+    name: "Bottom-Left Red Wedge Accent",
+    shapeType: "svg",
+    x: 180,
+    y: pageH - 120,
+    width: 160,
+    height: 120,
+    fillColor: red,
+    svgContent: `<svg viewBox="0 0 160 120" width="100%" height="100%" preserveAspectRatio="none"><polygon points="40,0 160,120 0,120" fill="${red}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 6. Right Edge 6x3 Circular Red Dot Matrix Grid
+  elements.push({
+    id: "hanover-dot-grid",
+    type: "shape",
+    name: "Right Dot Grid Matrix",
+    shapeType: "svg",
+    x: pageW - 80,
+    y: 350,
+    width: 44,
+    height: 100,
+    fillColor: red,
+    svgContent: `<svg viewBox="0 0 44 100" width="100%" height="100%"><circle cx="8" cy="10" r="3" fill="${red}" opacity="0.85"/><circle cx="22" cy="10" r="3" fill="${red}" opacity="0.85"/><circle cx="36" cy="10" r="3" fill="${red}" opacity="0.85"/><circle cx="8" cy="28" r="3" fill="${red}" opacity="0.85"/><circle cx="22" cy="28" r="3" fill="${red}" opacity="0.85"/><circle cx="36" cy="28" r="3" fill="${red}" opacity="0.85"/><circle cx="8" cy="46" r="3" fill="${red}" opacity="0.85"/><circle cx="22" cy="46" r="3" fill="${red}" opacity="0.85"/><circle cx="36" cy="46" r="3" fill="${red}" opacity="0.85"/><circle cx="8" cy="64" r="3" fill="${red}" opacity="0.85"/><circle cx="22" cy="64" r="3" fill="${red}" opacity="0.85"/><circle cx="36" cy="64" r="3" fill="${red}" opacity="0.85"/><circle cx="8" cy="82" r="3" fill="${red}" opacity="0.85"/><circle cx="22" cy="82" r="3" fill="${red}" opacity="0.85"/><circle cx="36" cy="82" r="3" fill="${red}" opacity="0.85"/></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // 7. Top-Right Brand Mark
+  elements.push({
+    id: "hanover-brand",
+    type: "text",
+    name: "Brand Logo Text",
+    x: pageW - 280,
+    y: 60,
+    width: 220,
+    height: 28,
+    text: brand.toUpperCase(),
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 16,
+    fontWeight: "800",
+    textAlign: "right",
+    textColor: charcoal,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "hanover-brand-line",
+    type: "divider",
+    name: "Brand Accent Line",
+    x: pageW - 140,
+    y: 92,
+    width: 80,
+    height: 3,
+    fillColor: red,
+    zIndex: zIndex++,
+  });
+
+  // 8. Main Proposal Title
+  elements.push({
+    id: "hanover-title",
+    type: "text",
+    name: "Strategic Title",
+    x: 160,
+    y: 280,
+    width: pageW - 240,
+    height: 100,
+    text: title,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 44,
+    fontWeight: "900",
+    textColor: "#0F172A",
+    textTransform: "uppercase",
+    lineHeight: 1.05,
+    letterSpacing: -1,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  // 9. Subtitle
+  elements.push({
+    id: "hanover-subtitle",
+    type: "text",
+    name: "Strategic Subtitle",
+    x: 160,
+    y: 390,
+    width: pageW - 240,
+    height: 30,
+    text: subtitle,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 14,
+    fontWeight: "700",
+    textColor: red,
+    zIndex: zIndex++,
+  });
+
+  // 10. Prepared For / Prepared By Two-Tier Metadata
+  const metaY = 480;
+
+  elements.push({
+    id: "hanover-for-label",
+    type: "text",
+    name: "Prepared For Label",
+    x: 160,
+    y: metaY,
+    width: 240,
+    height: 20,
+    text: "PREPARED FOR :",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 11,
+    fontWeight: "700",
+    textColor: "#64748B",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "hanover-for-name",
+    type: "text",
+    name: "Client / Instructor Name",
+    x: 160,
+    y: metaY + 22,
+    width: 240,
+    height: 26,
+    text: instructor,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 15,
+    fontWeight: "700",
+    textColor: charcoal,
+    isMetadataField: "instructorName",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "hanover-by-label",
+    type: "text",
+    name: "Prepared By Label",
+    x: 160,
+    y: metaY + 70,
+    width: 240,
+    height: 20,
+    text: "PREPARED BY :",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 11,
+    fontWeight: "700",
+    textColor: "#64748B",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "hanover-by-name",
+    type: "text",
+    name: "Student / Author Name",
+    x: 160,
+    y: metaY + 92,
+    width: 260,
+    height: 26,
+    text: author,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 15,
+    fontWeight: "700",
+    textColor: charcoal,
+    isMetadataField: "studentName",
+    zIndex: zIndex++,
+  });
+
+  if (meta.studentId) {
+    elements.push({
+      id: "hanover-by-id",
+      type: "text",
+      name: "Student ID",
+      x: 160,
+      y: metaY + 118,
+      width: 240,
+      height: 20,
+      text: `ID: ${meta.studentId}`,
+      fontFamily: "monospace",
+      fontSize: 11,
+      fontWeight: "600",
+      textColor: "#64748B",
+      isMetadataField: "studentId",
+      zIndex: zIndex++,
+    });
+  }
+
+  // 11. Footer Coordinates
+  elements.push({
+    id: "hanover-footer-contact",
+    type: "text",
+    name: "Contact Information",
+    x: 360,
+    y: pageH - 90,
+    width: pageW - 420,
+    height: 45,
+    text: "📞 +123-456-7890   •   🌐 reallygreatsite.com\n✉️ hello@reallygreatsite.com",
+    fontFamily: "Inter, sans-serif",
+    fontSize: 11,
+    fontWeight: "500",
+    textAlign: "right",
+    textColor: "#64748B",
+    lineHeight: 1.5,
+    zIndex: zIndex++,
+  });
+
+  return elements;
+}
+
+export function generateCanvaEmeraldGeometric(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+
+  const emerald = meta.accentColor || "#065F46";
+  const mint = "#10B981";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Sustainable Systems Team")
+    : (meta.studentName || "Marcus Vance");
+
+  const brand = meta.universityName || meta.department || "EcoSphere Institute";
+  const title = meta.assignmentTitle || "SUSTAINABILITY & ENERGY REPORT";
+  const subtitle = meta.courseName || meta.courseCode || "Environmental Technology & Systems Analysis";
+
+  // White Background
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    borderColor: "transparent",
+    borderWidth: 0,
+    zIndex: zIndex++,
+  });
+
+  // Top-Right Emerald Angles
+  elements.push({
+    id: "emerald-tr-mint",
+    type: "shape",
+    name: "Top-Right Mint Angle",
+    shapeType: "svg",
+    x: pageW - 280,
+    y: 0,
+    width: 280,
+    height: 240,
+    fillColor: mint,
+    svgContent: `<svg viewBox="0 0 280 240" width="100%" height="100%" preserveAspectRatio="none"><polygon points="50,0 280,0 280,240 0,0" fill="${mint}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "emerald-tr-dark",
+    type: "shape",
+    name: "Top-Right Emerald Angle",
+    shapeType: "svg",
+    x: pageW - 250,
+    y: 0,
+    width: 250,
+    height: 210,
+    fillColor: emerald,
+    svgContent: `<svg viewBox="0 0 250 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="45,0 250,0 250,210 0,0" fill="${emerald}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // Bottom-Left Emerald Wedge
+  elements.push({
+    id: "emerald-bl-wedge",
+    type: "shape",
+    name: "Bottom-Left Geometric Wedge",
+    shapeType: "svg",
+    x: 0,
+    y: pageH - 220,
+    width: 240,
+    height: 220,
+    fillColor: emerald,
+    svgContent: `<svg viewBox="0 0 240 220" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 120,220 0,220" fill="${emerald}" /><polygon points="0,60 180,220 120,220" fill="${mint}" opacity="0.8" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // Dot Grid
+  elements.push({
+    id: "emerald-dot-grid",
+    type: "shape",
+    name: "Emerald Dot Matrix",
+    shapeType: "svg",
+    x: pageW - 70,
+    y: 80,
+    width: 30,
+    height: 80,
+    fillColor: mint,
+    svgContent: `<svg viewBox="0 0 30 80" width="100%" height="100%"><circle cx="8" cy="10" r="3" fill="${mint}"/><circle cx="22" cy="10" r="3" fill="${mint}"/><circle cx="8" cy="30" r="3" fill="${mint}"/><circle cx="22" cy="30" r="3" fill="${mint}"/><circle cx="8" cy="50" r="3" fill="${mint}"/><circle cx="22" cy="50" r="3" fill="${mint}"/><circle cx="8" cy="70" r="3" fill="${mint}"/><circle cx="22" cy="70" r="3" fill="${mint}"/></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // Brand Header
+  elements.push({
+    id: "emerald-brand",
+    type: "text",
+    name: "Institution Brand",
+    x: 80,
+    y: 80,
+    width: 360,
+    height: 26,
+    text: brand.toUpperCase(),
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 13,
+    fontWeight: "700",
+    textColor: emerald,
+    letterSpacing: 2,
+    zIndex: zIndex++,
+  });
+
+  // Title
+  elements.push({
+    id: "emerald-title",
+    type: "text",
+    name: "Main Title",
+    x: 80,
+    y: 300,
+    width: pageW - 160,
+    height: 110,
+    text: title,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 42,
+    fontWeight: "800",
+    textColor: "#0F172A",
+    textTransform: "uppercase",
+    lineHeight: 1.1,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "emerald-subtitle",
+    type: "text",
+    name: "Subtitle",
+    x: 80,
+    y: 420,
+    width: pageW - 160,
+    height: 30,
+    text: subtitle,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 14,
+    fontWeight: "600",
+    textColor: emerald,
+    zIndex: zIndex++,
+  });
+
+  // Author Metadata
+  elements.push({
+    id: "emerald-meta-name",
+    type: "text",
+    name: "Author Name",
+    x: 80,
+    y: 500,
+    width: 360,
+    height: 30,
+    text: author,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 18,
+    fontWeight: "700",
+    textColor: "#0F172A",
+    isMetadataField: "studentName",
+    zIndex: zIndex++,
+  });
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "emerald-meta-instructor",
+      type: "text",
+      name: "Submitted To",
+      x: 80,
+      y: 535,
+      width: 360,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#64748B",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  return elements;
+}
+
+export function generateCanvaCharcoalAmber(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+
+  const charcoal = meta.accentColor || "#18181B";
+  const amber = "#F59E0B";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Executive Committee")
+    : (meta.studentName || "Arthur Pendelton");
+
+  const brand = meta.universityName || meta.department || "Vanguard Strategic Partners";
+  const title = meta.assignmentTitle || "ANNUAL EXECUTIVE BRIEF";
+  const subtitle = meta.courseName || meta.courseCode || "Global Market Intelligence & Operational Strategy";
+
+  // White Background
+  elements.push({
+    id: "canvas-bg",
+    type: "shape",
+    name: "Page Background",
+    shapeType: "rectangle",
+    x: 0,
+    y: 0,
+    width: pageW,
+    height: pageH,
+    fillColor: "#FFFFFF",
+    borderColor: "transparent",
+    borderWidth: 0,
+    zIndex: zIndex++,
+  });
+
+  // Top Diagonal Charcoal Slice & Amber Pinstripe
+  elements.push({
+    id: "charcoal-top-slice",
+    type: "shape",
+    name: "Top Charcoal Angle Slice",
+    shapeType: "svg",
+    x: 0,
+    y: 0,
+    width: 340,
+    height: 180,
+    fillColor: charcoal,
+    svgContent: `<svg viewBox="0 0 340 180" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 340,0 180,180 0,180" fill="${charcoal}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "charcoal-top-amber",
+    type: "shape",
+    name: "Amber Speed Stripe",
+    shapeType: "svg",
+    x: 175,
+    y: 0,
+    width: 170,
+    height: 180,
+    fillColor: amber,
+    svgContent: `<svg viewBox="0 0 170 180" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 16,0 170,180 154,180" fill="${amber}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // Top-Right Dot Matrix
+  elements.push({
+    id: "charcoal-dot-grid",
+    type: "shape",
+    name: "Amber Dot Cluster",
+    shapeType: "svg",
+    x: pageW - 75,
+    y: 90,
+    width: 32,
+    height: 80,
+    fillColor: amber,
+    svgContent: `<svg viewBox="0 0 32 80" width="100%" height="100%"><circle cx="8" cy="8" r="3" fill="${amber}"/><circle cx="24" cy="8" r="3" fill="${amber}"/><circle cx="8" cy="28" r="3" fill="${amber}"/><circle cx="24" cy="28" r="3" fill="${amber}"/><circle cx="8" cy="48" r="3" fill="${amber}"/><circle cx="24" cy="48" r="3" fill="${amber}"/><circle cx="8" cy="68" r="3" fill="${amber}"/><circle cx="24" cy="68" r="3" fill="${amber}"/></svg>`,
+    zIndex: zIndex++,
+  });
+
+  // Brand Header
+  elements.push({
+    id: "charcoal-brand",
+    type: "text",
+    name: "Corporate Header",
+    x: pageW - 320,
+    y: 50,
+    width: 260,
+    height: 24,
+    text: brand.toUpperCase(),
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "right",
+    textColor: charcoal,
+    letterSpacing: 1.5,
+    zIndex: zIndex++,
+  });
+
+  // Main Title
+  elements.push({
+    id: "charcoal-title",
+    type: "text",
+    name: "Executive Title",
+    x: 80,
+    y: 320,
+    width: pageW - 160,
+    height: 100,
+    text: title,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 44,
+    fontWeight: "900",
+    textColor: "#09090B",
+    textTransform: "uppercase",
+    lineHeight: 1.05,
+    isMetadataField: "assignmentTitle",
+    zIndex: zIndex++,
+  });
+
+  elements.push({
+    id: "charcoal-subtitle",
+    type: "text",
+    name: "Executive Subtitle",
+    x: 80,
+    y: 430,
+    width: pageW - 160,
+    height: 30,
+    text: subtitle,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 14,
+    fontWeight: "600",
+    textColor: amber,
+    zIndex: zIndex++,
+  });
+
+  // Author & Instructor Metadata
+  elements.push({
+    id: "charcoal-meta-author",
+    type: "text",
+    name: "Author Name",
+    x: 80,
+    y: 520,
+    width: 360,
+    height: 28,
+    text: `Prepared by: ${author}`,
+    fontFamily: "Inter, sans-serif",
+    fontSize: 16,
+    fontWeight: "700",
+    textColor: charcoal,
+    isMetadataField: "studentName",
+    zIndex: zIndex++,
+  });
+
+  if (meta.instructorName) {
+    elements.push({
+      id: "charcoal-meta-instructor",
+      type: "text",
+      name: "Instructor Name",
+      x: 80,
+      y: 555,
+      width: 360,
+      height: 24,
+      text: `Submitted to: ${meta.instructorName}`,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "500",
+      textColor: "#71717A",
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  // Bottom Chevron
+  elements.push({
+    id: "charcoal-br-chevron",
+    type: "shape",
+    name: "Bottom-Right Chevron",
+    shapeType: "svg",
+    x: pageW - 180,
+    y: pageH - 140,
+    width: 180,
+    height: 140,
+    fillColor: charcoal,
+    svgContent: `<svg viewBox="0 0 180 140" width="100%" height="100%" preserveAspectRatio="none"><polygon points="60,0 180,0 180,140 0,140" fill="${charcoal}" /></svg>`,
+    zIndex: zIndex++,
+  });
+
+  return elements;
+}
 
 export function generateCanvaBlueYellowProposal(
   meta: AssignmentMetadata,
@@ -1491,6 +2612,70 @@ export const COVER_TEMPLATES_REGISTRY: ExtendedCoverTemplateDefinition[] = [
   // -----------------------------------------------------------
   // 0. CANVA PREMIER ARCHETYPES (Directly matching Canva Studio)
   // -----------------------------------------------------------
+  {
+    id: "canva-salford-wave",
+    name: "Blue White Yellow Modern Minimalist Project Proposal - Salford & Co.",
+    tagline: "Canva Organic Wave & Ribbon Proposal",
+    description: "Flowing deep navy organic wave header with bright yellow underlay ribbon, dark brand pill badge, bold modern title, and matching bottom-right wave curve.",
+    category: "Modern",
+    defaultAccent: "#1B365D",
+    secondaryColor: "#F59E0B",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Salford", "Proposal", "Wave", "Modern", "Minimalist"],
+    generateElements: generateCanvaSalfordWave,
+  },
+  {
+    id: "canva-hanover-red-geometric",
+    name: "Red White Modern Geometric Business Proposal - Hanover Co",
+    tagline: "Canva Faceted Geometric Red & Charcoal Proposal",
+    description: "Dynamic red and dark charcoal diagonal faceted polygons along left margin, right 6x3 circular red dot matrix, top-right brand mark, and two-tier metadata layout.",
+    category: "Business",
+    defaultAccent: "#DC2626",
+    secondaryColor: "#1E293B",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Hanover", "Geometric", "Red", "Business", "Proposal"],
+    generateElements: generateCanvaHanoverRedGeometric,
+  },
+  {
+    id: "canva-emerald-geometric",
+    name: "Emerald Green Modern Hex & Facet Report",
+    tagline: "Canva Emerald Hexagonal Geometry",
+    description: "Deep emerald and mint angular geometric corner facets, right dot matrix, and crisp modern typography.",
+    category: "Geometric",
+    defaultAccent: "#065F46",
+    secondaryColor: "#10B981",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Emerald", "Green", "Geometric"],
+    generateElements: generateCanvaEmeraldGeometric,
+  },
+  {
+    id: "canva-charcoal-amber",
+    name: "Charcoal & Amber Executive Brief",
+    tagline: "Canva High-Contrast Executive Angles",
+    description: "Dark charcoal angular header slices with bright amber pinstripe accents, dot matrix clusters, and executive metadata cards.",
+    category: "Business",
+    defaultAccent: "#18181B",
+    secondaryColor: "#F59E0B",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Executive", "Charcoal", "Amber"],
+    generateElements: generateCanvaCharcoalAmber,
+  },
   {
     id: "canva-modern-proposal",
     name: "Blue & Yellow Minimalist Modern Proposal",

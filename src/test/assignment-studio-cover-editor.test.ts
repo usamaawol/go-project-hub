@@ -339,5 +339,130 @@ describe("DocuMind Document Studio 50+ Cover Templates & Native Editor Verificat
       expect(movedWedge?.x).toBe(20);
       expect(movedWedge?.y).toBe(800);
     });
+
+    it("generates authentic Canva Blue White Yellow Modern Minimalist Proposal (Salford & Co. Picture 4)", () => {
+      const template = getCoverTemplateById("canva-salford-wave");
+      expect(template).toBeDefined();
+      expect(template.name).toContain("Salford & Co.");
+
+      const meta: AssignmentMetadata = {
+        ...getDefaultAssignmentMetadata(),
+        assignmentTitle: "Project Proposal",
+        studentName: "Benjamin Shah",
+        universityName: "Salford & Co.",
+        academicYear: "2026",
+      };
+
+      const elements = generateDefaultCoverElements(template, meta);
+
+      // 1. Pure White Background
+      const bg = elements.find((e) => e.id === "canvas-bg");
+      expect(bg?.fillColor).toBe("#FFFFFF");
+
+      // 2. Top-left wave header and yellow underlay ribbon
+      const topNavy = elements.find((e) => e.id === "salford-top-navy");
+      expect(topNavy).toBeDefined();
+      expect(topNavy?.svgContent).toContain("<path");
+
+      const topYellow = elements.find((e) => e.id === "salford-top-yellow");
+      expect(topYellow).toBeDefined();
+      expect(topYellow?.svgContent).toContain("<path");
+
+      // 3. Top-right brand pill badge
+      const pillBadge = elements.find((e) => e.id === "salford-brand-pill");
+      expect(pillBadge).toBeDefined();
+      expect(pillBadge?.borderRadius).toBe(20);
+
+      const brandText = elements.find((e) => e.id === "salford-brand-text");
+      expect(brandText?.text).toBe("Salford & Co.");
+
+      // 4. Bottom-right fluid curves
+      const brNavy = elements.find((e) => e.id === "salford-br-navy");
+      expect(brNavy).toBeDefined();
+      const brYellow = elements.find((e) => e.id === "salford-br-yellow");
+      expect(brYellow).toBeDefined();
+
+      // 5. Title & Author
+      const titleEl = elements.find((e) => e.id === "salford-title-main");
+      expect(titleEl?.text).toBe("Project Proposal 2026");
+
+      const authorEl = elements.find((e) => e.id === "salford-meta-name");
+      expect(authorEl?.text).toBe("Benjamin Shah");
+
+      // 6. Coordinates
+      const contactEl = elements.find((e) => e.id === "salford-footer-contact");
+      expect(contactEl?.text).toContain("reallygreatsite.com");
+
+      // 7. Freely editable and repositionable (move wave from top to bottom)
+      const moved = elements.map((e) => (e.id === "salford-top-navy" ? { ...e, y: 800 } : e));
+      expect(moved.find((e) => e.id === "salford-top-navy")?.y).toBe(800);
+    });
+
+    it("generates authentic Canva Red White Modern Geometric Proposal (Hanover Co Picture 5)", () => {
+      const template = getCoverTemplateById("canva-hanover-red-geometric");
+      expect(template).toBeDefined();
+      expect(template.name).toContain("Hanover Co");
+
+      const meta: AssignmentMetadata = {
+        ...getDefaultAssignmentMetadata(),
+        assignmentTitle: "STRATEGIC PROPOSAL",
+        studentName: "Eleanor Fitzgerald",
+        instructorName: "Connor Hamilton",
+        universityName: "HANOVER CO",
+      };
+
+      const elements = generateDefaultCoverElements(template, meta);
+
+      // 1. Pure White Background
+      const bg = elements.find((e) => e.id === "canvas-bg");
+      expect(bg?.fillColor).toBe("#FFFFFF");
+
+      // 2. Left Edge Red and Charcoal Faceted Polygons
+      const leftRed = elements.find((e) => e.id === "hanover-left-red-top");
+      expect(leftRed).toBeDefined();
+      expect(leftRed?.svgContent).toContain("polygon");
+
+      const leftCharcoal = elements.find((e) => e.id === "hanover-left-charcoal");
+      expect(leftCharcoal).toBeDefined();
+
+      // 3. Right-Edge 6x3 Circular Red Dot Matrix
+      const dotGrid = elements.find((e) => e.id === "hanover-dot-grid");
+      expect(dotGrid).toBeDefined();
+      expect(dotGrid?.svgContent).toContain("<circle");
+
+      // 4. Bottom-Left Charcoal & Red Wedges
+      const blCharcoal = elements.find((e) => e.id === "hanover-bl-charcoal");
+      expect(blCharcoal).toBeDefined();
+      const blRed = elements.find((e) => e.id === "hanover-bl-red");
+      expect(blRed).toBeDefined();
+
+      // 5. Two-tier Prepared For / Prepared By Metadata
+      const forName = elements.find((e) => e.id === "hanover-for-name");
+      expect(forName?.text).toBe("Connor Hamilton");
+
+      const byName = elements.find((e) => e.id === "hanover-by-name");
+      expect(byName?.text).toBe("Eleanor Fitzgerald");
+
+      // 6. Freely repositionable (move dot matrix to left)
+      const moved = elements.map((e) => (e.id === "hanover-dot-grid" ? { ...e, x: 50, y: 700 } : e));
+      const movedDots = moved.find((e) => e.id === "hanover-dot-grid");
+      expect(movedDots?.x).toBe(50);
+      expect(movedDots?.y).toBe(700);
+    });
+
+    it("synthesizes Canva-grade vector geometry and dot matrices across standard templates", () => {
+      const template = getCoverTemplateById("harvard-crimson");
+      const meta = getDefaultAssignmentMetadata();
+      const elements = generateDefaultCoverElements(template, meta);
+
+      // Academic templates must now include decorative corner anchor wedges and dot accents
+      const tlAnchor = elements.find((e) => e.id === "accent-tl-anchor");
+      expect(tlAnchor).toBeDefined();
+      expect(tlAnchor?.svgContent).toContain("polygon");
+
+      const dotAccent = elements.find((e) => e.id === "accent-dot-matrix");
+      expect(dotAccent).toBeDefined();
+      expect(dotAccent?.svgContent).toContain("<circle");
+    });
   });
 });

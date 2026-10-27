@@ -67,11 +67,12 @@ export function AssignmentCoverRenderer({
   // Base font sizing helper based on thumbnail vs presentation vs document
   const scale = isThumbnail ? 0.38 : aspectRatio === "16:9" ? 0.95 : 1.0;
 
-  // Priority 1: If custom cover elements exist OR if it's a Canva template archetype
+  // Priority 1: If custom cover elements exist, or if it's a Canva template, or when rendering A4/thumbnails
   const hasCustomElements = Boolean(safeMeta.customCoverElements && safeMeta.customCoverElements.length > 0);
   const isCanvaTemplate = templateId.startsWith("canva-");
+  const useCanvasRendering = hasCustomElements || isCanvaTemplate || isThumbnail || aspectRatio === "a4";
 
-  if (hasCustomElements || isCanvaTemplate) {
+  if (useCanvasRendering) {
     const rawElements = hasCustomElements
       ? safeMeta.customCoverElements!
       : generateDefaultCoverElements(getCoverTemplateById(templateId), safeMeta);

@@ -362,7 +362,7 @@ export function CoverCanvasEditor({
   };
 
   const handleAddShape = (
-    shapeType: "rectangle" | "rounded-card" | "circle" | "accent-bar" | "divider" | "wedge" | "chevron" | "dots" | "stripe",
+    shapeType: "rectangle" | "rounded-card" | "circle" | "accent-bar" | "divider" | "wedge" | "chevron" | "dots" | "stripe" | "wave" | "facet",
   ) => {
     const newId = `shape-${Date.now()}`;
     const maxZ = Math.max(...elements.map((e) => e.zIndex), 1) + 1;
@@ -396,6 +396,34 @@ export function CoverCanvasEditor({
         height: 160,
         fillColor: accent,
         svgContent: `<svg viewBox="0 0 100 160" width="100%" height="100%" preserveAspectRatio="none"><polygon points="100,0 100,160 0,160 60,80" fill="${accent}"/></svg>`,
+        zIndex: maxZ,
+      };
+    } else if (shapeType === "wave") {
+      newEl = {
+        id: newId,
+        type: "shape",
+        name: "Fluid Organic Wave",
+        shapeType: "svg",
+        x: pageW - 240,
+        y: 0,
+        width: 240,
+        height: 160,
+        fillColor: accent,
+        svgContent: `<svg viewBox="0 0 240 160" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 C 90,50 160,110 240,160 L 240,0 Z" fill="${accent}"/></svg>`,
+        zIndex: maxZ,
+      };
+    } else if (shapeType === "facet") {
+      newEl = {
+        id: newId,
+        type: "shape",
+        name: "Diagonal Facet Polygon",
+        shapeType: "svg",
+        x: 0,
+        y: 0,
+        width: 140,
+        height: 240,
+        fillColor: accent,
+        svgContent: `<svg viewBox="0 0 140 240" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 140,0 45,240 0,240" fill="${accent}"/></svg>`,
         zIndex: maxZ,
       };
     } else if (shapeType === "dots") {
@@ -1089,6 +1117,24 @@ export function CoverCanvasEditor({
 
                 <button
                   type="button"
+                  onClick={() => handleAddShape("wave")}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
+                >
+                  <div className="h-6 w-12 bg-primary rounded-t-full rounded-b-xs" />
+                  <span className="text-[11px] text-slate-300">Organic Wave</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleAddShape("facet")}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
+                >
+                  <div className="h-8 w-6 bg-red-600 rounded-xs [clip-path:polygon(0_0,100%_0,30%_100%,0_100%)]" />
+                  <span className="text-[11px] text-slate-300">Diagonal Facet</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => handleAddShape("divider")}
                   className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-primary flex flex-col items-center justify-center gap-1.5 transition-all text-xs"
                 >
@@ -1699,6 +1745,69 @@ export function CoverCanvasEditor({
                       onChange={(e) => updateElementProp(selectedElement.id, { height: Number(e.target.value) })}
                       className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-white"
                     />
+                  </div>
+                </div>
+
+                {/* Quick Page Alignment / Placement Buttons */}
+                <div className="pt-1.5 space-y-1">
+                  <span className="text-[10px] font-mono uppercase text-slate-500 block">
+                    Quick Placement (Snap to Edges)
+                  </span>
+                  <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateElementProp(selectedElement.id, { x: 40 })}
+                      className="h-6 px-1 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[10px]"
+                      title="Align to Left Margin"
+                    >
+                      Left
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateElementProp(selectedElement.id, { x: Math.round((pageW - selectedElement.width) / 2) })}
+                      className="h-6 px-1 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[10px]"
+                      title="Center Horizontally"
+                    >
+                      Center X
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateElementProp(selectedElement.id, { x: pageW - selectedElement.width - 40 })}
+                      className="h-6 px-1 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[10px]"
+                      title="Align to Right Margin"
+                    >
+                      Right
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateElementProp(selectedElement.id, { y: 40 })}
+                      className="h-6 px-1 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[10px]"
+                      title="Move to Top Margin"
+                    >
+                      Top
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateElementProp(selectedElement.id, { y: Math.round((pageH - selectedElement.height) / 2) })}
+                      className="h-6 px-1 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[10px]"
+                      title="Center Vertically"
+                    >
+                      Center Y
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateElementProp(selectedElement.id, { y: pageH - selectedElement.height - 40 })}
+                      className="h-6 px-1 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[10px]"
+                      title="Move to Bottom Margin"
+                    >
+                      Bottom
+                    </Button>
                   </div>
                 </div>
 
