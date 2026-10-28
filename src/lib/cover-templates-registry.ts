@@ -60,7 +60,7 @@ export function generateDefaultCoverElements(
   const secondary = template.secondaryColor || "#475569";
   const isGroup = meta.assignmentType === "group";
   const groupName = meta.groupName?.trim();
-  const showGroupOnCover = isGroup && meta.groupNamePlacement !== "first-body-page";
+  const showGroupOnCover = isGroup && meta.groupNamePlacement !== "first-body-page" && meta.identityPlacement !== "first-body-page-only";
 
   const title =
     meta.assignmentTitle?.trim() ||
@@ -3571,3 +3571,17 @@ export function getCoverTemplateById(id: string): ExtendedCoverTemplateDefinitio
     COVER_TEMPLATES_REGISTRY[0]!
   );
 }
+
+/**
+ * Convenience helper to generate cover canvas elements directly from template ID or object
+ */
+export function generateCoverElements(
+  templateOrId: string | ExtendedCoverTemplateDefinition,
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const template = typeof templateOrId === "string" ? getCoverTemplateById(templateOrId) : templateOrId;
+  return generateDefaultCoverElements(template, meta, pageW, pageH);
+}
+

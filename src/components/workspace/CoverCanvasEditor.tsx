@@ -821,9 +821,10 @@ export function CoverCanvasEditor({
             size="sm"
             onClick={handleAdjustAndApplyClick}
             className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs h-8 px-4 gap-1.5 shadow-lg shadow-emerald-950"
+            title="Apply Cover to Document as Page 1"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>Adjust & Apply</span>
+            <span>Apply Cover</span>
           </Button>
         </div>
       </header>
@@ -1912,7 +1913,7 @@ export function CoverCanvasEditor({
                 }}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
               >
-                Proceed & Apply
+                Apply Cover as Page 1
               </Button>
             </div>
           </div>

@@ -526,64 +526,6 @@ export function AssignmentInformationForm({
                   ))}
                 </div>
               </div>
-
-              {/* Required Group-Name Placement Decision (Section 5) */}
-              <div className="p-3.5 rounded-xl border border-primary/25 bg-primary/5 space-y-2 mt-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <Sliders className="h-3.5 w-3.5 text-primary" />
-                    Required Group-Name Placement Decision <span className="text-destructive">*</span>
-                  </span>
-                  <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded font-semibold">
-                    Real Document Layout
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Choose where your team or group designation will be positioned in the finished document.
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => updateField("groupNamePlacement", "cover")}
-                    className={`p-3 rounded-lg border text-left transition-all ${
-                      metadata.groupNamePlacement !== "first-body-page"
-                        ? "border-primary bg-background ring-2 ring-primary/30 shadow-xs"
-                        : "border-border bg-card/60 hover:bg-card"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center ${metadata.groupNamePlacement !== "first-body-page" ? "border-primary bg-primary" : "border-muted-foreground"}`}>
-                        {metadata.groupNamePlacement !== "first-body-page" && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
-                      </div>
-                      <span className="text-xs font-bold text-foreground">Option A — Display on Cover Page</span>
-                    </div>
-                    <p className="text-[10.5px] text-muted-foreground mt-1.5 pl-5 leading-relaxed">
-                      The group name is styled into the cover page. The first page of the assignment body starts cleanly without an extra group heading.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => updateField("groupNamePlacement", "first-body-page")}
-                    className={`p-3 rounded-lg border text-left transition-all ${
-                      metadata.groupNamePlacement === "first-body-page"
-                        ? "border-primary bg-background ring-2 ring-primary/30 shadow-xs"
-                        : "border-border bg-card/60 hover:bg-card"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center ${metadata.groupNamePlacement === "first-body-page" ? "border-primary bg-primary" : "border-muted-foreground"}`}>
-                        {metadata.groupNamePlacement === "first-body-page" && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
-                      </div>
-                      <span className="text-xs font-bold text-foreground">Option B — First Page of Body</span>
-                    </div>
-                    <p className="text-[10.5px] text-muted-foreground mt-1.5 pl-5 leading-relaxed">
-                      The cover page displays credentials without the group name. The group name is placed at the top of the first body page with heading hierarchy.
-                    </p>
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -615,6 +557,113 @@ export function AssignmentInformationForm({
                 className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 required
               />
+            </div>
+          </div>
+
+          {/* Information & Identity Placement Decision */}
+          <div className="p-3.5 rounded-xl border border-primary/25 bg-primary/5 space-y-2.5 mt-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-primary/20 pb-2">
+              <span className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Sliders className="h-4 w-4 text-primary" />
+                Information & Identity Placement Decision <span className="text-destructive">*</span>
+              </span>
+              <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded font-semibold w-fit">
+                Layout Control
+              </span>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Choose where student credentials, IDs, instructor, and course details will appear in the document:
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+              {/* Option 1: Cover Page Only */}
+              <button
+                type="button"
+                onClick={() => {
+                  updateField("identityPlacement", "cover-only");
+                  updateField("groupNamePlacement", "cover");
+                }}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  metadata.identityPlacement === "cover-only"
+                    ? "border-primary bg-background ring-2 ring-primary/30 shadow-xs"
+                    : "border-border bg-card/60 hover:bg-card"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center ${
+                    metadata.identityPlacement === "cover-only"
+                      ? "border-primary bg-primary"
+                      : "border-muted-foreground"
+                  }`}>
+                    {metadata.identityPlacement === "cover-only" && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                  </div>
+                  <span className="text-xs font-bold text-foreground">Cover Page Only</span>
+                </div>
+                <p className="text-[10.5px] text-muted-foreground mt-1.5 pl-5 leading-relaxed">
+                  Credentials are styled exclusively on the Cover Page (Page 1). The first body page starts cleanly without redundant headings.
+                </p>
+              </button>
+
+              {/* Option 2: First Page of Body Only */}
+              <button
+                type="button"
+                onClick={() => {
+                  updateField("identityPlacement", "first-body-page-only");
+                  updateField("groupNamePlacement", "first-body-page");
+                }}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  metadata.identityPlacement === "first-body-page-only" || metadata.groupNamePlacement === "first-body-page"
+                    ? "border-primary bg-background ring-2 ring-primary/30 shadow-xs"
+                    : "border-border bg-card/60 hover:bg-card"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center ${
+                    metadata.identityPlacement === "first-body-page-only" || metadata.groupNamePlacement === "first-body-page"
+                      ? "border-primary bg-primary"
+                      : "border-muted-foreground"
+                  }`}>
+                    {(metadata.identityPlacement === "first-body-page-only" || metadata.groupNamePlacement === "first-body-page") && (
+                      <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                    )}
+                  </div>
+                  <span className="text-xs font-bold text-foreground">First Body Page Only</span>
+                </div>
+                <p className="text-[10.5px] text-muted-foreground mt-1.5 pl-5 leading-relaxed">
+                  Cover displays the document branding cleanly. An official submission header block with names, IDs, and course details is formatted at the top of Page 2.
+                </p>
+              </button>
+
+              {/* Option 3: Both Cover & First Body Page */}
+              <button
+                type="button"
+                onClick={() => {
+                  updateField("identityPlacement", "both");
+                  updateField("groupNamePlacement", "both");
+                }}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  metadata.identityPlacement === "both" || (!metadata.identityPlacement && metadata.groupNamePlacement !== "first-body-page")
+                    ? "border-primary bg-background ring-2 ring-primary/30 shadow-xs"
+                    : "border-border bg-card/60 hover:bg-card"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center ${
+                    metadata.identityPlacement === "both" || (!metadata.identityPlacement && metadata.groupNamePlacement !== "first-body-page")
+                      ? "border-primary bg-primary"
+                      : "border-muted-foreground"
+                  }`}>
+                    {(metadata.identityPlacement === "both" || (!metadata.identityPlacement && metadata.groupNamePlacement !== "first-body-page")) && (
+                      <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                    )}
+                  </div>
+                  <span className="text-xs font-bold text-foreground">Both Cover & Body</span>
+                </div>
+                <p className="text-[10.5px] text-muted-foreground mt-1.5 pl-5 leading-relaxed">
+                  Full credentials appear on the Canva cover page, and an institutional running header block is also rendered at the top of the document body.
+                </p>
+              </button>
             </div>
           </div>
         </div>

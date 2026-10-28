@@ -48,9 +48,14 @@ export interface CanvasCoverElement {
   imageFit?: "contain" | "cover";
 }
 
+export type IdentityPlacement = "cover-only" | "first-body-page-only" | "both";
+
 export interface AssignmentMetadata {
   isAssignment: boolean;
   assignmentType: AssignmentType;
+
+  // Identity placement across cover and body pages
+  identityPlacement?: IdentityPlacement;
 
   // Individual fields
   studentName?: string;
@@ -58,7 +63,7 @@ export interface AssignmentMetadata {
 
   // Group fields
   groupName?: string;
-  groupNamePlacement?: "cover" | "first-body-page";
+  groupNamePlacement?: "cover" | "first-body-page" | "both";
   groupMembers: StudentMember[];
 
   // Course & Submission (Required)
@@ -122,6 +127,7 @@ export function getDefaultAssignmentMetadata(): AssignmentMetadata {
   return {
     isAssignment: false,
     assignmentType: "individual",
+    identityPlacement: "both",
     studentName: "",
     studentId: "",
     groupName: "",

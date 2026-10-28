@@ -35,6 +35,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
+  FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,16 @@ import { CoverTemplateGallery } from "@/components/workspace/CoverTemplateGaller
 import { AssignmentCoverRenderer } from "@/components/workspace/AssignmentCoverRenderer";
 import { CoverCanvasEditor } from "@/components/workspace/CoverCanvasEditor";
 import { generateAssignmentCoverHtml } from "@/lib/assignment-document-renderer";
+import { DocumentWordToolbar } from "@/components/workspace/DocumentWordToolbar";
+import { DocumentRichBodyEditor } from "@/components/workspace/DocumentRichBodyEditor";
+import { AcademicIdentityHeader, generateAcademicIdentityHeaderHtml } from "@/components/workspace/AcademicIdentityHeader";
+import {
+  renderExecutiveDocx,
+  renderExecutivePdf,
+  parseHtmlToBlocks,
+  parsePlainTextToBlocks,
+} from "@/lib/document-synthesizer";
+
 
 
 export interface FormattingConfig {
@@ -356,10 +367,10 @@ export function deriveDocumentMetadata(text: string): {
   let foundTitle = "";
 
   for (const l of lines) {
-    const authorM = l.match(/^(?:Author|Researcher|Prepared By|By)\s*[:]\s*(.*)$/i);
+    const authorM = l.match(/^(?:Author|Researcher|Prepared By|Student Name|Student|By)\s*[:]\s*(.*)$/i);
     if (authorM && authorM[1]) foundAuthor = authorM[1].trim();
 
-    const instM = l.match(/^(?:Institution|Department|Organization|University|Affiliation)\s*[:]\s*(.*)$/i);
+    const instM = l.match(/^(?:Institution|Department|Organization|University|College|Affiliation)\s*[:]\s*(.*)$/i);
     if (instM && instM[1]) foundInstitution = instM[1].trim();
 
     const dateM = l.match(/^(?:Date|Published|Submission Date)\s*[:]\s*(.*)$/i);
@@ -368,8 +379,20 @@ export function deriveDocumentMetadata(text: string): {
     const subM = l.match(/^(?:Subtitle|Series Subtitle)\s*[:]\s*(.*)$/i);
     if (subM && subM[1]) foundSubtitle = subM[1].trim();
 
-    const titleM = l.match(/^(?:Title|Document Title)\s*[:]\s*(.*)$/i);
+    const titleM = l.match(/^(?:Title|Document Title|Assignment Title|Assignment)\s*[:]\s*(.*)$/i);
     if (titleM && titleM[1]) foundTitle = titleM[1].trim();
+  }
+
+  if (!foundInstitution) {
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      const l = lines[i]?.trim() || "";
+      if (/\b(?:University|College|Institute|Department|Faculty|School of)\b/i.test(l)) {
+        if (!/^(?:Course|Student|Author|Title|Assignment|Date|Submitted|Prepared)\b/i.test(l) && l.length < 80) {
+          foundInstitution = l;
+          break;
+        }
+      }
+    }
   }
 
   const lower = text.toLowerCase();
@@ -473,6 +496,74 @@ export function deriveDocumentMetadata(text: string): {
     dateStr: foundDate || defaultMonthYear,
     recommendedArchetype,
   };
+}
+
+export interface ExistingCoverDetectionResult {
+  hasExistingCover: boolean;
+  detectedTitle?: string;
+  detectedAuthor?: string;
+  detectedInstitution?: string;
+  detectedDate?: string;
+  bodyTrimIndex?: number;
+}
+
+export function detectExistingCoverPage(text: string): ExistingCoverDetectionResult {
+  if (!text || text.trim().length < 40) {
+    return { hasExistingCover: false };
+  }
+
+  const lines = text.split("\n");
+  let hasExplicitAuthor = false;
+  let hasExplicitInst = false;
+  let hasExplicitTitle = false;
+  let hasDividerOrBreak = false;
+  let headingLineIdx = -1;
+
+  for (let i = 0; i < Math.min(lines.length, 18); i++) {
+    const l = lines[i]?.trim() || "";
+    if (/^(?:Author|Researcher|Prepared By|Student Name|By)\s*[:]/i.test(l)) {
+      hasExplicitAuthor = true;
+    }
+    if (/^(?:Institution|Department|University|College|Submitted To)\s*[:]/i.test(l)) {
+      hasExplicitInst = true;
+    }
+    if (/^(?:Title|Document Title|Assignment Title)\s*[:]/i.test(l)) {
+      hasExplicitTitle = true;
+    }
+    if (/^(?:---|===|___|\*\*\*)$/.test(l) || /page\s*break/i.test(l)) {
+      hasDividerOrBreak = true;
+      headingLineIdx = i + 1;
+      break;
+    }
+    if (/^(?:1\.0|1\.|#\s+|Chapter\s+1|Introduction)/i.test(l) && i > 1) {
+      headingLineIdx = i;
+      break;
+    }
+  }
+
+  const meta = deriveDocumentMetadata(text);
+  const hasStrongCoverSignals =
+    (hasExplicitAuthor && (hasExplicitInst || Boolean(meta.docTitle))) ||
+    (hasExplicitTitle && hasExplicitAuthor) ||
+    (hasDividerOrBreak && Boolean(meta.docTitle)) ||
+    (Boolean(meta.authorName) && Boolean(meta.institution) && headingLineIdx > 0);
+
+  if (hasStrongCoverSignals) {
+    let trimIndex = 0;
+    if (headingLineIdx > 0) {
+      trimIndex = lines.slice(0, headingLineIdx).join("\n").length;
+    }
+    return {
+      hasExistingCover: true,
+      detectedTitle: meta.docTitle,
+      detectedAuthor: meta.authorName,
+      detectedInstitution: meta.institution,
+      detectedDate: meta.dateStr,
+      bodyTrimIndex: trimIndex > 0 ? trimIndex : undefined,
+    };
+  }
+
+  return { hasExistingCover: false };
 }
 
 export function parseLinesToBlocks(
@@ -683,7 +774,18 @@ export function parseLinesToBlocks(
       continue;
     }
 
-    // 5. Critical / Requirement Callouts
+    // 5. Critical / Requirement Callouts & Markdown Blockquotes
+    const bqMatch = line.match(/^>\s*(?:\[!(?:NOTE|IMPORTANT|WARNING|CRITICAL)\]\s*)?(.*)$/i);
+    if (bqMatch) {
+      blocks.push({
+        type: "callout",
+        content: bqMatch[1] || "",
+        calloutType: "note",
+        calloutTitle: "NOTE",
+      });
+      continue;
+    }
+
     const calloutMatch = line.match(
       /^(?:CRITICAL|IMPORTANT|NOTE|WARNING|REQUIREMENT|CONTINUITY REQUIREMENT|GUARDRAIL)\s*[:.]?\s*(.*)$/i,
     );
@@ -1250,7 +1352,8 @@ export function DocumentFormattingWorkflow({
   });
 
   // Active preview tab in Step 3
-  const [previewPage, setPreviewPage] = useState<"all" | "single" | "toc" | "cover">("all");
+  const [previewPage, setPreviewPage] = useState<"all" | "editor" | "single" | "toc" | "cover">("all");
+  const [bodyHtml, setBodyHtml] = useState<string>("");
   const [activePageNum, setActivePageNum] = useState<number>(1);
   const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
   const [documentZoom, setDocumentZoom] = useState<number>(100);
@@ -1289,6 +1392,7 @@ export function DocumentFormattingWorkflow({
   > | null>(null);
   const [isEditCoverModalOpen, setIsEditCoverModalOpen] = useState<boolean>(false);
   const [isCanvasEditorOpen, setIsCanvasEditorOpen] = useState<boolean>(false);
+  const [existingCoverPrompt, setExistingCoverPrompt] = useState<ExistingCoverDetectionResult | null>(null);
 
   // File handling
   const handleFileUpload = async (file: File) => {
@@ -1353,7 +1457,13 @@ export function DocumentFormattingWorkflow({
       setAssignmentMetadata((prev) => ({
         ...prev,
         assignmentTitle: prev.assignmentTitle || meta.docTitle,
+        universityName: prev.universityName || meta.institution,
+        studentName: prev.studentName || meta.authorName,
       }));
+    }
+    const detected = detectExistingCoverPage(text);
+    if (detected.hasExistingCover) {
+      setExistingCoverPrompt(detected);
     }
   };
 
@@ -1423,12 +1533,130 @@ export function DocumentFormattingWorkflow({
     toast.success("Document structure and editorial blueprint optimized!");
   };
 
-  // Export handlers
-  const handleExportDocx = () => {
+  // Export handlers state
+  const [isExportingDocx, setIsExportingDocx] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  // Real Microsoft Word (.docx) export
+  const handleExportDocx = async () => {
+    try {
+      setIsExportingDocx(true);
+      toast.loading("Generating real Microsoft Word document (.docx)...", { id: "export-docx" });
+
+      const activeMeta = assignmentMode
+        ? { ...assignmentMetadata, isAssignment: true }
+        : {
+            ...getDefaultAssignmentMetadata(),
+            isAssignment: false,
+            assignmentTitle: config.docTitle || "Document Title",
+            courseName: config.docSubtitle || "",
+            studentName: config.authorName || "",
+            universityName: config.institution || "",
+            submissionDate: config.dateStr || "",
+            accentColor: config.accentColor || "#1E3A8A",
+            identityPlacement: config.assignmentMetadata?.identityPlacement || "cover-only",
+          };
+
+      // Extract blocks from bodyHtml if user edited the body, else rawText
+      const blocks = bodyHtml ? parseHtmlToBlocks(bodyHtml) : parsePlainTextToBlocks(rawText);
+
+      const docxResult = await renderExecutiveDocx(blocks, config.docTitle || activeMeta.assignmentTitle || "Document", {
+        hasCoverPage: config.hasCoverPage || assignmentMode,
+        coverMetadata: activeMeta,
+        docTitle: config.docTitle || activeMeta.assignmentTitle,
+        docSubtitle: config.docSubtitle || activeMeta.courseName,
+        institution: config.institution || activeMeta.universityName,
+        authorName: config.authorName || activeMeta.studentName,
+        dateStr: config.dateStr || activeMeta.submissionDate,
+        primaryColor: activeMeta.accentColor || config.accentColor || "#1E3A8A",
+        identityPlacement: activeMeta.identityPlacement || "cover-only",
+      });
+
+      const blob = docxResult instanceof Blob
+        ? docxResult
+        : new Blob([docxResult], {
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          });
+
+      const docName = `${(config.docTitle || activeMeta.assignmentTitle || "formatted_document").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32)}.docx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = docName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success("Document exported as real Microsoft Word (.docx) with Page 1 cover and latest edits!", { id: "export-docx" });
+    } catch (err: any) {
+      console.error("DOCX export error:", err);
+      toast.error(`DOCX export failed: ${err?.message || "Unknown error"}`, { id: "export-docx" });
+    } finally {
+      setIsExportingDocx(false);
+    }
+  };
+
+  // Real publication-grade PDF (.pdf) export
+  const handleExportPdf = async () => {
+    try {
+      setIsExportingPdf(true);
+      toast.loading("Generating publication-grade PDF (.pdf)...", { id: "export-pdf" });
+
+      const activeMeta = assignmentMode
+        ? { ...assignmentMetadata, isAssignment: true }
+        : {
+            ...getDefaultAssignmentMetadata(),
+            isAssignment: false,
+            assignmentTitle: config.docTitle || "Document Title",
+            courseName: config.docSubtitle || "",
+            studentName: config.authorName || "",
+            universityName: config.institution || "",
+            submissionDate: config.dateStr || "",
+            accentColor: config.accentColor || "#1E3A8A",
+            identityPlacement: config.assignmentMetadata?.identityPlacement || "cover-only",
+          };
+
+      const blocks = bodyHtml ? parseHtmlToBlocks(bodyHtml) : parsePlainTextToBlocks(rawText);
+
+      const pdfBytes = await renderExecutivePdf(blocks, config.docTitle || activeMeta.assignmentTitle || "Document", {
+        hasCoverPage: config.hasCoverPage || assignmentMode,
+        coverMetadata: activeMeta,
+        docTitle: config.docTitle || activeMeta.assignmentTitle,
+        docSubtitle: config.docSubtitle || activeMeta.courseName,
+        institution: config.institution || activeMeta.universityName,
+        authorName: config.authorName || activeMeta.studentName,
+        dateStr: config.dateStr || activeMeta.submissionDate,
+        primaryColor: activeMeta.accentColor || config.accentColor || "#1E3A8A",
+        identityPlacement: activeMeta.identityPlacement || "cover-only",
+      });
+
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const docName = `${(config.docTitle || activeMeta.assignmentTitle || "formatted_document").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32)}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = docName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success("Document exported as publication-grade PDF with Page 1 cover and latest edits!", { id: "export-pdf" });
+    } catch (err: any) {
+      console.error("PDF export error:", err);
+      toast.error(`PDF export failed: ${err?.message || "Unknown error"}`, { id: "export-pdf" });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  // Legacy Word (.doc) export
+  const handleExportLegacyDoc = () => {
     const activeConfig = assignmentMode
       ? { ...config, hasCoverPage: true, assignmentMetadata: { ...assignmentMetadata, isAssignment: true } }
       : config;
-    const htmlContent = generateFormattedHtml(rawText, activeConfig);
+    const htmlContent = generateFormattedHtml(rawText, activeConfig, bodyHtml || undefined);
     const blob = new Blob([htmlContent], { type: "application/msword;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const docName = `${(activeConfig.docTitle || "formatted_document").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32)}.doc`;
@@ -1440,14 +1668,14 @@ export function DocumentFormattingWorkflow({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast.success("Document downloaded in editable Word-compatible format!");
+    toast.success("Document downloaded in HTML Word (.doc) format with latest edits!");
   };
 
   const handlePrintPreview = () => {
     const activeConfig = assignmentMode
       ? { ...config, hasCoverPage: true, assignmentMetadata: { ...assignmentMetadata, isAssignment: true } }
       : config;
-    const htmlContent = generateFormattedHtml(rawText, activeConfig);
+    const htmlContent = generateFormattedHtml(rawText, activeConfig, bodyHtml || undefined);
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Popup blocked. Please allow popups to print/save as PDF.");
@@ -1461,6 +1689,7 @@ export function DocumentFormattingWorkflow({
       printWindow.print();
     }, 500);
   };
+
 
   const handleCopyFormattedText = () => {
     navigator.clipboard.writeText(rawText);
@@ -1758,6 +1987,77 @@ export function DocumentFormattingWorkflow({
                 </button>
               </div>
             </div>
+
+            {/* Existing Cover Detection Banner */}
+            {existingCoverPrompt?.hasExistingCover && (
+              <div className="mb-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-foreground">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0 mt-0.5">
+                    <AlertCircle className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-amber-600 dark:text-amber-400">
+                      Existing Cover or Title Header Detected in Document
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      "{existingCoverPrompt.detectedTitle || "Detected Document Title"}"
+                      {existingCoverPrompt.detectedAuthor ? ` · ${existingCoverPrompt.detectedAuthor}` : ""}
+                      {existingCoverPrompt.detectedInstitution ? ` (${existingCoverPrompt.detectedInstitution})` : ""}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Choose whether to replace this with an executive Canva cover page at Page 1, retain it in the body, or add a new cover.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0 self-start sm:self-center">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1 shadow-xs cursor-pointer"
+                    onClick={() => {
+                      if (existingCoverPrompt.bodyTrimIndex) {
+                        setRawText(rawText.slice(existingCoverPrompt.bodyTrimIndex).trimStart());
+                      }
+                      setConfig((prev) => ({
+                        ...prev,
+                        hasCoverPage: true,
+                        docTitle: existingCoverPrompt.detectedTitle || prev.docTitle,
+                        authorName: existingCoverPrompt.detectedAuthor || prev.authorName,
+                        institution: existingCoverPrompt.detectedInstitution || prev.institution,
+                      }));
+                      setExistingCoverPrompt(null);
+                      toast.success("Existing title converted into Canva Cover Page 1!");
+                    }}
+                  >
+                    Replace with Canva Cover
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs cursor-pointer"
+                    onClick={() => {
+                      setConfig((prev) => ({ ...prev, hasCoverPage: false }));
+                      setExistingCoverPrompt(null);
+                      toast.info("Retaining existing cover inside the document body.");
+                    }}
+                  >
+                    Retain as Body Text
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs cursor-pointer"
+                    onClick={() => {
+                      setConfig((prev) => ({ ...prev, hasCoverPage: true }));
+                      setExistingCoverPrompt(null);
+                      toast.info("Adding Canva Cover at Page 1.");
+                    }}
+                  >
+                    Add as Page 1
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {inputMode === "paste" ? (
               <div>
@@ -2801,6 +3101,16 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
               <Button variant="glass" size="sm" onClick={() => goToStep(2)} className="text-xs">
                 <Sliders className="h-3.5 w-3.5 mr-1" /> Adjust Styles
               </Button>
+              <Button
+                variant="glass"
+                size="sm"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="text-xs text-rose-600 hover:text-rose-700"
+              >
+                <FileDown className="h-3.5 w-3.5 mr-1" />
+                {isExportingPdf ? "Generating..." : "Download PDF (.pdf)"}
+              </Button>
               <Button variant="glass" size="sm" onClick={handlePrintPreview} className="text-xs">
                 <Printer className="h-3.5 w-3.5 mr-1" /> Print / Save PDF
               </Button>
@@ -2808,9 +3118,11 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 variant="hero"
                 size="sm"
                 onClick={handleExportDocx}
+                disabled={isExportingDocx}
                 className="text-xs gap-1.5"
               >
-                <Download className="h-3.5 w-3.5" /> Download Editable (.DOC)
+                <Download className="h-3.5 w-3.5" />
+                {isExportingDocx ? "Exporting..." : "Download Real DOCX (.docx)"}
               </Button>
             </div>
           </div>
@@ -2861,8 +3173,31 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
             const currentDisplayWidth = Math.round(BASE_A4_WIDTH * effectiveScale);
             const currentDisplayHeight = Math.round(BASE_A4_HEIGHT * effectiveScale);
 
+            const effectiveCoverMetadata: AssignmentMetadata = config.assignmentMetadata?.isAssignment
+              ? (config.assignmentMetadata || getDefaultAssignmentMetadata())
+              : {
+                  ...getDefaultAssignmentMetadata(),
+                  isAssignment: false,
+                  assignmentTitle: config.docTitle || "Document Title",
+                  courseName: config.docSubtitle || "",
+                  studentName: config.authorName || "",
+                  universityName: config.institution || "",
+                  submissionDate: config.dateStr || "",
+                  coverTemplateId: config.assignmentMetadata?.coverTemplateId || "executive-bold",
+                  primaryColor: config.assignmentMetadata?.primaryColor,
+                  secondaryColor: config.assignmentMetadata?.secondaryColor,
+                  logoUrl: config.assignmentMetadata?.logoUrl,
+                  customElements: config.assignmentMetadata?.customElements,
+                };
+
             return (
-              <div className="space-y-6">
+              <div className="space-y-4">
+                {/* Word-Processing Formatting Toolbar */}
+                <DocumentWordToolbar
+                  currentLineSpacing={config.lineSpacing}
+                  onLineSpacingChange={(sp) => setConfig((prev) => ({ ...prev, lineSpacing: sp }))}
+                />
+
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   {/* Document View Switcher */}
                   <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-surface-2 p-1 text-xs font-medium">
@@ -2876,6 +3211,23 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                       }`}
                     >
                       All Pages (A4)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!bodyHtml && rawText) {
+                          setBodyHtml(convertSectionsToInitialHtml(sections));
+                        }
+                        setPreviewPage("editor");
+                      }}
+                      className={`rounded-md px-3 py-1 transition-all flex items-center gap-1.5 ${
+                        previewPage === "editor"
+                          ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Edit3 className="h-3 w-3" /> Interactive Editor
                     </button>
 
                     <button
@@ -3049,6 +3401,27 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                   className="flex flex-col items-center py-8 bg-slate-100/90 dark:bg-zinc-950/90 rounded-2xl border border-border p-3 sm:p-6 lg:p-8 overflow-x-auto shadow-inner w-full"
                 >
                   <div className="flex flex-col items-center">
+                    {/* VIEW MODE 0: INTERACTIVE FULL RICH TEXT EDITOR */}
+                    {previewPage === "editor" && (
+                      <div className="w-full flex justify-center shrink-0">
+                        <DocumentRichBodyEditor
+                          initialHtml={bodyHtml || convertSectionsToInitialHtml(sections)}
+                          onChange={(newHtml) => {
+                            setBodyHtml(newHtml);
+                            const extracted = convertHtmlToRawText(newHtml);
+                            if (extracted.trim()) {
+                              setRawText(extracted);
+                            }
+                          }}
+                          config={config}
+                          paperMode={paperMode}
+                          onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
+                          effectiveCoverMetadata={effectiveCoverMetadata}
+                          zoomScale={effectiveScale}
+                        />
+                      </div>
+                    )}
+
                     {/* VIEW MODE 1: ALL A4 PAGES STACKED */}
                     {previewPage === "all" && (
                       <div className="space-y-10 flex flex-col items-center shrink-0">
@@ -3099,6 +3472,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                   paperMode={paperMode}
                                   sections={sections}
                                   onNavigatePage={(p) => setActivePageNum(p)}
+                                  onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                                 />
                               </div>
                             </div>
@@ -3148,6 +3522,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                               paperMode={paperMode}
                               sections={sections}
                               onNavigatePage={(p) => setActivePageNum(p)}
+                              onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                             />
                           </div>
                         </div>
@@ -3205,6 +3580,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                       setActivePageNum(p);
                                       setPreviewPage("single");
                                     }}
+                                    onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                                   />
                                 </div>
                               </div>
@@ -3262,6 +3638,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                       setActivePageNum(p);
                                       setPreviewPage("single");
                                     }}
+                                    onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                                   />
                                 </div>
                               </div>
@@ -3278,22 +3655,45 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
           {/* Export Action Card */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-paper flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
-              <h4 className="font-serif text-base font-bold text-foreground">
-                Ready to download your formatted document?
-              </h4>
+              <div className="flex items-center gap-2">
+                <h4 className="font-serif text-base font-bold text-foreground">
+                  Ready to download your formatted document?
+                </h4>
+                <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                  Page 1 Cover + Page 2+ Body
+                </span>
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Export directly to editable Word (.doc) or invoke print-to-PDF with clean vector A4 typography.
+                Export directly to real Microsoft Word (.docx), publication-grade vector PDF (.pdf), or browser print.
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Button
+                variant="glass"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="gap-1.5 text-xs text-rose-600 hover:text-rose-700"
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                {isExportingPdf ? "Generating PDF..." : "Download PDF (.pdf)"}
+              </Button>
               <Button variant="glass" onClick={handlePrintPreview} className="gap-1.5 text-xs">
                 <Printer className="h-3.5 w-3.5" /> Print / Save PDF
+              </Button>
+              <Button variant="glass" onClick={handleExportLegacyDoc} className="gap-1.5 text-xs">
+                <FileText className="h-3.5 w-3.5" /> Word (.doc)
               </Button>
               <Button variant="glass" onClick={handleCopyFormattedText} className="gap-1.5 text-xs">
                 <Copy className="h-3.5 w-3.5" /> Copy Text
               </Button>
-              <Button variant="hero" onClick={handleExportDocx} className="gap-2 text-xs">
-                <Download className="h-4 w-4" /> Download Editable (.DOC)
+              <Button
+                variant="hero"
+                onClick={handleExportDocx}
+                disabled={isExportingDocx}
+                className="gap-2 text-xs"
+              >
+                <Download className="h-4 w-4" />
+                {isExportingDocx ? "Generating DOCX..." : "Download Real DOCX (.docx)"}
               </Button>
             </div>
           </div>
@@ -3418,9 +3818,9 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
           }));
           setIsCanvasEditorOpen(false);
           setIsEditCoverModalOpen(false);
-          if (step === 1) {
-            goToStep(2);
-          }
+          goToStep(3);
+          setPreviewPage("all");
+          toast.success("Cover design applied to Page 1 of your document!");
         }}
       />
     </div>
@@ -3514,12 +3914,16 @@ function A4PageCard({
   paperMode,
   sections,
   onNavigatePage,
+  onOpenCanvasEditor,
+  onContentChange,
 }: {
   page: DocA4Page;
   config: FormattingConfig;
   paperMode: "standard" | "dark";
   sections: DocSection[];
   onNavigatePage?: (pageNum: number) => void;
+  onOpenCanvasEditor?: () => void;
+  onContentChange?: () => void;
 }) {
   const marginPadding =
     config.margins === "narrow"
@@ -3528,11 +3932,28 @@ function A4PageCard({
         ? "p-10 sm:p-14"
         : "p-8 sm:p-12";
 
+  const effectiveCoverMetadata: AssignmentMetadata = config.assignmentMetadata?.isAssignment
+    ? (config.assignmentMetadata || getDefaultAssignmentMetadata())
+    : {
+        ...getDefaultAssignmentMetadata(),
+        isAssignment: false,
+        assignmentTitle: config.docTitle || "Document Title",
+        courseName: config.docSubtitle || "",
+        studentName: config.authorName || "",
+        universityName: config.institution || "",
+        submissionDate: config.dateStr || "",
+        coverTemplateId: config.assignmentMetadata?.coverTemplateId || "executive-bold",
+        primaryColor: config.assignmentMetadata?.primaryColor,
+        secondaryColor: config.assignmentMetadata?.secondaryColor,
+        logoUrl: config.assignmentMetadata?.logoUrl,
+        customElements: config.assignmentMetadata?.customElements,
+      };
+
   return (
     <div
       id={`page-${page.pageNumber}`}
       className={`shrink-0 overflow-hidden mx-auto rounded-xs border flex flex-col justify-between transition-all select-text ${
-        page.isCover && config.assignmentMetadata?.isAssignment ? "p-0" : marginPadding
+        page.isCover ? "p-0" : marginPadding
       } ${
         paperMode === "dark"
           ? "bg-zinc-900 border-zinc-700/60 text-zinc-100 shadow-[0_12px_36px_rgba(0,0,0,0.6)]"
@@ -3573,58 +3994,32 @@ function A4PageCard({
       {/* Page Content Body */}
       <div
         className={`flex-1 flex flex-col justify-start overflow-hidden ${
-          page.isCover && config.assignmentMetadata?.isAssignment ? "h-full w-full" : "space-y-4"
+          page.isCover ? "h-full w-full" : "space-y-4"
         }`}
       >
         {/* Cover Page */}
         {page.isCover && (
-          config.assignmentMetadata?.isAssignment ? (
-            <div className="w-full h-full flex flex-col">
-              <AssignmentCoverRenderer
-                metadata={config.assignmentMetadata || getDefaultAssignmentMetadata()}
-                aspectRatio="a4"
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col justify-between py-12 text-center sm:text-left space-y-8">
-              <div className="space-y-4">
-                {config.institution && (
-                  <p className="text-xs uppercase tracking-widest font-sans font-semibold text-primary">
-                    {config.institution}
-                  </p>
-                )}
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight text-foreground">
-                  {config.docTitle}
-                </h1>
-                {config.docSubtitle && (
-                  <p className="text-base sm:text-lg font-normal italic text-muted-foreground">
-                    {config.docSubtitle}
-                  </p>
-                )}
+          <div className="relative w-full h-full flex flex-col group">
+            <AssignmentCoverRenderer
+              metadata={effectiveCoverMetadata}
+              aspectRatio="a4"
+            />
+            {onOpenCanvasEditor && (
+              <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 backdrop-blur-md p-1.5 rounded-xl shadow-2xl flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-md cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenCanvasEditor();
+                  }}
+                >
+                  <Wand2 className="h-3.5 w-3.5" /> Customize Cover
+                </Button>
               </div>
-              <div className="my-10">
-                <div className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 font-mono text-xs text-muted-foreground">
-                  Standardized Format Blueprint · {config.coverStyle.toUpperCase()} SPEC
-                </div>
-              </div>
-              <div className="pt-4 text-xs space-y-1.5 font-sans text-muted-foreground">
-                {config.authorName && (
-                  <p>
-                    <strong className="text-foreground">Author:</strong> {config.authorName}
-                  </p>
-                )}
-                {config.institution && (
-                  <p>
-                    <strong className="text-foreground">Institution:</strong>{" "}
-                    {config.institution}
-                  </p>
-                )}
-                <p>
-                  <strong className="text-foreground">Date:</strong> {config.dateStr}
-                </p>
-              </div>
-            </div>
-          )
+            )}
+          </div>
         )}
 
         {/* Dedicated Table of Contents Page */}
@@ -3646,44 +4041,16 @@ function A4PageCard({
         {/* Regular Content Page */}
         {!page.isCover && !page.isToc && (
           <div className="space-y-5">
-            {/* If First Body Page, render Document Header */}
+            {/* If First Body Page, render Document Academic Identity Header */}
             {page.isFirstBodyPage && (
-              <div className="mb-6 space-y-2.5">
-                {/* Option B: Group Name placed on top of First Body Page */}
-                {config.assignmentMetadata?.isAssignment &&
-                  config.assignmentMetadata.assignmentType === "group" &&
-                  config.assignmentMetadata.groupName?.trim() &&
-                  config.assignmentMetadata.groupNamePlacement === "first-body-page" && (
-                    <div className="mb-2">
-                      <span className="font-mono text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-600">
-                        Group: {config.assignmentMetadata.groupName}
-                      </span>
-                    </div>
-                  )}
-                {config.institution && (
-                  <div className="mb-1.5">
-                    <span className="font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-primary/10 text-primary">
-                      {config.institution}
-                    </span>
-                  </div>
-                )}
-                <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight leading-tight text-foreground">
-                  {config.docTitle}
-                </h1>
-                {config.docSubtitle && (
-                  <p className="text-sm sm:text-base text-muted-foreground font-normal">
-                    {config.docSubtitle}
-                  </p>
-                )}
-                {(config.authorName || config.dateStr) && (
-                  <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground font-sans">
-                    {config.authorName && (
-                      <span className="font-medium text-foreground">By {config.authorName}</span>
-                    )}
-                    {config.dateStr && <span>{config.dateStr}</span>}
-                  </div>
-                )}
-              </div>
+              <AcademicIdentityHeader
+                metadata={config.assignmentMetadata}
+                docTitle={config.docTitle}
+                docSubtitle={config.docSubtitle}
+                authorName={config.authorName}
+                institution={config.institution}
+                dateStr={config.dateStr}
+              />
             )}
 
             {/* Section items on this page */}
@@ -3692,7 +4059,10 @@ function A4PageCard({
                 <div
                   key={sIdx}
                   id={secItem.renderHeading ? `sec-${secItem.sectionIndex}` : undefined}
-                  className="space-y-2.5"
+                  contentEditable={true}
+                  suppressContentEditableWarning={true}
+                  onBlur={onContentChange}
+                  className="space-y-2.5 outline-hidden focus:ring-1 focus:ring-primary/20 rounded-xs transition-shadow"
                 >
                   {secItem.renderHeading && secItem.title && (
                     <div>
@@ -4014,10 +4384,74 @@ export function renderDocBlock(
   );
 }
 
+export function convertSectionsToInitialHtml(sections: DocSection[]): string {
+  if (!sections || sections.length === 0) return "<p>Start typing or formatting your document...</p>";
+
+  return sections
+    .map((sec) => {
+      let secHtml = "";
+      if (sec.title) {
+        const tag = sec.level === 1 ? "h2" : sec.level === 2 ? "h3" : "h4";
+        const num = sec.numberStr ? `${sec.numberStr.trim()} ` : "";
+        secHtml += `<${tag}>${num}${escapeHtml(sec.title)}</${tag}>\n`;
+      }
+      for (const block of sec.blocks) {
+        if (block.type === "list" && block.listItems) {
+          secHtml += `<ul>\n${block.listItems.map((li) => `  <li>${escapeHtml(li)}</li>`).join("\n")}\n</ul>\n`;
+        } else if (block.type === "callout") {
+          secHtml += `<blockquote><strong>${escapeHtml(block.calloutTitle || "Note")}:</strong> ${escapeHtml(block.content)}</blockquote>\n`;
+        } else if (block.type === "lead") {
+          secHtml += `<p style="font-size: 1.15em; font-weight: 500;">${escapeHtml(block.content)}</p>\n`;
+        } else {
+          secHtml += `<p>${escapeHtml(block.content)}</p>\n`;
+        }
+      }
+      return secHtml;
+    })
+    .join("\n");
+}
+
+export function convertHtmlToRawText(html: string): string {
+  if (!html) return "";
+  if (typeof document !== "undefined") {
+    const temp = document.createElement("div");
+    temp.innerHTML = html;
+    const lines: string[] = [];
+    temp.childNodes.forEach((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        const tag = el.tagName.toLowerCase();
+        if (tag === "h1") lines.push(`# ${(el.textContent || "").trim()}`);
+        else if (tag === "h2") lines.push(`## ${(el.textContent || "").trim()}`);
+        else if (tag === "h3") lines.push(`### ${(el.textContent || "").trim()}`);
+        else if (tag === "ul") {
+          el.querySelectorAll("li").forEach((li) => lines.push(`- ${(li.textContent || "").trim()}`));
+        } else if (tag === "ol") {
+          el.querySelectorAll("li").forEach((li, idx) => lines.push(`${idx + 1}. ${(li.textContent || "").trim()}`));
+        } else if (tag === "blockquote") {
+          lines.push(`> ${(el.textContent || "").trim()}`);
+        } else {
+          const t = (el.textContent || "").trim();
+          if (t) lines.push(t);
+        }
+      } else if (node.nodeType === Node.TEXT_NODE) {
+        const t = node.textContent?.trim();
+        if (t) lines.push(t);
+      }
+    });
+    return lines.join("\n\n");
+  }
+  return html.replace(/<[^>]+>/g, " ").trim();
+}
+
 /**
  * Generates clean, standalone styled HTML document suitable for Word or Print-to-PDF with A4 pagination
  */
-function generateFormattedHtml(rawText: string, config: FormattingConfig): string {
+export function generateFormattedHtml(
+  rawText: string,
+  config: FormattingConfig,
+  bodyHtml?: string,
+): string {
   const fontCss =
     config.fontFamily === "serif"
       ? "'Newsreader', 'Georgia', serif"
@@ -4028,33 +4462,33 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
   const sections = parseDocumentSections(rawText, config.headingNumbering);
   const a4Pages = paginateSectionsIntoA4Pages(sections, config);
 
+  const effectiveCoverMetadata: AssignmentMetadata = config.assignmentMetadata?.isAssignment
+    ? (config.assignmentMetadata || getDefaultAssignmentMetadata())
+    : {
+        ...getDefaultAssignmentMetadata(),
+        isAssignment: false,
+        assignmentTitle: config.docTitle || "Document Title",
+        courseName: config.docSubtitle || "",
+        studentName: config.authorName || "",
+        universityName: config.institution || "",
+        submissionDate: config.dateStr || "",
+        coverTemplateId: config.assignmentMetadata?.coverTemplateId || "executive-bold",
+        primaryColor: config.assignmentMetadata?.primaryColor,
+        secondaryColor: config.assignmentMetadata?.secondaryColor,
+        logoUrl: config.assignmentMetadata?.logoUrl,
+        customElements: config.assignmentMetadata?.customElements,
+      };
+
   // Generate HTML for each A4 page
   const pagesHtml = a4Pages
     .map((page) => {
       let content = "";
 
       if (page.isCover) {
-        if (config.assignmentMetadata?.isAssignment) {
-          content = generateAssignmentCoverHtml(config.assignmentMetadata);
-          return `<div class="a4-sheet" style="width: 210mm; height: 297mm; max-height: 297mm; overflow: hidden; padding: 16mm; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; page-break-inside: avoid;">
-            <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-              ${content}
-            </div>
-          </div>`;
-        }
-        content = `<div style="height: 240mm; display: flex; flex-direction: column; justify-content: space-between;">
-          <div>
-            ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10pt; color: #0284c7; font-weight: bold;">${escapeHtml(config.institution)}</p>` : ""}
-            <h1 style="font-size: 2.4rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #0f172a;">${escapeHtml(config.docTitle)}</h1>
-            ${config.docSubtitle ? `<p style="font-size: 1.2rem; color: #64748b; font-style: italic; margin-bottom: 2rem;">${escapeHtml(config.docSubtitle)}</p>` : ""}
-          </div>
-          <div style="margin: 2rem 0; padding: 10px 16px; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 6px; font-family: monospace; font-size: 9pt; color: #64748b; display: inline-block;">
-            Standardized Format Blueprint · ${escapeHtml(config.coverStyle.toUpperCase())} SPEC
-          </div>
-          <div style="font-size: 9.5pt; color: #475569; line-height: 1.6;">
-            ${config.authorName ? `<p><strong>Author:</strong> ${escapeHtml(config.authorName)}</p>` : ""}
-            ${config.institution ? `<p><strong>Institution:</strong> ${escapeHtml(config.institution)}</p>` : ""}
-            <p><strong>Date:</strong> ${escapeHtml(config.dateStr)}</p>
+        content = generateAssignmentCoverHtml(effectiveCoverMetadata);
+        return `<div class="a4-sheet" style="width: 210mm; height: 297mm; max-height: 297mm; overflow: hidden; padding: 0; margin: 0 auto 20px auto; background: #fff; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid;">
+          <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; height: 100%;">
+            ${content}
           </div>
         </div>`;
       } else if (page.isToc) {
@@ -4086,97 +4520,94 @@ function generateFormattedHtml(rawText: string, config: FormattingConfig): strin
         let bodyInner = "";
 
         if (page.isFirstBodyPage) {
-          const groupHeaderHtml =
-            config.assignmentMetadata?.isAssignment &&
-            config.assignmentMetadata.assignmentType === "group" &&
-            config.assignmentMetadata.groupName?.trim() &&
-            config.assignmentMetadata.groupNamePlacement === "first-body-page"
-              ? `<div style="display: inline-block; padding: 4px 14px; background-color: #f1f5f9; border: 1.5px solid #0284c7; border-radius: 6px; font-weight: bold; font-size: 11pt; color: #0284c7; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 1px;">Group: ${escapeHtml(config.assignmentMetadata.groupName)}</div>`
-              : "";
-
-          bodyInner += `<div style="margin-bottom: 1.6rem;">
-            ${groupHeaderHtml}
-            ${config.institution ? `<p style="text-transform: uppercase; letter-spacing: 1px; font-size: 9.5pt; color: #0284c7; font-weight: bold; margin-bottom: 6px;">${escapeHtml(config.institution)}</p>` : ""}
-            <h1 style="font-size: 1.85rem; font-weight: bold; color: #0f172a; margin-bottom: 0.4rem;">${escapeHtml(config.docTitle)}</h1>
-            ${config.docSubtitle ? `<p style="font-size: 1.05rem; color: #64748b; font-style: italic; margin-bottom: 0.6rem;">${escapeHtml(config.docSubtitle)}</p>` : ""}
-            ${config.authorName || config.dateStr ? `<p style="font-size: 9pt; color: #64748b; margin-top: 4px;">${config.authorName ? `By ${escapeHtml(config.authorName)} · ` : ""}${escapeHtml(config.dateStr)}</p>` : ""}
-          </div>`;
+          bodyInner += generateAcademicIdentityHeaderHtml(
+            config.assignmentMetadata,
+            config.docTitle,
+            config.docSubtitle,
+            config.authorName,
+            config.institution,
+            config.dateStr,
+          );
         }
 
-        for (const sec of page.sections) {
-          if (sec.renderHeading && sec.title) {
-            if (sec.level === 1) {
-              bodyInner += `<h2 style="font-size: 1.45rem; font-weight: bold; margin-top: 1.8rem; margin-bottom: 0.6rem; color: #0f172a;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h2>`;
-            } else if (sec.level === 2) {
-              bodyInner += `<h3 style="font-size: 1.2rem; font-weight: 600; margin-top: 1.4rem; margin-bottom: 0.5rem; color: #1e293b;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h3>`;
-            } else {
-              bodyInner += `<h4 style="font-size: 1.05rem; font-style: italic; margin-top: 1.1rem; margin-bottom: 0.4rem; color: #334155;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h4>`;
+        if (bodyHtml) {
+          bodyInner += `<div class="rich-body-content" style="line-height: ${config.lineSpacing || '1.5'}; font-size: 10.5pt;">${bodyHtml}</div>`;
+        } else {
+          for (const sec of page.sections) {
+            if (sec.renderHeading && sec.title) {
+              if (sec.level === 1) {
+                bodyInner += `<h2 style="font-size: 1.45rem; font-weight: bold; margin-top: 1.8rem; margin-bottom: 0.6rem; color: #0f172a;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h2>`;
+              } else if (sec.level === 2) {
+                bodyInner += `<h3 style="font-size: 1.2rem; font-weight: 600; margin-top: 1.4rem; margin-bottom: 0.5rem; color: #1e293b;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h3>`;
+              } else {
+                bodyInner += `<h4 style="font-size: 1.05rem; font-style: italic; margin-top: 1.1rem; margin-bottom: 0.4rem; color: #334155;">${escapeHtml(sec.numberStr)}${escapeHtml(sec.title)}</h4>`;
+              }
             }
-          }
 
-          for (const block of sec.blocks) {
-            if (block.type === "lead") {
-              bodyInner += `<p style="font-size: 1.1rem; font-weight: 500; line-height: 1.6; margin-bottom: 0.9rem; color: #0f172a;">${escapeHtml(block.content)}</p>`;
-            } else if (block.type === "table" && block.tableData) {
-              bodyInner += `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt;">
-                ${block.tableData.headers ? `<thead><tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1;">${block.tableData.headers.map((h) => `<th style="padding: 8px 12px; text-align: left; font-weight: bold; color: #0f172a;">${escapeHtml(h)}</th>`).join("")}</tr></thead>` : ""}
-                <tbody>
-                  ${block.tableData.rows.map((row, rIdx) => `<tr style="${rIdx % 2 === 1 ? 'background-color: #f8fafc;' : ''} border-bottom: 1px solid #e2e8f0;">${row.map((cell) => `<td style="padding: 8px 12px; vertical-align: top; color: #1e293b;">${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}
-                </tbody>
-              </table>`;
-            } else if (block.type === "image" && block.imageUrl) {
-              bodyInner += `<figure style="margin: 16px 0; text-align: center;">
-                <img src="${escapeHtml(block.imageUrl)}" alt="${escapeHtml(block.imageAlt || '')}" style="max-height: 280px; max-width: 100%; border-radius: 6px; border: 1px solid #e2e8f0;" />
-                ${block.imageAlt ? `<figcaption style="font-size: 9pt; color: #64748b; font-style: italic; margin-top: 6px;">${escapeHtml(block.imageAlt)}</figcaption>` : ""}
-              </figure>`;
-            } else if (block.type === "callout") {
-              const isCrit = block.calloutType === "critical";
-              const borderCol = isCrit ? "#f59e0b" : "#0284c7";
-              const bgCol = isCrit ? "#fffbeb" : "#f0f9ff";
-              const titleCol = isCrit ? "#b45309" : "#0369a1";
-              bodyInner += `<div style="margin: 14px 0; padding: 12px 16px; border-left: 4px solid ${borderCol}; background-color: ${bgCol}; border-radius: 6px;">
-                <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: ${titleCol}; margin-bottom: 4px;">
-                  ${escapeHtml(block.calloutTitle || "Note")}
-                </div>
-                <p style="margin: 0; font-size: 10.5pt; line-height: 1.5; color: #1e293b;">${escapeHtml(block.content)}</p>
-              </div>`;
-            } else if (block.type === "palette") {
-              bodyInner += `<div style="margin: 14px 0; padding: 12px 16px; border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px;">
-                <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #64748b; letter-spacing: 1px; margin-bottom: 8px;">
-                  Brand & Design Color Tokens
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
-              for (const c of block.colors || []) {
-                bodyInner += `<div style="display: inline-flex; align-items: center; border: 1px solid #cbd5e1; background: #fff; padding: 4px 10px; border-radius: 6px; font-size: 9pt; margin-right: 6px; margin-bottom: 6px;">
-                  <span style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background-color: ${c.hex}; border: 1px solid rgba(0,0,0,0.2); margin-right: 6px;"></span>
-                  <span><strong>${escapeHtml(c.name)}</strong> <span style="color: #64748b; font-family: monospace;">(${c.hex})</span></span>
+            for (const block of sec.blocks) {
+              if (block.type === "lead") {
+                bodyInner += `<p style="font-size: 1.1rem; font-weight: 500; line-height: 1.6; margin-bottom: 0.9rem; color: #0f172a;">${escapeHtml(block.content)}</p>`;
+              } else if (block.type === "table" && block.tableData) {
+                bodyInner += `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt;">
+                  ${block.tableData.headers ? `<thead><tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1;">${block.tableData.headers.map((h) => `<th style="padding: 8px 12px; text-align: left; font-weight: bold; color: #0f172a;">${escapeHtml(h)}</th>`).join("")}</tr></thead>` : ""}
+                  <tbody>
+                    ${block.tableData.rows.map((row, rIdx) => `<tr style="${rIdx % 2 === 1 ? 'background-color: #f8fafc;' : ''} border-bottom: 1px solid #e2e8f0;">${row.map((cell) => `<td style="padding: 8px 12px; vertical-align: top; color: #1e293b;">${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}
+                  </tbody>
+                </table>`;
+              } else if (block.type === "image" && block.imageUrl) {
+                bodyInner += `<figure style="margin: 16px 0; text-align: center;">
+                  <img src="${escapeHtml(block.imageUrl)}" alt="${escapeHtml(block.imageAlt || '')}" style="max-height: 280px; max-width: 100%; border-radius: 6px; border: 1px solid #e2e8f0;" />
+                  ${block.imageAlt ? `<figcaption style="font-size: 9pt; color: #64748b; font-style: italic; margin-top: 6px;">${escapeHtml(block.imageAlt)}</figcaption>` : ""}
+                </figure>`;
+              } else if (block.type === "callout") {
+                const isCrit = block.calloutType === "critical";
+                const borderCol = isCrit ? "#f59e0b" : "#0284c7";
+                const bgCol = isCrit ? "#fffbeb" : "#f0f9ff";
+                const titleCol = isCrit ? "#b45309" : "#0369a1";
+                bodyInner += `<div style="margin: 14px 0; padding: 12px 16px; border-left: 4px solid ${borderCol}; background-color: ${bgCol}; border-radius: 6px;">
+                  <div style="font-size: 10pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: ${titleCol}; margin-bottom: 4px;">
+                    ${escapeHtml(block.calloutTitle || "Note")}
+                  </div>
+                  <p style="margin: 0; font-size: 10.5pt; line-height: 1.5; color: #1e293b;">${escapeHtml(block.content)}</p>
                 </div>`;
+              } else if (block.type === "palette") {
+                bodyInner += `<div style="margin: 14px 0; padding: 12px 16px; border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px;">
+                  <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #64748b; letter-spacing: 1px; margin-bottom: 8px;">
+                    Brand & Design Color Tokens
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
+                for (const c of block.colors || []) {
+                  bodyInner += `<div style="display: inline-flex; align-items: center; border: 1px solid #cbd5e1; background: #fff; padding: 4px 10px; border-radius: 6px; font-size: 9pt; margin-right: 6px; margin-bottom: 6px;">
+                    <span style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background-color: ${c.hex}; border: 1px solid rgba(0,0,0,0.2); margin-right: 6px;"></span>
+                    <span><strong>${escapeHtml(c.name)}</strong> <span style="color: #64748b; font-family: monospace;">(${c.hex})</span></span>
+                  </div>`;
+                }
+                bodyInner += `</div></div>`;
+              } else if (block.type === "scene") {
+                bodyInner += `<div style="margin: 16px 0; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background-color: #fff;">
+                  <div style="background-color: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11pt; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between;">
+                    <span>SCENE ${escapeHtml(block.sceneMeta?.sceneNumber || "1")}: ${escapeHtml(block.sceneMeta?.title || "Storyboard Scene")}</span>
+                    ${block.sceneMeta?.timestamp ? `<span style="font-size: 9pt; color: #64748b; font-family: monospace;">⏱ ${escapeHtml(block.sceneMeta.timestamp)}</span>` : ""}
+                  </div>
+                  <div style="padding: 12px; font-size: 10.5pt; line-height: 1.5;">
+                    ${block.sceneMeta?.visual ? `<div style="margin-bottom: 6px;"><strong style="color: #0284c7;">Visual:</strong> ${escapeHtml(block.sceneMeta.visual)}</div>` : ""}
+                    ${block.sceneMeta?.audio ? `<div style="margin-bottom: 6px;"><strong style="color: #d97706;">Audio:</strong> <span style="font-style: italic;">"${escapeHtml(block.sceneMeta.audio)}"</span></div>` : ""}
+                    ${block.sceneMeta?.textOverlay ? `<div><strong style="color: #059669;">On-Screen Text:</strong> <span style="font-family: monospace;">${escapeHtml(block.sceneMeta.textOverlay)}</span></div>` : ""}
+                  </div>
+                </div>`;
+              } else if (block.type === "parameter") {
+                bodyInner += `<div style="display: inline-block; margin: 4px 6px 4px 0; padding: 4px 10px; background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 9.5pt;">
+                  <strong style="color: #0284c7;">${escapeHtml(block.key || '')}:</strong> ${escapeHtml(block.value || '')}
+                </div>`;
+              } else if (block.type === "list") {
+                bodyInner += `<ul style="margin: 8px 0; padding-left: 20px;">`;
+                for (const item of block.listItems || []) {
+                  bodyInner += `<li style="margin-bottom: 4px; line-height: 1.5;">${escapeHtml(item)}</li>`;
+                }
+                bodyInner += `</ul>`;
+              } else {
+                bodyInner += `<p style="margin-bottom: 0.9rem; text-align: justify; line-height: ${config.lineSpacing};">${escapeHtml(block.content)}</p>`;
               }
-              bodyInner += `</div></div>`;
-            } else if (block.type === "scene") {
-              bodyInner += `<div style="margin: 16px 0; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background-color: #fff;">
-                <div style="background-color: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11pt; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between;">
-                  <span>SCENE ${escapeHtml(block.sceneMeta?.sceneNumber || "1")}: ${escapeHtml(block.sceneMeta?.title || "Storyboard Scene")}</span>
-                  ${block.sceneMeta?.timestamp ? `<span style="font-size: 9pt; color: #64748b; font-family: monospace;">⏱ ${escapeHtml(block.sceneMeta.timestamp)}</span>` : ""}
-                </div>
-                <div style="padding: 12px; font-size: 10.5pt; line-height: 1.5;">
-                  ${block.sceneMeta?.visual ? `<div style="margin-bottom: 6px;"><strong style="color: #0284c7;">Visual:</strong> ${escapeHtml(block.sceneMeta.visual)}</div>` : ""}
-                  ${block.sceneMeta?.audio ? `<div style="margin-bottom: 6px;"><strong style="color: #d97706;">Audio:</strong> <span style="font-style: italic;">"${escapeHtml(block.sceneMeta.audio)}"</span></div>` : ""}
-                  ${block.sceneMeta?.textOverlay ? `<div><strong style="color: #059669;">On-Screen Text:</strong> <span style="font-family: monospace;">${escapeHtml(block.sceneMeta.textOverlay)}</span></div>` : ""}
-                </div>
-              </div>`;
-            } else if (block.type === "parameter") {
-              bodyInner += `<div style="display: inline-block; margin: 4px 6px 4px 0; padding: 4px 10px; background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 9.5pt;">
-                <strong style="color: #0284c7;">${escapeHtml(block.key || '')}:</strong> ${escapeHtml(block.value || '')}
-              </div>`;
-            } else if (block.type === "list") {
-              bodyInner += `<ul style="margin: 8px 0; padding-left: 20px;">`;
-              for (const item of block.listItems || []) {
-                bodyInner += `<li style="margin-bottom: 4px; line-height: 1.5;">${escapeHtml(item)}</li>`;
-              }
-              bodyInner += `</ul>`;
-            } else {
-              bodyInner += `<p style="margin-bottom: 0.9rem; text-align: justify; line-height: ${config.lineSpacing};">${escapeHtml(block.content)}</p>`;
             }
           }
         }
