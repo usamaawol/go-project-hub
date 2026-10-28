@@ -28,6 +28,8 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { extractDocumentText } from "@/lib/api-client";
+import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+
 import {
   cleanOcrArtifacts,
   mergeSentenceWraps,
@@ -285,7 +287,8 @@ function TextExtractorPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast.success("Downloaded verified text file (.txt)!");
+    eraseWorkspaceJobsOnDownload();
+    toast.success("Downloaded verified text file (.txt) & temporary data erased!");
   };
 
   const handleDownloadDocx = async () => {
@@ -304,7 +307,8 @@ function TextExtractorPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Exported Word document (.docx)!");
+      eraseWorkspaceJobsOnDownload();
+      toast.success("Exported Word document (.docx) & temporary data erased!");
     } catch (e) {
       toast.error("Failed to export Word document");
     } finally {
@@ -328,7 +332,8 @@ function TextExtractorPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Exported Adobe PDF (.pdf)!");
+      eraseWorkspaceJobsOnDownload();
+      toast.success("Exported Adobe PDF (.pdf) & temporary data erased!");
     } catch (e) {
       toast.error("Failed to export PDF document");
     } finally {

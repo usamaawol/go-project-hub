@@ -31,7 +31,9 @@ import {
   getWorkspaceJobs,
   deleteWorkspaceJob,
   clearWorkspaceHistory,
-  populateSampleWorkspaceHistory,
+  eraseWorkspaceJobsOnDownload,
+  isHistoryRetentionOptedIn,
+  setHistoryRetentionOptIn,
   computeWorkspaceStats,
   getBookmarkedTemplateIds,
   toggleBookmarkTemplate,
@@ -64,6 +66,10 @@ function AccountPage() {
 
   // Sync workspace state on mount and subscribe to background updates
   useEffect(() => {
+    // Zero-retention ephemeral privacy: clear any historical jobs unless explicitly opted in
+    if (!isHistoryRetentionOptedIn()) {
+      clearWorkspaceHistory();
+    }
     setSavedJobs(getWorkspaceJobs());
     setBookmarkedIds(getBookmarkedTemplateIds());
 
@@ -131,10 +137,12 @@ function AccountPage() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      toast.success(`Downloading ${job.name}`);
+      eraseWorkspaceJobsOnDownload();
+      toast.success(`Downloading ${job.name} (Erased from history for privacy)`);
     } else {
+      eraseWorkspaceJobsOnDownload();
       toast.info(`Ready for export: ${job.name}`, {
-        description: `Generated via ${job.tool} (${job.format}).`,
+        description: `Generated via ${job.tool} (${job.format}). Erased from workspace history.`,
       });
     }
   };
@@ -362,25 +370,24 @@ function AccountPage() {
 
               {savedJobs.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border bg-card/60 p-12 text-center shadow-xs">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 mb-4">
-                    <FileText className="h-7 w-7" />
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 mb-4">
+                    <ShieldCheck className="h-7 w-7" />
                   </div>
                   <h3 className="font-serif text-xl font-bold text-foreground">
-                    No document jobs yet
+                    Zero-Storage Ephemeral Privacy Active
                   </h3>
                   <p className="mt-2 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-                    Transform a document, generate an authentic presentation, or compress a PDF to
-                    start recording your workspace activity here.
+                    DocuMind operates with strict zero-retention privacy. None of your documents, assignments, or generated files are saved to your user account. Once you click download, all temporary files are permanently erased.
                   </p>
                   <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
                     <Button size="sm" variant="hero" asChild>
-                      <Link to="/presentation-maker">
-                        <Sparkles className="h-4 w-4 mr-1.5" /> Make Presentation
+                      <Link to="/document-studio">
+                        <FileText className="h-4 w-4 mr-1.5" /> Document Studio
                       </Link>
                     </Button>
                     <Button size="sm" variant="glass" asChild>
-                      <Link to="/document-studio">
-                        <FileText className="h-4 w-4 mr-1.5" /> Document Studio
+                      <Link to="/presentation-maker">
+                        <Sparkles className="h-4 w-4 mr-1.5" /> Presentation Maker
                       </Link>
                     </Button>
                     <Button size="sm" variant="glass" asChild>
@@ -388,22 +395,31 @@ function AccountPage() {
                         <Minimize2 className="h-4 w-4 mr-1.5" /> Compress PDF
                       </Link>
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-xs text-muted-foreground"
-                      onClick={() => {
-                        populateSampleWorkspaceHistory();
-                        toast.success("Loaded sample history preview.");
-                      }}
-                    >
-                      Load Sample Preview
-                    </Button>
                   </div>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xs">
-                  <div className="divide-y divide-border">
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span>
+                        Temporary session items detected. Click <strong>Erase All History Now</strong> to permanently purge this data from your account.
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        clearWorkspaceHistory();
+                        toast.success("All workspace history permanently erased!");
+                      }}
+                      className="text-xs shrink-0"
+                    >
+                      Erase All History Now
+                    </Button>
+                  </div>
+                  <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xs">
+                    <div className="divide-y divide-border">
                     {savedJobs.map((job) => (
                       <div
                         key={job.id}
@@ -464,7 +480,8 @@ function AccountPage() {
                     ))}
                   </div>
                 </div>
-              )}
+              </div>
+            )}
             </div>
           )}
 

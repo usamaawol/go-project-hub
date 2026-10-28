@@ -38,12 +38,12 @@ export async function handleExtractText(
     const result = await extractTextFromBuffer(buffer, mimeType, filename);
     const duration = Date.now() - startTime;
 
-    // Log job metadata in Firestore
+    // Log anonymized job metadata in Firestore with zero user-account association
     const jobId = "job_" + Math.random().toString(36).substring(2, 10);
     try {
       await createDocumentJob({
         jobId,
-        userId: req.user?.uid || null,
+        userId: null,
         toolType: "extract",
         originalFilename: filename,
         fileSize: buffer.length,
@@ -101,7 +101,7 @@ export async function handleCompressDocument(
     try {
       await createDocumentJob({
         jobId,
-        userId: req.user?.uid || null,
+        userId: null,
         toolType: "compress",
         originalFilename: file.originalname,
         fileSize: file.buffer.length,
@@ -177,7 +177,7 @@ export async function handleGeneratePresentation(
     try {
       await createDocumentJob({
         jobId,
-        userId: req.user?.uid || null,
+        userId: null,
         toolType: "presentation",
         originalFilename: `${title.replace(/\s+/g, "_")}.pptx`,
         fileSize: pptxBuffer.length,
@@ -265,7 +265,7 @@ export async function handleConvertDocument(
     try {
       await createDocumentJob({
         jobId,
-        userId: req.user?.uid || null,
+        userId: null,
         toolType: "convert",
         originalFilename: file.originalname,
         fileSize: file.buffer.length,

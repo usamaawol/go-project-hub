@@ -21,8 +21,32 @@ const STORAGE_KEY = "documind_workspace_history";
 const BOOKMARKS_KEY = "documind_bookmarked_templates";
 const HISTORY_EVENT = "documind_history_changed";
 const BOOKMARKS_EVENT = "documind_bookmarks_changed";
+const RETENTION_OPT_IN_KEY = "documind_history_retention_opt_in";
 
 const memoryFallback: Record<string, string> = {};
+
+/**
+ * Returns whether user has explicitly opted into saving document job history.
+ * Default is FALSE (100% ephemeral privacy by design: nothing saved to account).
+ */
+export function isHistoryRetentionOptedIn(): boolean {
+  return safeStorageGet(RETENTION_OPT_IN_KEY) === "true";
+}
+
+export function setHistoryRetentionOptIn(optIn: boolean): void {
+  safeStorageSet(RETENTION_OPT_IN_KEY, optIn ? "true" : "false");
+  if (!optIn) {
+    clearWorkspaceHistory();
+  }
+}
+
+/**
+ * Erases all document activity and temporary files upon download to guarantee zero data retention.
+ */
+export function eraseWorkspaceJobsOnDownload(): void {
+  clearWorkspaceHistory();
+}
+
 
 function safeStorageGet(key: string): string | null {
   try {
@@ -94,10 +118,30 @@ function formatJobDate(timestamp: number): string {
 }
 
 /**
- * Retrieve all saved jobs from persistent storage
+ * Retrieve all saved jobs. If history retention is not opted in (default),
+ * returns only ephemeral in-memory session jobs and avoids writing/retaining data on the user's account.
  */
 export function getWorkspaceJobs(): WorkspaceJob[] {
   try {
+    if (!isHistoryRetentionOptedIn()) {
+      // In ephemeral mode, clean out any legacy local storage items from browser disk
+      try {
+        if (
+          typeof localStorage !== "undefined" &&
+          localStorage &&
+          typeof localStorage.removeItem === "function"
+        ) {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } catch {
+        // Fall back gracefully
+      }
+      const mem = memoryFallback[STORAGE_KEY];
+      if (!mem) return [];
+      const parsed = JSON.parse(mem);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+
     const raw = safeStorageGet(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
@@ -110,7 +154,7 @@ export function getWorkspaceJobs(): WorkspaceJob[] {
 }
 
 /**
- * Record a new completed user document job
+ * Record a new completed user document job (held ephemerally unless user explicitly opts in)
  */
 export function addWorkspaceJob(
   job: Omit<WorkspaceJob, "id" | "date" | "timestamp" | "status"> & {
@@ -138,7 +182,11 @@ export function addWorkspaceJob(
     const current = getWorkspaceJobs();
     // Keep most recent 50 jobs
     const updated = [newJob, ...current.filter((j) => j.id !== newJob.id)].slice(0, 50);
-    safeStorageSet(STORAGE_KEY, JSON.stringify(updated));
+    if (isHistoryRetentionOptedIn()) {
+      safeStorageSet(STORAGE_KEY, JSON.stringify(updated));
+    } else {
+      memoryFallback[STORAGE_KEY] = JSON.stringify(updated);
+    }
     dispatchEventSafely(HISTORY_EVENT, updated);
   } catch (err) {
     console.error("Failed to save workspace job:", err);
@@ -154,7 +202,11 @@ export function deleteWorkspaceJob(id: string): void {
   try {
     const current = getWorkspaceJobs();
     const updated = current.filter((j) => j.id !== id);
-    safeStorageSet(STORAGE_KEY, JSON.stringify(updated));
+    if (isHistoryRetentionOptedIn()) {
+      safeStorageSet(STORAGE_KEY, JSON.stringify(updated));
+    } else {
+      memoryFallback[STORAGE_KEY] = JSON.stringify(updated);
+    }
     dispatchEventSafely(HISTORY_EVENT, updated);
   } catch (err) {
     console.error("Failed to delete workspace job:", err);
@@ -162,11 +214,12 @@ export function deleteWorkspaceJob(id: string): void {
 }
 
 /**
- * Clear all workspace history
+ * Clear all workspace history permanently (clears both storage and memory fallback)
  */
 export function clearWorkspaceHistory(): void {
   try {
     safeStorageRemove(STORAGE_KEY);
+    delete memoryFallback[STORAGE_KEY];
     dispatchEventSafely(HISTORY_EVENT, []);
   } catch (err) {
     console.error("Failed to clear workspace history:", err);

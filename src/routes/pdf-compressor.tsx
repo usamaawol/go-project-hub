@@ -18,6 +18,8 @@ import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
+import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+
 
 export const Route = createFileRoute("/pdf-compressor")({
   head: () => ({
@@ -224,7 +226,8 @@ function PdfCompressorPage() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    toast.success(`Downloaded ${result.filename}!`);
+    eraseWorkspaceJobsOnDownload();
+    toast.success(`Downloaded ${result.filename}! (Temporary data erased)`);
   };
 
   return (

@@ -51,6 +51,8 @@ import { AssignmentCoverRenderer } from "@/components/workspace/AssignmentCoverR
 import { AssignmentInformationForm } from "@/components/workspace/AssignmentInformationForm";
 import { CoverTemplateGallery } from "@/components/workspace/CoverTemplateGallery";
 import { getDefaultAssignmentMetadata, type AssignmentMetadata } from "@/lib/assignment-types";
+import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+
 
 export const Route = createFileRoute("/presentation-preview/$id")({
   head: () => ({
@@ -391,8 +393,9 @@ export function PresentationPreviewPage() {
       }
 
       if (downloaded) {
+        eraseWorkspaceJobsOnDownload();
         toast.success("Download Complete!", {
-          description: `Saved "${session?.title || "presentation"}.pptx" to your device.`,
+          description: `Saved "${session?.title || "presentation"}.pptx" to your device (Temporary workspace data erased).`,
         });
       }
     } catch (err: unknown) {

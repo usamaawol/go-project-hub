@@ -57,6 +57,8 @@ import {
   parseHtmlToBlocks,
   parsePlainTextToBlocks,
 } from "@/lib/document-synthesizer";
+import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+
 
 
 
@@ -1587,8 +1589,9 @@ export function DocumentFormattingWorkflow({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      eraseWorkspaceJobsOnDownload();
 
-      toast.success("Document exported as real Microsoft Word (.docx) with Page 1 cover and latest edits!", { id: "export-docx" });
+      toast.success("Document exported as real Microsoft Word (.docx) & temporary workspace data erased!", { id: "export-docx" });
     } catch (err: any) {
       console.error("DOCX export error:", err);
       toast.error(`DOCX export failed: ${err?.message || "Unknown error"}`, { id: "export-docx" });
@@ -1641,8 +1644,9 @@ export function DocumentFormattingWorkflow({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      eraseWorkspaceJobsOnDownload();
 
-      toast.success("Document exported as publication-grade PDF with Page 1 cover and latest edits!", { id: "export-pdf" });
+      toast.success("Document exported as publication-grade PDF & temporary workspace data erased!", { id: "export-pdf" });
     } catch (err: any) {
       console.error("PDF export error:", err);
       toast.error(`PDF export failed: ${err?.message || "Unknown error"}`, { id: "export-pdf" });
@@ -1667,11 +1671,13 @@ export function DocumentFormattingWorkflow({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    eraseWorkspaceJobsOnDownload();
 
-    toast.success("Document downloaded in HTML Word (.doc) format with latest edits!");
+    toast.success("Document downloaded in HTML Word (.doc) & temporary workspace data erased!");
   };
 
   const handlePrintPreview = () => {
+    eraseWorkspaceJobsOnDownload();
     const activeConfig = assignmentMode
       ? { ...config, hasCoverPage: true, assignmentMetadata: { ...assignmentMetadata, isAssignment: true } }
       : config;

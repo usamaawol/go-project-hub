@@ -36,6 +36,8 @@ import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { convertDocument, type ConversionTarget } from "@/lib/document-converter";
 import { parsePlainTextToBlocks, type DocSynthesizerBlock } from "@/lib/document-synthesizer";
+import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+
 
 export const Route = createFileRoute("/converter")({
   head: () => ({
@@ -749,7 +751,8 @@ function ConverterPage() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    toast.success(`Downloaded ${convertedResult.filename}!`);
+    eraseWorkspaceJobsOnDownload();
+    toast.success(`Downloaded ${convertedResult.filename}! (Temporary data erased)`);
   };
 
   const availableTargets = (["DOCX", "DOC", "PDF", "TXT"] as const).filter(
