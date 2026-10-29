@@ -59,7 +59,7 @@ export interface IImageProviderAdapter {
   generateImage(
     config: ImageProviderConfig,
     options: GenerateImageOptions,
-  ): Promise<{ imageUrl: string; format: "png" | "jpeg" }>;
+  ): Promise<{ imageUrl: string; format: "png" | "jpeg" | "svg+xml" }>;
 }
 
 export interface ImageGenerationSettings {

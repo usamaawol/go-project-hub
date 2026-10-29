@@ -366,10 +366,11 @@ export class ImageProviderManager {
   public async generateImage(options: GenerateImageOptions): Promise<GenerateImageResult> {
     const startTime = Date.now();
 
-    // 1. Strict Exclusivity Enforcement
-    if (options.source !== "presentation_maker" && options.source !== "admin_test") {
+    // 1. Strict Exclusivity Enforcement: Image generation is strictly restricted to Presentation Maker only
+    const allowedSources: string[] = ["presentation_maker", "admin_test"];
+    if (!options.source || !allowedSources.includes(options.source)) {
       throw new Error(
-        `AI image generation is exclusively reserved for Presentation Maker. Request from "${options.source}" was denied.`,
+        `AI image generation is exclusively reserved for Presentation Maker. Requests from "${options.source || "unknown"}" (such as Document Studio, Cover Designer, or General Documents) are strictly forbidden.`,
       );
     }
 
