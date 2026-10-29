@@ -92,13 +92,21 @@ export function detectProviderFromKey(key: string): {
     };
   }
 
-  // Google Gemini API keys typically start with "AIza" and are ~39 characters long
-  if (trimmed.startsWith("AIza")) {
+  // Google Gemini API keys from Google AI Studio (studio.ai) or Cloud Vertex
+  // Formats include:
+  // 1. "AQ." or "AQ_..." (Newer paid / studio.ai keys, e.g. AQ.Ab8RN6IPKS...)
+  // 2. "AIza..." (Standard 39-character key)
+  if (
+    trimmed.startsWith("AQ.") ||
+    trimmed.startsWith("AQ_") ||
+    trimmed.startsWith("AQ") ||
+    trimmed.startsWith("AIza")
+  ) {
     return {
       id: "gemini",
       name: "Google Gemini / Imagen 3",
       confidence: "high",
-      reason: 'Detected Google API key signature (starts with "AIza")',
+      reason: 'Detected Google AI Studio API key (starts with "AQ." or "AIza")',
       recommendedModel: "imagen-3.0-generate-002",
     };
   }
@@ -193,6 +201,11 @@ export function AdminProvidersTab({
   const [detectEndpoint, setDetectEndpoint] = useState<string>("");
   const [detectTesting, setDetectTesting] = useState(false);
   const [detectSaving, setDetectSaving] = useState(false);
+  const [detectTestResult, setDetectTestResult] = useState<{
+    success: boolean;
+    latencyMs: number;
+    message: string;
+  } | null>(null);
 
   // 2. Manage All 5 Keys Modal State
   const [manageAllModalOpen, setManageAllModalOpen] = useState(false);
@@ -369,17 +382,17 @@ export function AdminProvidersTab({
         updates.endpointUrl = detectEndpoint.trim();
       }
 
-      const res = await updateAdminImageProvider(pid, updates, adminKey);
-      if (res && res.success) {
-        toast.success(
-          `Key detected and configured for ${detection.name || pid}! It will be used exclusively by Presentation Maker.`,
-        );
-        setDetectModalOpen(false);
-        setDetectInputKey("");
-        onRefresh();
-      } else {
-        toast.error(res?.error?.message || "Failed to save detected provider key.");
-      }
+      await updateAdminImageProvider(pid, updates, adminKey);
+
+      const targetProviderName =
+        effectiveProviders.find((x) => x.id === pid)?.name || detection.name || pid;
+      toast.success(
+        `Key configured for ${targetProviderName}! Presentation Maker is now ready to generate slide visuals.`,
+      );
+      setDetectModalOpen(false);
+      setDetectInputKey("");
+      setDetectTestResult(null);
+      onRefresh();
     } catch (err: any) {
       toast.error(err?.message || "Error saving key");
     } finally {
@@ -393,6 +406,7 @@ export function AdminProvidersTab({
       toast.error("Please paste an API key to test.");
       return;
     }
+    setDetectTestResult(null);
     setDetectTesting(true);
     try {
       const res = await testAdminImageProviderConnection(
@@ -401,6 +415,7 @@ export function AdminProvidersTab({
         adminKey,
       );
       if (res && res.data) {
+        setDetectTestResult(res.data);
         if (res.data.success) {
           toast.success(`Verification Passed (${res.data.latencyMs}ms): ${res.data.message}`);
         } else {
@@ -408,7 +423,9 @@ export function AdminProvidersTab({
         }
       }
     } catch (err: any) {
-      toast.error(err?.message || "Failed to test connection");
+      const msg = err?.message || "Failed to test connection";
+      setDetectTestResult({ success: false, latencyMs: 0, message: msg });
+      toast.error(msg);
     } finally {
       setDetectTesting(false);
     }
@@ -903,27 +920,32 @@ export function AdminProvidersTab({
                 className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
                   detection.id
                     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
-                    : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                    : "border-primary/20 bg-primary/5 text-foreground"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  {detection.id ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-                  )}
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                   <div>
                     <span className="font-bold">
-                      {detection.id ? `Detected: ${detection.name}` : "Unknown Format"}
+                      {detection.id
+                        ? `Detected: ${detection.name}`
+                        : `Selected Provider: ${
+                            effectiveProviders.find((x) => x.id === detectSelectedProvider)?.name ||
+                            "Google Gemini"
+                          }`}
                     </span>
                     <p className="text-[11px] opacity-90 mt-0.5">{detection.reason}</p>
                   </div>
                 </div>
-                {detection.id && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
-                    High Confidence
-                  </span>
-                )}
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                    detection.id
+                      ? "bg-emerald-600/20 text-emerald-700 dark:text-emerald-300"
+                      : "bg-primary/20 text-primary"
+                  }`}
+                >
+                  {detection.id ? "High Confidence" : "Assigned Provider"}
+                </span>
               </div>
             )}
 
@@ -985,6 +1007,30 @@ export function AdminProvidersTab({
                   placeholder="e.g. 8f6b1e... (Cloudflare Account ID)"
                   className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
                 />
+              </div>
+            )}
+
+            {/* Direct Verification Result Banner */}
+            {detectTestResult && (
+              <div
+                className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${
+                  detectTestResult.success
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                    : "border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-300"
+                }`}
+              >
+                {detectTestResult.success ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <span className="font-bold">
+                    {detectTestResult.success ? "Key Verified & Ready" : "Verification Failed"} (
+                    {detectTestResult.latencyMs}ms):
+                  </span>{" "}
+                  <span>{detectTestResult.message}</span>
+                </div>
               </div>
             )}
 

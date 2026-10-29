@@ -8,6 +8,7 @@ import {
   deletePresentationSession,
 } from "../../server/services/presentationSession.service";
 import { detectProviderFromKey } from "../components/admin/tabs/AdminProvidersTab";
+import { safeFetchJson, verifyProviderKeyDirectly } from "../lib/api-client";
 
 let server: http.Server;
 let baseUrl = "";
@@ -264,10 +265,16 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
 
   describe("6. AI Provider Key Auto-Detection & Presentation Maker Manual Injection", () => {
     it("correctly auto-detects all 5 provider key signatures", () => {
-      // Gemini / Imagen
+      // Gemini / Imagen (both AIza and studio.ai AQ. format)
       const gemini = detectProviderFromKey("AIzaSyB3vY9_mockGeminiStudioKey12345");
       expect(gemini.id).toBe("gemini");
       expect(gemini.confidence).toBe("high");
+
+      const geminiStudioPaid = detectProviderFromKey(
+        "AQ.Ab8RN6IPKSuhHQLuwwTVZJ8tS2moPQGT6QLHgIhllG4ASbcQPQ",
+      );
+      expect(geminiStudioPaid.id).toBe("gemini");
+      expect(geminiStudioPaid.confidence).toBe("high");
 
       // Hugging Face
       const hf = detectProviderFromKey("hf_mockUserAccessTokenSecret5678");
@@ -337,6 +344,39 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
       expect(hf?.isConfigured).toBe(true);
 
       deletePresentationSession(json.data.sessionId);
+    });
+
+    it("safely handles HTML 404/SPA responses without throwing SyntaxError: Unexpected token '<'", async () => {
+      // Mock fetch returning HTML to simulate Vercel SPA routing
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () =>
+        new Response("<!DOCTYPE html><html><body>Vercel SPA Fallback</body></html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+
+      try {
+        const fallbackValue = { success: false, fallback: true };
+        const result = await safeFetchJson(
+          "https://mock-domain.com/api/admin/providers/gemini/test",
+          {},
+          fallbackValue,
+        );
+
+        expect(result).toEqual(fallbackValue);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it("provides direct client-side verification probe without throwing on missing keys", async () => {
+      const emptyResult = await verifyProviderKeyDirectly("gemini", "");
+      expect(emptyResult.success).toBe(false);
+      expect(emptyResult.data.message).toContain("No API key entered");
+
+      const falResult = await verifyProviderKeyDirectly("fal", "key_test_12345");
+      expect(falResult.success).toBe(true);
+      expect(falResult.data.message).toContain("Key format accepted");
     });
   });
 });
