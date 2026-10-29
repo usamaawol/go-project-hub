@@ -6,6 +6,7 @@ import {
   updateFeedbackStatus,
   listAllUsers,
   toggleUserPlan,
+  toggleUserRoleHandler,
   purgeTemporaryFiles,
   getAdminSettingsHandler,
   updateAdminSettingsHandler,
@@ -15,6 +16,17 @@ import {
   createStaffHandler,
   deleteStaffHandler,
   listAuditLogsHandler,
+  listImageProvidersHandler,
+  updateImageProviderHandler,
+  testImageProviderConnectionHandler,
+  testGenerateImageHandler,
+  getImageGenerationSettingsHandler,
+  updateImageGenerationSettingsHandler,
+  getImageGenerationLogsHandler,
+  clearImageGenerationLogsHandler,
+  listAdminPresentationsHandler,
+  bootstrapAdminHandler,
+  exportAuditLogsHandler,
 } from "../controllers/admin.controller";
 import { requireAdmin } from "../middleware/auth";
 
@@ -26,9 +38,25 @@ router.get("/admin/feedback", requireAdmin, listAllFeedback);
 router.patch("/admin/feedback/:feedbackId/status", requireAdmin, updateFeedbackStatus);
 router.get("/admin/users", requireAdmin, listAllUsers);
 router.patch("/admin/users/:userId/plan", requireAdmin, toggleUserPlan);
+router.patch("/admin/users/:userId/role", requireAdmin, toggleUserRoleHandler);
 router.post("/admin/purge-temp", requireAdmin, purgeTemporaryFiles);
 
-// AI Engine & System Settings
+// Multi-Provider AI Image Generation Endpoints
+router.get("/admin/providers", requireAdmin, listImageProvidersHandler);
+router.patch("/admin/providers/:id", requireAdmin, updateImageProviderHandler);
+router.post("/admin/providers/:id/test", requireAdmin, testImageProviderConnectionHandler);
+router.post("/admin/providers/test-generate", requireAdmin, testGenerateImageHandler);
+
+// Image Generation Limits & Quotas
+router.get("/admin/image-generation/settings", requireAdmin, getImageGenerationSettingsHandler);
+router.patch("/admin/image-generation/settings", requireAdmin, updateImageGenerationSettingsHandler);
+router.get("/admin/image-generation/logs", requireAdmin, getImageGenerationLogsHandler);
+router.delete("/admin/image-generation/logs", requireAdmin, clearImageGenerationLogsHandler);
+
+// Presentations Directory & Inspection
+router.get("/admin/presentations", requireAdmin, listAdminPresentationsHandler);
+
+// System Settings & Connections
 router.get("/admin/settings", requireAdmin, getAdminSettingsHandler);
 router.patch("/admin/settings", requireAdmin, updateAdminSettingsHandler);
 router.post("/admin/test-gemini", requireAdmin, testGeminiConnectionHandler);
@@ -39,5 +67,9 @@ router.get("/admin/staff", requireAdmin, listStaffHandler);
 router.post("/admin/staff", requireAdmin, createStaffHandler);
 router.delete("/admin/staff/:staffId", requireAdmin, deleteStaffHandler);
 router.get("/admin/audit-logs", requireAdmin, listAuditLogsHandler);
+router.get("/admin/export-logs", requireAdmin, exportAuditLogsHandler);
+
+// Initial Admin Bootstrap
+router.post("/admin/setup-admin", bootstrapAdminHandler);
 
 export default router;

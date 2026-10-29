@@ -1,15 +1,20 @@
 import type { Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth";
 import { countJobs, listRecentJobs as getRecentJobs } from "../services/documentJobService";
-import { countUsers, listUsers, updateUserPlan } from "../services/userService";
+import { countUsers, listUsers, updateUserPlan, updateUserRole } from "../services/userService";
 import {
   countFeedback,
   listFeedback,
   updateFeedbackStatus as updateFeedbackStatusInStore,
 } from "../services/feedbackService";
-import { isFirestoreConnected } from "../config/firebase";
+import { isFirestoreConnected, getAdminAuth } from "../config/firebase";
 import { TEMPLATES } from "../../src/data/templates";
-import { cleanupExpiredSessions } from "../services/presentationSession.service";
+import {
+  cleanupExpiredSessions,
+  listPresentationSessions,
+} from "../services/presentationSession.service";
+import { imageProviderManager } from "../services/imageProviders/imageProviderManager";
+import type { ImageProviderId } from "../services/imageProviders/types";
 import {
   getAdminSettings,
   updateAdminSettings,
@@ -19,6 +24,7 @@ import {
   addStaffMember,
   removeStaffMember,
   getStaffAuditLogs,
+  recordStaffAuditLog,
 } from "../services/adminSettings.service";
 
 export async function getDashboardMetrics(
@@ -324,6 +330,259 @@ export async function listAuditLogsHandler(
   try {
     const logs = getStaffAuditLogs();
     res.json({ success: true, count: logs.length, data: logs });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Provider AI Image Generation & Governance Handlers
+// ---------------------------------------------------------------------------
+
+export async function listImageProvidersHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const providers = imageProviderManager.getProvidersForClient();
+    res.json({ success: true, count: providers.length, data: providers });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateImageProviderHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { id } = req.params;
+    const updated = imageProviderManager.updateProvider(id as ImageProviderId, req.body);
+    const authorEmail = req.user?.email || "admin@documind.app";
+    recordStaffAuditLog(
+      req.user?.displayName || "Lead Administrator",
+      authorEmail,
+      "Update AI Provider Config",
+      `Modified configuration for provider "${id}" (Enabled: ${updated.enabled}, Model: ${updated.selectedModel}).`,
+    );
+    res.json({ success: true, data: updated, message: `Provider "${id}" updated successfully.` });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function testImageProviderConnectionHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { id } = req.params;
+    const { apiKey } = req.body || {};
+    const result = await imageProviderManager.testProviderConnection(
+      id as ImageProviderId,
+      apiKey,
+    );
+    res.json({ success: result.success, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function testGenerateImageHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { prompt, aspectRatio } = req.body || {};
+    const result = await imageProviderManager.generateImage({
+      source: "admin_test",
+      prompt: prompt || "A modern presentation diagram of artificial neural network architecture",
+      aspectRatio: aspectRatio || "16:9",
+      concept: "Admin Benchmark Visual",
+    });
+    res.json({ success: result.success, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getImageGenerationSettingsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const settings = imageProviderManager.getSettings();
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateImageGenerationSettingsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const updated = imageProviderManager.updateSettings(req.body);
+    const authorEmail = req.user?.email || "admin@documind.app";
+    recordStaffAuditLog(
+      req.user?.displayName || "Lead Administrator",
+      authorEmail,
+      "Update Image Generation Limits",
+      `Global Image Gen: ${updated.globallyEnabled}, Fallback: ${updated.autoFallbackEnabled}, Max/Presentation: ${updated.maxGenerationsPerPresentation}.`,
+    );
+    res.json({
+      success: true,
+      data: updated,
+      message: "Image generation settings and quotas updated.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getImageGenerationLogsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const logs = imageProviderManager.getLogs(100);
+    res.json({ success: true, count: logs.length, data: logs });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function clearImageGenerationLogsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    imageProviderManager.clearLogs();
+    res.json({ success: true, message: "Image generation activity logs cleared." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listAdminPresentationsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const sessions = listPresentationSessions();
+    res.json({ success: true, count: sessions.length, data: sessions });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function toggleUserRoleHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+    if (!role || !["user", "admin"].includes(role)) {
+      return res.status(400).json({ success: false, error: { message: "Role must be 'user' or 'admin'." } });
+    }
+
+    const updated = await updateUserRole(userId, role);
+    const auth = getAdminAuth();
+    if (auth) {
+      try {
+        await auth.setCustomUserClaims(userId, { role, admin: role === "admin" });
+      } catch (claimErr) {
+        console.warn(`Could not set custom claim for user ${userId}:`, claimErr);
+      }
+    }
+
+    res.json({ success: true, data: updated, message: `User role updated to ${role}.` });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function bootstrapAdminHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { secretKey, uid, email } = req.body;
+    const isValidKey = secretKey === "documind-admin-secret" || secretKey === process.env.ADMIN_SECRET_KEY;
+    if (!isValidKey) {
+      return res.status(403).json({ success: false, error: { message: "Invalid master administrator secret." } });
+    }
+
+    const targetUid = uid || req.user?.uid;
+    if (!targetUid) {
+      return res.status(400).json({ success: false, error: { message: "Target user ID is required." } });
+    }
+
+    const updated = await updateUserRole(targetUid, "admin");
+    const auth = getAdminAuth();
+    if (auth) {
+      try {
+        await auth.setCustomUserClaims(targetUid, { role: "admin", admin: true });
+      } catch (claimErr) {
+        console.warn("Could not set custom claim during bootstrap:", claimErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `User ${email || targetUid} is now successfully granted Administrator permissions.`,
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function exportAuditLogsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { format = "json" } = req.query;
+    const auditLogs = getStaffAuditLogs();
+    const imageLogs = imageProviderManager.getLogs(100);
+
+    if (format === "csv") {
+      const headers = "ID,Timestamp,Actor,Action,Details\n";
+      const rows = auditLogs
+        .map(
+          (l) =>
+            `"${l.id}","${l.timestamp}","${l.staffName} (${l.staffEmail})","${l.action.replace(/"/g, '""')}","${l.details.replace(/"/g, '""')}"`,
+        )
+        .join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", 'attachment; filename="documind_audit_logs.csv"');
+      return res.send(headers + rows);
+    }
+
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", 'attachment; filename="documind_audit_logs.json"');
+    res.json({
+      success: true,
+      exportedAt: new Date().toISOString(),
+      staffAuditLogs: auditLogs,
+      imageGenerationLogs: imageLogs,
+    });
   } catch (error) {
     next(error);
   }

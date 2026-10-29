@@ -215,6 +215,39 @@ export async function updateUserPlan(
   return null;
 }
 
+export async function updateUserRole(
+  uid: string,
+  role: "user" | "admin",
+): Promise<UserRecord | null> {
+  const db = getAdminDb();
+  const now = new Date().toISOString();
+
+  if (db) {
+    try {
+      const userRef = db.collection(COLLECTION_NAME).doc(uid);
+      const snap = await userRef.get();
+      if (snap.exists) {
+        await userRef.update({ role, updatedAt: now });
+        const updated = (await userRef.get()).data() as UserRecord;
+        inMemoryUsers.set(uid, updated);
+        return updated;
+      }
+    } catch (e) {
+      console.warn(`[Firestore] updateUserRole(${uid}) failed:`, (e as Error).message);
+    }
+  }
+
+  const inMem = inMemoryUsers.get(uid);
+  if (inMem) {
+    inMem.role = role;
+    inMem.updatedAt = now;
+    inMemoryUsers.set(uid, inMem);
+    return inMem;
+  }
+
+  return null;
+}
+
 export async function countUsers(): Promise<{ totalUsers: number; proPlanUsers: number }> {
   const db = getAdminDb();
   if (db) {

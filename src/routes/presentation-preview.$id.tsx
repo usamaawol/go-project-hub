@@ -26,6 +26,9 @@ import {
   ArrowUp,
   ArrowDown,
   Check,
+  Upload,
+  Image as ImageIcon,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -41,6 +44,7 @@ import {
 import {
   fetchPresentationPreviewApi,
   updatePresentationSlideApi,
+  regeneratePresentationSlideVisualApi,
   type PresentationSessionData,
   type SlidePreviewItem,
 } from "@/lib/api-client";
@@ -262,6 +266,106 @@ export function PresentationPreviewPage() {
     } finally {
       setSavingEdit(false);
     }
+  };
+
+  const [isRegeneratingVisual, setIsRegeneratingVisual] = useState(false);
+  const visualUploadInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRegenerateVisual = async (slideIdx: number) => {
+    if (!session || !session.slides[slideIdx]) return;
+    setIsRegeneratingVisual(true);
+    toast.loading("Generating contextual visual with active AI provider...", { id: "regen-visual" });
+    try {
+      const res = await regeneratePresentationSlideVisualApi(session.id, slideIdx);
+      if (res && res.success && res.data) {
+        setSession(res.data);
+        saveClientSession(res.data);
+        toast.success("Slide visual regenerated successfully!", { id: "regen-visual" });
+      } else {
+        // Fallback in-browser visual regeneration
+        const target = session.slides[slideIdx]!;
+        const tokens = computeThemeTokens(session.theme, session.typography);
+        const newVis = buildContextualVisual({
+          title: target.title,
+          subtitle: target.subtitle,
+          bullets: target.bullets,
+          concept: target.title,
+          accentColor: tokens.accent,
+          isDark: tokens.isDark,
+        });
+        const updatedSlides = [...session.slides];
+        updatedSlides[slideIdx] = {
+          ...updatedSlides[slideIdx]!,
+          visual: {
+            type: newVis.type,
+            concept: newVis.concept,
+            caption: newVis.caption,
+            imageUrl: newVis.imageUrl,
+            svgContent: newVis.svgContent,
+          },
+        };
+        const updated = { ...session, slides: updatedSlides };
+        setSession(updated);
+        saveClientSession(updated);
+        toast.success("Visual refreshed via contextual engine!", { id: "regen-visual" });
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to regenerate visual", { id: "regen-visual" });
+    } finally {
+      setIsRegeneratingVisual(false);
+    }
+  };
+
+  const handleUploadCustomVisual = (slideIdx: number, file: File) => {
+    if (!session || !session.slides[slideIdx]) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file (PNG, JPG, or SVG).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        const updatedSlides = [...session.slides];
+        const target = updatedSlides[slideIdx]!;
+        const updatedVisual = {
+          type: "picture" as const,
+          concept: target.title,
+          caption: `Custom visual for ${target.title}`,
+          imageUrl: dataUrl,
+        };
+        updatedSlides[slideIdx] = {
+          ...target,
+          visual: updatedVisual,
+        };
+        const updated = { ...session, slides: updatedSlides };
+        setSession(updated);
+        saveClientSession(updated);
+        try {
+          await updatePresentationSlideApi(sessionId, slideIdx, { visual: updatedVisual });
+        } catch {}
+        toast.success("Custom image applied to slide!");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveVisual = async (slideIdx: number) => {
+    if (!session || !session.slides[slideIdx]) return;
+    const updatedSlides = [...session.slides];
+    const target = updatedSlides[slideIdx]!;
+    updatedSlides[slideIdx] = {
+      ...target,
+      layout: "content",
+      visual: undefined,
+    };
+    const updated = { ...session, slides: updatedSlides };
+    setSession(updated);
+    saveClientSession(updated);
+    try {
+      await updatePresentationSlideApi(sessionId, slideIdx, { layout: "content" });
+    } catch {}
+    toast.success("Visual removed and layout converted to standard content.");
   };
 
   // Load session from API
@@ -1237,15 +1341,56 @@ export function PresentationPreviewPage() {
                                     {(visualData.type || "VISUAL").toUpperCase()} //{" "}
                                     {(visualData.concept || "SYSTEM MATRIX").slice(0, 24)}
                                   </span>
-                                  <span
-                                    className="text-[9px] font-mono px-2 py-0.5 rounded-full border"
-                                    style={{
-                                      borderColor: tokens.cardBorder,
-                                      color: tokens.cardMuted,
-                                    }}
-                                  >
-                                    16:9 Vector
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={isRegeneratingVisual}
+                                      onClick={() => handleRegenerateVisual(currentSlideIndex)}
+                                      className="h-6 px-2 text-[10px] font-mono gap-1"
+                                      title="Regenerate this visual using configured AI image providers"
+                                    >
+                                      {isRegeneratingVisual ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <RefreshCw className="h-3 w-3" />
+                                      )}
+                                      Regen
+                                    </Button>
+
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => visualUploadInputRef.current?.click()}
+                                      className="h-6 px-2 text-[10px] font-mono gap-1"
+                                      title="Upload a custom PNG/JPG/SVG image"
+                                    >
+                                      <Upload className="h-3 w-3" />
+                                      Replace
+                                    </Button>
+
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleRemoveVisual(currentSlideIndex)}
+                                      className="h-6 px-1.5 text-[10px] text-destructive hover:text-destructive"
+                                      title="Remove visual and switch slide to standard layout"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+
+                                    <input
+                                      type="file"
+                                      ref={visualUploadInputRef}
+                                      accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUploadCustomVisual(currentSlideIndex, file);
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                  </div>
                                 </div>
 
                                 <div

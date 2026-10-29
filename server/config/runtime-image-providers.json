@@ -1,0 +1,340 @@
+{
+  "providers": [
+    {
+      "id": "gemini",
+      "name": "Google Gemini / Imagen 3",
+      "enabled": true,
+      "priority": 1,
+      "fallbackEligible": true,
+      "selectedModel": "imagen-3.0-generate-002",
+      "supportedModels": [
+        "imagen-3.0-generate-002",
+        "imagen-3.0-fast-generate-001",
+        "gemini-2.5-flash"
+      ],
+      "apiKey": "",
+      "status": "needs_key",
+      "freeTierInfo": "Free tier available via Google AI Studio API with daily rate limits.",
+      "quotaInfo": {
+        "isEstimate": true,
+        "unit": "Requests / Min",
+        "total": 15,
+        "remaining": 15
+      },
+      "lastTestedAt": "2026-10-29T09:17:19.061Z",
+      "lastError": "Connection failed: API key not valid. Please pass a valid API key."
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face Inference",
+      "enabled": true,
+      "priority": 2,
+      "fallbackEligible": true,
+      "selectedModel": "black-forest-labs/FLUX.1-schnell",
+      "supportedModels": [
+        "black-forest-labs/FLUX.1-schnell",
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        "runwayml/stable-diffusion-v1-5"
+      ],
+      "apiKey": "",
+      "status": "needs_key",
+      "freeTierInfo": "Free community inference API with Hugging Face user access token.",
+      "quotaInfo": {
+        "isEstimate": true,
+        "unit": "Monthly Requests",
+        "total": 1000,
+        "remaining": 1000
+      }
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare Workers AI",
+      "enabled": false,
+      "priority": 3,
+      "fallbackEligible": true,
+      "selectedModel": "@cf/bytedance/stable-diffusion-xl-lightning",
+      "supportedModels": [
+        "@cf/bytedance/stable-diffusion-xl-lightning",
+        "@cf/stabilityai/stable-diffusion-xl-base-1.0"
+      ],
+      "apiKey": "",
+      "endpointUrl": "",
+      "status": "needs_key",
+      "freeTierInfo": "10,000 Neurons per day free on Cloudflare Workers AI plan.",
+      "quotaInfo": {
+        "isEstimate": true,
+        "unit": "Neurons / Day",
+        "total": 10000,
+        "remaining": 10000
+      }
+    },
+    {
+      "id": "fal",
+      "name": "fal.ai (FLUX / SDXL)",
+      "enabled": false,
+      "priority": 4,
+      "fallbackEligible": true,
+      "selectedModel": "fal-ai/flux/schnell",
+      "supportedModels": [
+        "fal-ai/flux/schnell",
+        "fal-ai/fast-sdxl"
+      ],
+      "apiKey": "",
+      "status": "needs_key",
+      "freeTierInfo": "Initial free trial credits provided on sign-up; requires pay-as-you-go key after trial.",
+      "quotaInfo": {
+        "isEstimate": true,
+        "unit": "Credits ($)",
+        "total": 10,
+        "remaining": 10
+      }
+    },
+    {
+      "id": "replicate",
+      "name": "Replicate (FLUX & SDXL)",
+      "enabled": false,
+      "priority": 5,
+      "fallbackEligible": true,
+      "selectedModel": "black-forest-labs/flux-schnell",
+      "supportedModels": [
+        "black-forest-labs/flux-schnell",
+        "stability-ai/sdxl"
+      ],
+      "apiKey": "",
+      "status": "needs_key",
+      "freeTierInfo": "Trial runs offered for new accounts; pay-per-second thereafter.",
+      "quotaInfo": {
+        "isEstimate": true,
+        "unit": "Predictions",
+        "total": 50,
+        "remaining": 50
+      }
+    }
+  ],
+  "settings": {
+    "globallyEnabled": true,
+    "newUserAccess": true,
+    "maxGenerationsPerPresentation": 3,
+    "maxDailyGenerationsPerUser": 10,
+    "maxConcurrentRequests": 3,
+    "timeoutSeconds": 30,
+    "autoFallbackEnabled": true,
+    "preferredAspectRatio": "16:9"
+  },
+  "logs": [
+    {
+      "id": "img_1793265439428_h50n3",
+      "timestamp": "2026-10-29T09:17:19.428Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Strategic roadmap for document tools. High clarity, minimal clutter, modern aest",
+      "concept": "Strategic roadmap for document tools",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265439129_u4rrs",
+      "timestamp": "2026-10-29T09:17:19.129Z",
+      "source": "presentation_maker",
+      "prompt": "Detailed container orchestration topology with Kubernetes pods and nodes",
+      "concept": "Agenda & Structural Roadmap",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265439090_d7rir",
+      "timestamp": "2026-10-29T09:17:19.090Z",
+      "source": "presentation_maker",
+      "prompt": "Photosynthesis chloroplast energy cycle",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "AI Image Generation is currently disabled by system administrator."
+    },
+    {
+      "id": "img_1793265439089_zl0j7",
+      "timestamp": "2026-10-29T09:17:19.089Z",
+      "source": "presentation_maker",
+      "prompt": "Deep learning neural network layers and forward propagation",
+      "concept": "Neural Topology",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265439088_24h5a",
+      "timestamp": "2026-10-29T09:17:19.088Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438543_9sp5j",
+      "timestamp": "2026-10-29T09:17:18.543Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Quarterly growth telemetry shows 85% adoption rate, with 3 key pillars of i. Hig",
+      "concept": "Quarterly growth telemetry shows 85% adoption rate, with 3 key pillars of i",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438461_t47k6",
+      "timestamp": "2026-10-29T09:17:18.461Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Testing presentation synthesis for exactly 4 slides with varied layouts. High cl",
+      "concept": "Testing presentation synthesis for exactly 4 slides with varied layouts",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438448_npd71",
+      "timestamp": "2026-10-29T09:17:18.448Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Testing font family Montserrat with extra-large scaling preset. High clarity, mi",
+      "concept": "Testing font family Montserrat with extra-large scaling preset",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438438_so7rn",
+      "timestamp": "2026-10-29T09:17:18.438Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Testing font family Merriweather with large scaling preset. High clarity, minima",
+      "concept": "Testing font family Merriweather with large scaling preset",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438431_svkwg",
+      "timestamp": "2026-10-29T09:17:18.431Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Testing font family Roboto with standard scaling preset. High clarity, minimal c",
+      "concept": "Testing font family Roboto with standard scaling preset",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438407_kwmw8",
+      "timestamp": "2026-10-29T09:17:18.407Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Testing font family Playfair Display with compact scaling preset. High clarity, ",
+      "concept": "Testing font family Playfair Display with compact scaling preset",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438359_coh0c",
+      "timestamp": "2026-10-29T09:17:18.359Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: DocuMind Operations Brief. High clarity, minimal clutter, modern aesthetic.",
+      "concept": "DocuMind Operations Brief",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265438089_8vdod",
+      "timestamp": "2026-10-29T09:17:18.089Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: DocuMind simplifies document formatting and AI presentation authoring. High clar",
+      "concept": "DocuMind simplifies document formatting and AI presentation authoring",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265432710_319wf",
+      "timestamp": "2026-10-29T09:17:12.710Z",
+      "source": "presentation_maker",
+      "prompt": "Detailed container orchestration topology with Kubernetes pods and nodes",
+      "concept": "Agenda & Structural Roadmap",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265432689_uqdit",
+      "timestamp": "2026-10-29T09:17:12.689Z",
+      "source": "presentation_maker",
+      "prompt": "Photosynthesis chloroplast energy cycle",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "AI Image Generation is currently disabled by system administrator."
+    },
+    {
+      "id": "img_1793265432688_ob7do",
+      "timestamp": "2026-10-29T09:17:12.688Z",
+      "source": "presentation_maker",
+      "prompt": "Deep learning neural network layers and forward propagation",
+      "concept": "Neural Topology",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793265432687_h84tj",
+      "timestamp": "2026-10-29T09:17:12.687Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793264915243_t4em1",
+      "timestamp": "2026-10-29T09:08:35.243Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Strategic roadmap for document tools. High clarity, minimal clutter, modern aest",
+      "concept": "Strategic roadmap for document tools",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    }
+  ]
+}

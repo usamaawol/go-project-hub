@@ -414,6 +414,141 @@ export async function fetchAdminAuditLogs(adminKey = "documind-admin-secret") {
   return await res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Multi-Provider AI Image Generation Client API
+// ---------------------------------------------------------------------------
+
+export async function fetchAdminImageProviders(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/providers?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function updateAdminImageProvider(
+  id: string,
+  updates: Record<string, any>,
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/providers/${id}?adminKey=${adminKey}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  return await res.json();
+}
+
+export async function testAdminImageProviderConnection(
+  id: string,
+  apiKey?: string,
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/providers/${id}/test?adminKey=${adminKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  return await res.json();
+}
+
+export async function testAdminGenerateImage(
+  prompt: string,
+  aspectRatio = "16:9",
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/providers/test-generate?adminKey=${adminKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, aspectRatio }),
+  });
+  return await res.json();
+}
+
+export async function fetchAdminImageSettings(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/image-generation/settings?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function updateAdminImageSettings(
+  settings: Record<string, any>,
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/image-generation/settings?adminKey=${adminKey}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  return await res.json();
+}
+
+export async function fetchAdminImageLogs(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/image-generation/logs?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function clearAdminImageLogs(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/image-generation/logs?adminKey=${adminKey}`, {
+    method: "DELETE",
+  });
+  return await res.json();
+}
+
+export async function fetchAdminPresentations(adminKey = "documind-admin-secret") {
+  const res = await fetch(`${API_BASE}/admin/presentations?adminKey=${adminKey}`);
+  return await res.json();
+}
+
+export async function toggleAdminUserRole(
+  userId: string,
+  role: "user" | "admin",
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/role?adminKey=${adminKey}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  return await res.json();
+}
+
+export async function bootstrapAdminUser(data: {
+  secretKey: string;
+  uid?: string;
+  email?: string;
+}) {
+  const res = await fetch(`${API_BASE}/admin/setup-admin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return await res.json();
+}
+
+export async function exportAdminAuditLogs(
+  format: "json" | "csv" = "json",
+  adminKey = "documind-admin-secret",
+) {
+  const res = await fetch(`${API_BASE}/admin/export-logs?format=${format}&adminKey=${adminKey}`);
+  if (format === "csv") {
+    return await res.text();
+  }
+  return await res.json();
+}
+
+export async function regeneratePresentationSlideVisualApi(
+  sessionId: string,
+  slideIndex: number,
+  prompt?: string,
+) {
+  const res = await fetch(
+    `${API_BASE}/presentations/session/${sessionId}/slide/${slideIndex}/regenerate-visual`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    },
+  );
+  return await res.json();
+}
+
 export interface SlidePreviewItem {
   id: string;
   slideNumber: number;

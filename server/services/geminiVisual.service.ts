@@ -209,13 +209,14 @@ function escapeXml(unsafe: string): string {
 export function synthesizeContextualVisual(params: {
   title: string;
   subtitle: string;
-  bullets: string[];
+  bullets?: string[];
   concept: string;
   caption: string;
   accentColor: string;
   isDark: boolean;
 }): ContextualVisualResult {
-  const combined = `${params.title} ${params.subtitle} ${params.bullets.join(" ")}`.toLowerCase();
+  const bulletList = Array.isArray(params.bullets) ? params.bullets : [];
+  const combined = `${params.title} ${params.subtitle} ${bulletList.join(" ")}`.toLowerCase();
   const accent = params.accentColor || "#F97316";
   const bg = params.isDark ? "#0B1120" : "#F8FAFC";
   const cardBg = params.isDark ? "#1E293B" : "#FFFFFF";

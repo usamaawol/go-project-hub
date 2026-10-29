@@ -13,6 +13,7 @@ import {
 } from "../../src/lib/presentation-theme";
 import { renderSlideDeckToPptx } from "../../src/lib/presentation-renderer";
 import { generateSlideVisual } from "./geminiVisual.service";
+import { imageProviderManager } from "./imageProviders/imageProviderManager";
 import {
   getEffectiveGeminiApiKey,
   getEffectiveOpenAIApiKey,
@@ -498,6 +499,23 @@ export async function createPresentationSession(
   const theme = input.theme || defaultTheme;
   const themeTokens = computeThemeTokens(theme, input.typography);
 
+  // Guarantee at least one relevant visual per presentation when eligible
+  const hasExistingVisual = slides.some((s) => s.visual?.imageUrl || s.layout === "text-visual" || s.layout === "image-led");
+  if (!hasExistingVisual && slides.length >= 3) {
+    // Select an intermediate slide that explains a key concept
+    const targetIdx = slides.length >= 4 ? 2 : 1;
+    const targetSlide = slides[targetIdx];
+    if (targetSlide && targetSlide.layout !== "assignment-cover" && targetSlide.layout !== "title") {
+      targetSlide.layout = "text-visual";
+      targetSlide.visual = {
+        type: "picture",
+        concept: targetSlide.title,
+        caption: targetSlide.subtitle || `Visual topology: ${targetSlide.title}`,
+        imagePrompt: `A professional, clean, educational 16:9 presentation illustration of: ${targetSlide.title}. High clarity, minimal clutter, modern aesthetic.`,
+      };
+    }
+  }
+
   for (const s of slides) {
     if (
       s.layout === "text-visual" ||
@@ -507,26 +525,52 @@ export async function createPresentationSession(
     ) {
       if (!s.visual?.imageUrl) {
         try {
-          const vis = await generateSlideVisual({
-            title: s.title,
-            subtitle: s.subtitle,
-            bullets: s.bullets,
-            visualPrompt: s.visual?.imagePrompt || s.visual?.concept,
-            visualType: (s.visual?.type as any) || "diagram",
-            concept: s.visual?.concept || s.title,
-            apiKey: effectiveApiKey,
-            accentColor: theme.colors.accent,
-            isDark: themeTokens.isDark,
+          const prompt =
+            s.visual?.imagePrompt ||
+            `A modern high-end 16:9 presentation visual: ${s.title}. ${s.subtitle || ""}. Professional aesthetic, clean studio lighting, vibrant colors, no watermarks, no cluttered text.`;
+          const concept = s.visual?.concept || s.title;
+
+          // Attempt multi-provider AI image generation (strictly for Presentation Maker)
+          const imgRes = await imageProviderManager.generateImage({
+            source: "presentation_maker",
+            prompt,
+            slideTitle: s.title,
+            concept,
+            aspectRatio: "16:9",
           });
-          s.visual = {
-            type: vis.type,
-            concept: vis.concept,
-            caption: vis.caption,
-            imageUrl: vis.imageUrl,
-            svgContent: vis.svgContent,
-          };
+
+          if (imgRes && imgRes.imageUrl) {
+            s.visual = {
+              type: imgRes.format === "svg+xml" ? "diagram" : "picture",
+              concept,
+              caption: s.subtitle || `Visual illustration: ${concept}`,
+              imageUrl: imgRes.imageUrl,
+            };
+          }
         } catch (visErr) {
-          console.warn("Visual generation fallback for slide:", s.title, visErr);
+          console.warn("Multi-provider image generation fallback for slide:", s.title, visErr);
+          try {
+            const vis = await generateSlideVisual({
+              title: s.title,
+              subtitle: s.subtitle,
+              bullets: s.bullets,
+              visualPrompt: s.visual?.imagePrompt || s.visual?.concept,
+              visualType: (s.visual?.type as any) || "diagram",
+              concept: s.visual?.concept || s.title,
+              apiKey: effectiveApiKey,
+              accentColor: theme.colors.accent,
+              isDark: themeTokens.isDark,
+            });
+            s.visual = {
+              type: vis.type,
+              concept: vis.concept,
+              caption: vis.caption,
+              imageUrl: vis.imageUrl,
+              svgContent: vis.svgContent,
+            };
+          } catch (innerErr) {
+            console.warn("Visual generation fallback failed:", innerErr);
+          }
         }
       }
     }
@@ -696,6 +740,91 @@ export function cleanupExpiredSessions(): number {
   }
 
   return cleanedCount;
+}
+
+/**
+ * Lists active presentation sessions for the Admin Dashboard
+ */
+export function listPresentationSessions(): Array<{
+  id: string;
+  title: string;
+  purpose: string;
+  slideCount: number;
+  themeName: string;
+  hasVisuals: boolean;
+  visualCount: number;
+  createdAt: number;
+  expiresAt: number;
+  secondsRemaining: number;
+  fileSize: number;
+}> {
+  return Array.from(activeSessions.values()).map((s) => {
+    const visualCount = s.slides.filter((sl) => Boolean(sl.visual?.imageUrl)).length;
+    return {
+      id: s.id,
+      title: s.title,
+      purpose: s.purpose,
+      slideCount: s.slideCount,
+      themeName: s.theme?.name || "Standard",
+      hasVisuals: visualCount > 0,
+      visualCount,
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+      secondsRemaining: Math.max(0, Math.floor((s.expiresAt - Date.now()) / 1000)),
+      fileSize: s.fileSize,
+    };
+  });
+}
+
+/**
+ * Regenerates the AI visual for a specific slide using active providers and re-renders PPTX
+ */
+export async function regenerateSlideVisual(
+  sessionId: string,
+  slideIndex: number,
+  customPrompt?: string,
+): Promise<PresentationSession | null> {
+  const session = activeSessions.get(sessionId);
+  if (!session || !session.slides[slideIndex]) return null;
+
+  const slide = session.slides[slideIndex]!;
+  const prompt =
+    customPrompt ||
+    slide.visual?.imagePrompt ||
+    `A professional 16:9 presentation visual illustration: ${slide.title}. ${slide.subtitle || ""}. High aesthetic, clean educational style.`;
+  const concept = slide.visual?.concept || slide.title;
+
+  const imgResult = await imageProviderManager.generateImage({
+    source: "presentation_maker",
+    prompt,
+    slideTitle: slide.title,
+    concept,
+    aspectRatio: "16:9",
+  });
+
+  slide.visual = {
+    type: imgResult.format === "svg+xml" ? "diagram" : "picture",
+    concept,
+    caption: slide.visual?.caption || `Visual: ${concept}`,
+    imageUrl: imgResult.imageUrl,
+    imagePrompt: prompt,
+  };
+
+  // Ensure slide has text-visual layout if it was standard content
+  if (slide.layout === "content" || slide.layout === "agenda") {
+    slide.layout = "text-visual";
+  }
+
+  // Re-generate PPTX file on disk
+  try {
+    const fileSize = await generatePptxFile(session, session.filePath);
+    session.fileSize = fileSize;
+  } catch (err) {
+    console.warn("Failed to re-render PPTX file after visual regeneration:", err);
+  }
+
+  activeSessions.set(sessionId, session);
+  return session;
 }
 
 setInterval(cleanupExpiredSessions, 30_000);
