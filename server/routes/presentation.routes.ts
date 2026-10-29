@@ -27,8 +27,16 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       slideCount,
       geminiApiKey,
       assignmentMetadata,
+      providerKeys: bodyProviderKeys,
     } = req.body;
     const headerApiKey = req.headers["x-gemini-api-key"] as string | undefined;
+
+    let parsedProviderKeys: Record<string, string> | undefined = bodyProviderKeys;
+    if (!parsedProviderKeys && typeof req.headers["x-provider-keys"] === "string") {
+      try {
+        parsedProviderKeys = JSON.parse(req.headers["x-provider-keys"]);
+      } catch {}
+    }
 
     if (!theme || !theme.name) {
       return res.status(400).json({
@@ -49,6 +57,7 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       },
       slideCount: Number(slideCount) || 8,
       geminiApiKey: geminiApiKey || headerApiKey,
+      providerKeys: parsedProviderKeys,
       assignmentMetadata,
     };
 
@@ -175,9 +184,16 @@ router.post("/presentations/session/:id/slide/:index/regenerate-visual", async (
     });
   }
 
-  const { prompt } = req.body || {};
+  const { prompt, providerKeys: bodyProviderKeys } = req.body || {};
+  let parsedProviderKeys: Record<string, string> | undefined = bodyProviderKeys;
+  if (!parsedProviderKeys && typeof req.headers["x-provider-keys"] === "string") {
+    try {
+      parsedProviderKeys = JSON.parse(req.headers["x-provider-keys"]);
+    } catch {}
+  }
+
   try {
-    const updated = await regenerateSlideVisual(sessionId, slideIndex, prompt);
+    const updated = await regenerateSlideVisual(sessionId, slideIndex, prompt, parsedProviderKeys);
     if (!updated) {
       return res.status(404).json({
         success: false,

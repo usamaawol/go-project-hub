@@ -31,16 +31,17 @@ import {
 } from "@/lib/api-client";
 
 // Modular Admin Subcomponents
-import type {
-  AdminTab,
-  AdminMetrics,
-  ProviderItem,
-  ImageSettingsItem,
-  ImageLogItem,
-  AdminUserItem,
-  PresentationSessionItem,
-  StaffAuditLogItem,
-  AdminSystemSettingsState,
+import {
+  type AdminTab,
+  type AdminMetrics,
+  type ProviderItem,
+  type ImageSettingsItem,
+  type ImageLogItem,
+  type AdminUserItem,
+  type PresentationSessionItem,
+  type StaffAuditLogItem,
+  type AdminSystemSettingsState,
+  DEFAULT_PROVIDER_ITEMS,
 } from "@/components/admin/types";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
@@ -114,7 +115,7 @@ function AdminPage() {
 
   // Core Data Stores
   const [metrics, setMetrics] = useState<AdminMetrics>(DEFAULT_METRICS);
-  const [providers, setProviders] = useState<ProviderItem[]>([]);
+  const [providers, setProviders] = useState<ProviderItem[]>(DEFAULT_PROVIDER_ITEMS);
   const [imageSettings, setImageSettings] = useState<ImageSettingsItem>({
     globallyEnabled: true,
     newUserAccess: true,
@@ -167,7 +168,7 @@ function AdminPage() {
 
       // 3. AI Providers
       const pRes = await fetchAdminImageProviders(adminKey);
-      if (pRes?.data && Array.isArray(pRes.data)) {
+      if (pRes?.data && Array.isArray(pRes.data) && pRes.data.length > 0) {
         setProviders(pRes.data);
       }
 

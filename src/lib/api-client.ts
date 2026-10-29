@@ -537,13 +537,25 @@ export async function regeneratePresentationSlideVisualApi(
   sessionId: string,
   slideIndex: number,
   prompt?: string,
+  providerKeys?: Record<string, string>,
 ) {
+  let effectiveKeys = providerKeys;
+  if (!effectiveKeys && typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("documind_presentation_ai_keys");
+      if (raw) effectiveKeys = JSON.parse(raw);
+    } catch {}
+  }
+
   const res = await fetch(
     `${API_BASE}/presentations/session/${sessionId}/slide/${slideIndex}/regenerate-visual`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(effectiveKeys ? { "x-provider-keys": JSON.stringify(effectiveKeys) } : {}),
+      },
+      body: JSON.stringify({ prompt, providerKeys: effectiveKeys }),
     },
   );
   return await res.json();
@@ -621,6 +633,7 @@ export async function createPresentationSessionApi(input: {
   };
   slideCount?: number;
   geminiApiKey?: string;
+  providerKeys?: Record<string, string>;
 }): Promise<{
   sessionId: string;
   title: string;
@@ -630,12 +643,24 @@ export async function createPresentationSessionApi(input: {
   slides?: SlidePreviewItem[];
   downloadUrl?: string;
 }> {
+  // Exclusively for Presentation Maker sessions, check for user-configured AI provider keys
+  let presentationKeys = input.providerKeys;
+  if (!presentationKeys && typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("documind_presentation_ai_keys");
+      if (raw) presentationKeys = JSON.parse(raw);
+    } catch {}
+  }
+
   // 1. Attempt backend API first (used when Express server is running)
   try {
     const res = await fetch(`${API_BASE}/presentations/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json",
+        ...(presentationKeys ? { "x-provider-keys": JSON.stringify(presentationKeys) } : {}),
+      },
+      body: JSON.stringify({ ...input, providerKeys: presentationKeys }),
     });
 
     const contentType = res.headers.get("content-type") || "";

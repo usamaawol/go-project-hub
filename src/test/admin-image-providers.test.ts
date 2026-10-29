@@ -7,6 +7,7 @@ import {
   regenerateSlideVisual,
   deletePresentationSession,
 } from "../../server/services/presentationSession.service";
+import { detectProviderFromKey } from "../components/admin/tabs/AdminProvidersTab";
 
 let server: http.Server;
 let baseUrl = "";
@@ -258,6 +259,84 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
       expect(json.data.slides[1].visual.imageUrl).toBeDefined();
 
       deletePresentationSession(createdSessionId);
+    });
+  });
+
+  describe("6. AI Provider Key Auto-Detection & Presentation Maker Manual Injection", () => {
+    it("correctly auto-detects all 5 provider key signatures", () => {
+      // Gemini / Imagen
+      const gemini = detectProviderFromKey("AIzaSyB3vY9_mockGeminiStudioKey12345");
+      expect(gemini.id).toBe("gemini");
+      expect(gemini.confidence).toBe("high");
+
+      // Hugging Face
+      const hf = detectProviderFromKey("hf_mockUserAccessTokenSecret5678");
+      expect(hf.id).toBe("huggingface");
+      expect(hf.confidence).toBe("high");
+
+      // Replicate
+      const rep = detectProviderFromKey("r8_mockReplicateApiToken9999");
+      expect(rep.id).toBe("replicate");
+      expect(rep.confidence).toBe("high");
+
+      // fal.ai (UUID:Secret or key_)
+      const fal = detectProviderFromKey("key_mockFalAiClientKey98765");
+      expect(fal.id).toBe("fal");
+      expect(fal.confidence).toBe("high");
+
+      const falColon = detectProviderFromKey("12345678-abcd-ef01-2345:mockFalSecretKey98765");
+      expect(falColon.id).toBe("fal");
+      expect(falColon.confidence).toBe("high");
+
+      // Cloudflare (40-char token)
+      const cf = detectProviderFromKey("a1b2c3d4e5f678901234567890abcdef12345678");
+      expect(cf.id).toBe("cloudflare");
+      expect(cf.confidence).toBe("medium");
+
+      // Unknown / Empty
+      const unknown = detectProviderFromKey("random_unrecognized_key");
+      expect(unknown.id).toBeNull();
+      expect(unknown.confidence).toBe("low");
+    });
+
+    it("ingests dynamic presentation AI provider keys when creating presentation session", async () => {
+      const res = await fetch(`${baseUrl}/api/presentations/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Microservices Architecture",
+          content: "Comprehensive overview of service mesh, API gateways, event-driven streaming, and Docker containers across cloud clusters.",
+          slideCount: 4,
+          theme: {
+            id: "executive-brief",
+            name: "Executive Brief",
+            category: "Business",
+            kind: "business",
+            colors: { primary: "#0F172A", accent: "#2563EB", bg: "#FFFFFF" },
+            fonts: "Inter",
+            tier: "free",
+          },
+          providerKeys: {
+            gemini: "AIzaSy_customPresentationTestKey_1234567",
+            huggingface: "hf_customPresentationTestToken_987654",
+          },
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.data.sessionId).toBeDefined();
+
+      // Verify that imageProviderManager has the updated keys
+      const allProviders = imageProviderManager.getProvidersForClient();
+      const gemini = allProviders.find((p) => p.id === "gemini");
+      expect(gemini?.isConfigured).toBe(true);
+
+      const hf = allProviders.find((p) => p.id === "huggingface");
+      expect(hf?.isConfigured).toBe(true);
+
+      deletePresentationSession(json.data.sessionId);
     });
   });
 });

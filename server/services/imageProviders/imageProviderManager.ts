@@ -246,6 +246,24 @@ export class ImageProviderManager {
   }
 
   /**
+   * Overlays provider API keys supplied directly by Presentation Maker sessions
+   */
+  public setTemporaryProviderKeys(keys: Record<string, string>) {
+    if (!keys || typeof keys !== "object") return;
+    for (const [id, key] of Object.entries(keys)) {
+      if (key && typeof key === "string" && key.trim().length > 6 && !key.includes("••••")) {
+        const p = this.providers.get(id as ImageProviderId);
+        if (p) {
+          p.apiKey = key.trim();
+          p.enabled = true;
+          p.status = "ready";
+          this.providers.set(id as ImageProviderId, p);
+        }
+      }
+    }
+  }
+
+  /**
    * Returns list of configured providers with masked API keys for secure UI display
    */
   public getProvidersForClient(): Array<

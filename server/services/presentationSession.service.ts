@@ -80,6 +80,7 @@ export interface CreatePresentationSessionInput {
   };
   slideCount?: number;
   geminiApiKey?: string;
+  providerKeys?: Record<string, string>;
   assignmentMetadata?: AssignmentMetadata;
 }
 
@@ -388,6 +389,10 @@ ${brief}`;
 export async function createPresentationSession(
   input: CreatePresentationSessionInput,
 ): Promise<PresentationSession> {
+  if (input.providerKeys) {
+    imageProviderManager.setTemporaryProviderKeys(input.providerKeys);
+  }
+
   const sessionId = crypto.randomUUID();
   const sessionDir = path.join(BASE_TEMP_DIR, sessionId);
 
@@ -783,7 +788,12 @@ export async function regenerateSlideVisual(
   sessionId: string,
   slideIndex: number,
   customPrompt?: string,
+  providerKeys?: Record<string, string>,
 ): Promise<PresentationSession | null> {
+  if (providerKeys) {
+    imageProviderManager.setTemporaryProviderKeys(providerKeys);
+  }
+
   const session = activeSessions.get(sessionId);
   if (!session || !session.slides[slideIndex]) return null;
 
