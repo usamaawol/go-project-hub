@@ -18,20 +18,29 @@ import {
   Settings,
   PlusCircle,
   Lock,
+  RotateCcw,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { type ProviderItem, DEFAULT_PROVIDER_ITEMS } from "../types";
+import { type ProviderItem, type ProviderAlertItem, DEFAULT_PROVIDER_ITEMS } from "../types";
 import {
   updateAdminImageProvider,
   testAdminImageProviderConnection,
   testAdminGenerateImage,
+  resetAdminProviderQuota,
+  resetAllAdminProviderQuotas,
 } from "@/lib/api-client";
 
 interface AdminProvidersTabProps {
   providers: ProviderItem[];
   onRefresh: () => void;
   adminKey?: string;
+  alerts?: ProviderAlertItem[];
+  onResetQuota?: (providerId: string) => Promise<void> | void;
+  onResetAllQuotas?: () => Promise<void> | void;
+  onDismissAlert?: (alertId: string) => Promise<void> | void;
+  onClearAlerts?: () => Promise<void> | void;
 }
 
 // Client-side presentation storage helpers for resilient Vercel / serverless operation
@@ -168,6 +177,11 @@ export function AdminProvidersTab({
   providers,
   onRefresh,
   adminKey = "documind-admin-secret",
+  alerts = [],
+  onResetQuota,
+  onResetAllQuotas,
+  onDismissAlert,
+  onClearAlerts,
 }: AdminProvidersTabProps) {
   // Guarantee all 5 providers are always present
   const effectiveProviders = useMemo(() => {
@@ -189,6 +203,8 @@ export function AdminProvidersTab({
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [resettingQuotaId, setResettingQuotaId] = useState<string | null>(null);
+  const [resettingAllQuotas, setResettingAllQuotas] = useState(false);
   const [testResults, setTestResults] = useState<
     Record<string, { success: boolean; latencyMs: number; message: string }>
   >({});
@@ -358,6 +374,40 @@ export function AdminProvidersTab({
       toast.error(err?.message || "Failed to execute connection test");
     } finally {
       setTestingId(null);
+    }
+  };
+
+  const handleResetQuota = async (id: string, name: string) => {
+    setResettingQuotaId(id);
+    try {
+      if (onResetQuota) {
+        await onResetQuota(id);
+      } else {
+        await resetAdminProviderQuota(id, adminKey);
+      }
+      toast.success(`Quota counter for "${name}" successfully restored to 100%!`);
+      onRefresh();
+    } catch {
+      toast.error(`Failed to reset quota for ${name}`);
+    } finally {
+      setResettingQuotaId(null);
+    }
+  };
+
+  const handleResetAllQuotas = async () => {
+    setResettingAllQuotas(true);
+    try {
+      if (onResetAllQuotas) {
+        await onResetAllQuotas();
+      } else {
+        await resetAllAdminProviderQuotas(adminKey);
+      }
+      toast.success("All 5 AI provider quotas restored to initial maximums!");
+      onRefresh();
+    } catch {
+      toast.error("Failed to reset all quotas");
+    } finally {
+      setResettingAllQuotas(false);
     }
   };
 
@@ -551,6 +601,153 @@ export function AdminProvidersTab({
         </div>
       </div>
 
+      {/* Priority Cascade Chain Visualizer */}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h4 className="font-serif text-sm font-bold text-foreground flex items-center gap-2">
+              <span>Automatic AI Failover & Priority Cascade</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                Strict Hierarchy Active
+              </span>
+            </h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Presentation Maker visual requests strictly attempt providers in priority sequence (#1 Gemini ──► #2 Hugging Face ──► #3 Cloudflare, etc.). When a provider finishes quota or hits rate limits, requests automatically cascade to the next eligible provider without breaking presentation generation.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleResetAllQuotas}
+              disabled={resettingAllQuotas}
+              className="text-xs font-mono gap-1.5"
+              title="Reset all provider quota allowances back to 100%"
+            >
+              <RotateCcw className={`h-3 w-3 ${resettingAllQuotas ? "animate-spin text-primary" : ""}`} />
+              <span>Reset All Quotas</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Visual Cascade Flow */}
+        <div className="flex items-center gap-2 overflow-x-auto py-2 px-1">
+          {sortedProviders.map((prov, index) => {
+            const isDepleted = prov.quotaInfo?.remaining === 0;
+            const isConfigured = prov.isConfigured || Boolean(localKeys[prov.id]);
+            const isReady = isConfigured && prov.enabled && !isDepleted;
+            return (
+              <React.Fragment key={prov.id}>
+                <div
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-mono shrink-0 shadow-xs transition-all ${
+                    isDepleted
+                      ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                      : isReady
+                      ? index === 0
+                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/30"
+                        : "border-primary/30 bg-primary/5 text-foreground"
+                      : "border-border bg-muted/40 text-muted-foreground opacity-70"
+                  }`}
+                >
+                  <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-background/80 border border-border/60">
+                    #{prov.priority}
+                  </span>
+                  <div className="flex flex-col">
+                    <span className="font-semibold truncate max-w-[120px]">{prov.name.split("/")[0]}</span>
+                    <span className="text-[10px] opacity-80">
+                      {isDepleted
+                        ? "Finished (0 Left)"
+                        : isReady
+                        ? index === 0
+                          ? "Primary Engine"
+                          : "Failover Standby"
+                        : "Needs Key"}
+                    </span>
+                  </div>
+                </div>
+                {index < sortedProviders.length - 1 && (
+                  <span className="text-muted-foreground font-mono text-xs shrink-0 select-none">
+                    ──►
+                  </span>
+                )}
+              </React.Fragment>
+            );
+          })}
+          <span className="text-muted-foreground font-mono text-xs shrink-0 select-none">
+            ──►
+          </span>
+          {/* Final contextual engine fallback */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs font-mono shrink-0 shadow-xs">
+            <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-background/80 border border-border/60">
+              #6
+            </span>
+            <div className="flex flex-col">
+              <span className="font-semibold">Contextual Engine</span>
+              <span className="text-[10px] opacity-80">Zero-Failure Safety Net</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Active Quota Depletion Alert Banner */}
+      {alerts && alerts.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-semibold text-xs">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>Active Provider Alerts & Quota Depletion Notifications</span>
+            </div>
+            {onClearAlerts && (
+              <button
+                onClick={onClearAlerts}
+                className="text-[11px] font-mono text-amber-800 dark:text-amber-400 hover:underline"
+              >
+                Dismiss All
+              </button>
+            )}
+          </div>
+          <div className="space-y-2 pt-1">
+            {alerts.map((alert) => (
+              <div
+                key={alert.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-background/80 border border-amber-500/20 text-xs"
+              >
+                <div>
+                  <span className="font-bold text-foreground">{alert.title}: </span>
+                  <span className="text-muted-foreground">{alert.message}</span>
+                  {alert.cascadedTo && (
+                    <span className="ml-2 font-mono text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold">
+                      Cascaded to: {alert.cascadedTo}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResetQuota(alert.providerId, alert.providerName)}
+                    className="h-7 px-2 text-[11px] font-mono gap-1 text-primary hover:text-primary"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    <span>Reset Quota</span>
+                  </Button>
+                  {onDismissAlert && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onDismissAlert(alert.id)}
+                      className="h-7 px-1.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 5 Provider Cards */}
       <div className="grid grid-cols-1 gap-5">
         {sortedProviders.map((p, idx) => {
@@ -653,11 +850,48 @@ export function AdminProvidersTab({
                       {p.freeTierInfo}
                     </p>
                     {p.quotaInfo && (
-                      <div className="pt-2 flex items-center justify-between border-t border-border/50 text-[11px] font-mono">
-                        <span className="text-muted-foreground">Estimated Quota:</span>
-                        <span className="font-semibold text-foreground">
-                          {p.quotaInfo.remaining} / {p.quotaInfo.total} {p.quotaInfo.unit}
-                        </span>
+                      <div className="pt-2 space-y-1.5 border-t border-border/50 text-[11px] font-mono">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Remaining Quota:</span>
+                          <span className="font-semibold text-foreground flex items-center gap-1.5">
+                            {p.quotaInfo.remaining === 0 ? (
+                              <span className="text-rose-600 dark:text-rose-400 font-bold">
+                                0 / {p.quotaInfo.total} {p.quotaInfo.unit} (Exhausted)
+                              </span>
+                            ) : p.quotaInfo.remaining !== undefined && p.quotaInfo.total !== undefined && p.quotaInfo.remaining <= Math.ceil(p.quotaInfo.total * 0.2) ? (
+                              <span className="text-amber-600 dark:text-amber-400 font-bold">
+                                {p.quotaInfo.remaining} / {p.quotaInfo.total} {p.quotaInfo.unit} (Finishing)
+                              </span>
+                            ) : (
+                              <span>
+                                {p.quotaInfo.remaining} / {p.quotaInfo.total} {p.quotaInfo.unit}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        {/* Visual Progress Bar */}
+                        {typeof p.quotaInfo.remaining === "number" && typeof p.quotaInfo.total === "number" && (
+                          <div className="w-full bg-muted/80 rounded-full h-2 overflow-hidden border border-border/40">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                p.quotaInfo.remaining === 0
+                                  ? "bg-rose-500"
+                                  : p.quotaInfo.remaining <= Math.ceil(p.quotaInfo.total * 0.2)
+                                  ? "bg-amber-500"
+                                  : "bg-emerald-500"
+                              }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(
+                                    0,
+                                    Math.round((p.quotaInfo.remaining / (p.quotaInfo.total || 1)) * 100),
+                                  ),
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -836,6 +1070,22 @@ export function AdminProvidersTab({
                       <RefreshCw className="h-3.5 w-3.5" />
                     )}
                     <span>Test Connection</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={resettingQuotaId === p.id}
+                    onClick={() => handleResetQuota(p.id, p.name)}
+                    className="text-xs font-mono gap-1.5 text-muted-foreground hover:text-foreground"
+                    title="Restore quota allowance to 100%"
+                  >
+                    {resettingQuotaId === p.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    <span>Reset Quota</span>
                   </Button>
 
                   <Button

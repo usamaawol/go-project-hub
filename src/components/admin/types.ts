@@ -35,6 +35,21 @@ export interface ProviderItem {
   };
 }
 
+export interface ProviderAlertItem {
+  id: string;
+  providerId: "gemini" | "huggingface" | "cloudflare" | "fal" | "replicate";
+  providerName: string;
+  severity: "warning" | "critical" | "info";
+  title: string;
+  message: string;
+  timestamp: string;
+  remainingQuota: number;
+  totalQuota: number;
+  unit: string;
+  cascadedTo?: string;
+  dismissed?: boolean;
+}
+
 export interface ImageSettingsItem {
   globallyEnabled: boolean;
   newUserAccess: boolean;

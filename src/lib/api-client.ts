@@ -775,6 +775,102 @@ export async function clearAdminImageLogs(adminKey = "documind-admin-secret") {
   return res || { success: true };
 }
 
+// ---------------------------------------------------------------------------
+// Provider Quota Depletion Tracking & Real-Time Alerts Client API
+// ---------------------------------------------------------------------------
+
+export async function fetchAdminProviderAlerts(adminKey = "documind-admin-secret") {
+  const res = await safeFetchJson<{ success: boolean; data: any[] }>(
+    `${API_BASE}/admin/providers/alerts?adminKey=${adminKey}`,
+  );
+  if (res && res.data && Array.isArray(res.data)) {
+    return res.data;
+  }
+  // Client-side local storage fallback
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("documind_provider_alerts");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export async function dismissAdminProviderAlert(
+  alertId: string,
+  adminKey = "documind-admin-secret",
+) {
+  const res = await safeFetchJson(
+    `${API_BASE}/admin/providers/alerts/${alertId}/dismiss?adminKey=${adminKey}`,
+    { method: "POST" },
+  );
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("documind_provider_alerts");
+      if (raw) {
+        const list = JSON.parse(raw).filter((a: any) => a.id !== alertId);
+        localStorage.setItem("documind_provider_alerts", JSON.stringify(list));
+      }
+    } catch {}
+  }
+  return res ? Boolean(res.success) : true;
+}
+
+export async function clearAdminProviderAlerts(adminKey = "documind-admin-secret") {
+  const res = await safeFetchJson(
+    `${API_BASE}/admin/providers/alerts?adminKey=${adminKey}`,
+    { method: "DELETE" },
+  );
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem("documind_provider_alerts");
+    } catch {}
+  }
+  return res ? Boolean(res.success) : true;
+}
+
+export async function resetAdminProviderQuota(
+  providerId: string,
+  adminKey = "documind-admin-secret",
+) {
+  const res = await safeFetchJson<{ success: boolean; data?: any; message?: string }>(
+    `${API_BASE}/admin/providers/${providerId}/reset-quota?adminKey=${adminKey}`,
+    { method: "POST" },
+  );
+  if (typeof window !== "undefined") {
+    try {
+      // Remove any alerts for this provider locally
+      const raw = localStorage.getItem("documind_provider_alerts");
+      if (raw) {
+        const list = JSON.parse(raw).filter((a: any) => a.providerId !== providerId);
+        localStorage.setItem("documind_provider_alerts", JSON.stringify(list));
+      }
+      // Update local quota override
+      const qRaw = localStorage.getItem("documind_provider_quotas") || "{}";
+      const q = JSON.parse(qRaw);
+      q[providerId] = { used: 0, resetAt: Date.now() };
+      localStorage.setItem("documind_provider_quotas", JSON.stringify(q));
+    } catch {}
+  }
+  return res || { success: true, message: `Quota for ${providerId} reset.` };
+}
+
+export async function resetAllAdminProviderQuotas(adminKey = "documind-admin-secret") {
+  const res = await safeFetchJson<{ success: boolean; data?: any; message?: string }>(
+    `${API_BASE}/admin/providers/reset-all-quotas?adminKey=${adminKey}`,
+    { method: "POST" },
+  );
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem("documind_provider_alerts");
+      localStorage.removeItem("documind_provider_quotas");
+    } catch {}
+  }
+  return res || { success: true, message: "All provider quotas reset." };
+}
+
 export async function fetchAdminPresentations(adminKey = "documind-admin-secret") {
   const res = await safeFetchJson(`${API_BASE}/admin/presentations?adminKey=${adminKey}`);
   return res || { success: true, data: [] };

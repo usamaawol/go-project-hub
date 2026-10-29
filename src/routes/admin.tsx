@@ -28,6 +28,11 @@ import {
   purgeAdminTempFiles,
   exportAdminAuditLogs,
   testAdminImageProviderConnection,
+  fetchAdminProviderAlerts,
+  dismissAdminProviderAlert,
+  clearAdminProviderAlerts,
+  resetAdminProviderQuota,
+  resetAllAdminProviderQuotas,
 } from "@/lib/api-client";
 
 // Modular Admin Subcomponents
@@ -41,6 +46,7 @@ import {
   type PresentationSessionItem,
   type StaffAuditLogItem,
   type AdminSystemSettingsState,
+  type ProviderAlertItem,
   DEFAULT_PROVIDER_ITEMS,
 } from "@/components/admin/types";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -146,6 +152,7 @@ function AdminPage() {
     },
   });
   const [auditLogs, setAuditLogs] = useState<StaffAuditLogItem[]>([]);
+  const [providerAlerts, setProviderAlerts] = useState<ProviderAlertItem[]>([]);
 
   const loadAllData = useCallback(async () => {
     setLoading(true);
@@ -182,25 +189,31 @@ function AdminPage() {
         setImageLogs(lRes.data);
       }
 
-      // 5. Users List
+      // 5. Provider Quota & Failover Alerts
+      const alertsRes = await fetchAdminProviderAlerts(adminKey);
+      if (Array.isArray(alertsRes)) {
+        setProviderAlerts(alertsRes);
+      }
+
+      // 6. Users List
       const uRes = await fetchAdminUsers(adminKey);
       if (uRes?.data && Array.isArray(uRes.data)) {
         setUsersList(uRes.data);
       }
 
-      // 6. Presentations List
+      // 7. Presentations List
       const presRes = await fetchAdminPresentations(adminKey);
       if (presRes?.data && Array.isArray(presRes.data)) {
         setPresentationsList(presRes.data);
       }
 
-      // 7. System Settings
+      // 8. System Settings
       const sysRes = await fetchAdminSettings(adminKey);
       if (sysRes?.data) {
         setSystemSettings(sysRes.data);
       }
 
-      // 8. Staff Audit Logs
+      // 9. Staff Audit Logs
       const aRes = await fetchAdminAuditLogs(adminKey);
       if (aRes?.data && Array.isArray(aRes.data)) {
         setAuditLogs(aRes.data);
@@ -283,6 +296,46 @@ function AdminPage() {
       toast.success("Audit report exported as CSV.");
     } catch {
       toast.error("Failed to export audit report");
+    }
+  };
+
+  const handleResetQuota = async (providerId: string) => {
+    try {
+      await resetAdminProviderQuota(providerId, adminKey);
+      toast.success(`Quota counter reset for provider "${providerId}".`);
+      loadAllData();
+    } catch {
+      toast.error(`Failed to reset quota for "${providerId}".`);
+    }
+  };
+
+  const handleResetAllQuotas = async () => {
+    try {
+      await resetAllAdminProviderQuotas(adminKey);
+      toast.success("All AI provider quotas successfully restored.");
+      loadAllData();
+    } catch {
+      toast.error("Failed to reset provider quotas.");
+    }
+  };
+
+  const handleDismissAlert = async (alertId: string) => {
+    try {
+      await dismissAdminProviderAlert(alertId, adminKey);
+      setProviderAlerts((prev) => prev.filter((a) => a.id !== alertId));
+      toast.info("Alert dismissed.");
+    } catch {
+      toast.error("Failed to dismiss alert.");
+    }
+  };
+
+  const handleClearAlerts = async () => {
+    try {
+      await clearAdminProviderAlerts(adminKey);
+      setProviderAlerts([]);
+      toast.success("All provider alerts cleared.");
+    } catch {
+      toast.error("Failed to clear alerts.");
     }
   };
 
@@ -376,6 +429,11 @@ function AdminPage() {
             onLockConsole={handleLockConsole}
             adminUserEmail={user?.email || "admin@documind.app"}
             databaseConnected={metrics.databaseConnected}
+            alerts={providerAlerts}
+            onResetQuota={handleResetQuota}
+            onDismissAlert={handleDismissAlert}
+            onClearAlerts={handleClearAlerts}
+            onNavigateTab={(t) => setActiveTab(t)}
           />
 
           {/* Dynamic Tab Body */}
@@ -391,6 +449,8 @@ function AdminPage() {
                 onNavigateTab={(t) => setActiveTab(t)}
                 testingAll={testingAllProviders}
                 purging={purging}
+                alerts={providerAlerts}
+                onResetQuota={handleResetQuota}
               />
             )}
 
@@ -399,6 +459,11 @@ function AdminPage() {
                 providers={providers}
                 onRefresh={loadAllData}
                 adminKey={adminKey}
+                alerts={providerAlerts}
+                onResetQuota={handleResetQuota}
+                onResetAllQuotas={handleResetAllQuotas}
+                onDismissAlert={handleDismissAlert}
+                onClearAlerts={handleClearAlerts}
               />
             )}
 

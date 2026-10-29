@@ -24,6 +24,11 @@ import {
   updateImageGenerationSettingsHandler,
   getImageGenerationLogsHandler,
   clearImageGenerationLogsHandler,
+  listImageProviderAlertsHandler,
+  dismissImageProviderAlertHandler,
+  clearImageProviderAlertsHandler,
+  resetImageProviderQuotaHandler,
+  resetAllImageProviderQuotasHandler,
   listAdminPresentationsHandler,
   bootstrapAdminHandler,
   exportAuditLogsHandler,
@@ -46,6 +51,11 @@ router.get("/admin/providers", requireAdmin, listImageProvidersHandler);
 router.patch("/admin/providers/:id", requireAdmin, updateImageProviderHandler);
 router.post("/admin/providers/:id/test", requireAdmin, testImageProviderConnectionHandler);
 router.post("/admin/providers/test-generate", requireAdmin, testGenerateImageHandler);
+router.post("/admin/providers/:id/reset-quota", requireAdmin, resetImageProviderQuotaHandler);
+router.post("/admin/providers/reset-all-quotas", requireAdmin, resetAllImageProviderQuotasHandler);
+router.get("/admin/providers/alerts", requireAdmin, listImageProviderAlertsHandler);
+router.post("/admin/providers/alerts/:alertId/dismiss", requireAdmin, dismissImageProviderAlertHandler);
+router.delete("/admin/providers/alerts", requireAdmin, clearImageProviderAlertsHandler);
 
 // Image Generation Limits & Quotas
 router.get("/admin/image-generation/settings", requireAdmin, getImageGenerationSettingsHandler);

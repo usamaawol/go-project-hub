@@ -473,6 +473,97 @@ export async function clearImageGenerationLogsHandler(
   }
 }
 
+export async function listImageProviderAlertsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const alerts = imageProviderManager.getAlerts();
+    res.json({ success: true, count: alerts.length, data: alerts });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function dismissImageProviderAlertHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { alertId } = req.params;
+    if (alertId) {
+      imageProviderManager.dismissAlert(alertId);
+    }
+    res.json({ success: true, message: "Provider alert dismissed." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function clearImageProviderAlertsHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    imageProviderManager.clearAlerts();
+    res.json({ success: true, message: "All provider alerts cleared." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetImageProviderQuotaHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { id } = req.params;
+    const updated = imageProviderManager.resetProviderQuota(id as ImageProviderId);
+    const authorEmail = req.user?.email || "admin@documind.app";
+    recordStaffAuditLog(
+      req.user?.displayName || "Lead Administrator",
+      authorEmail,
+      "Reset Provider Quota",
+      `Reset quota and cleared alerts for AI provider "${updated.name}". Status restored to ready.`,
+    );
+    res.json({
+      success: true,
+      message: `Quota for ${updated.name} successfully reset.`,
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetAllImageProviderQuotasHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const updated = imageProviderManager.resetAllQuotas();
+    const authorEmail = req.user?.email || "admin@documind.app";
+    recordStaffAuditLog(
+      req.user?.displayName || "Lead Administrator",
+      authorEmail,
+      "Reset All Provider Quotas",
+      "Restored quota counters for all 5 image providers and cleared system alerts.",
+    );
+    res.json({
+      success: true,
+      message: "All provider quotas successfully reset.",
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function listAdminPresentationsHandler(
   req: AuthenticatedRequest,
   res: Response,

@@ -379,4 +379,115 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
       expect(falResult.data.message).toContain("Key format accepted");
     });
   });
+
+  describe("7. Provider Quota Tracking, Depletion Auto-Cascade & Admin Notifications", () => {
+    it("strictly respects priority order (#1 Gemini, #2 Hugging Face) and tracks remaining quota", async () => {
+      // Ensure Gemini has priority 1 and Hugging Face has priority 2
+      imageProviderManager.updateProvider("gemini", { priority: 1, enabled: true });
+      imageProviderManager.updateProvider("huggingface", { priority: 2, enabled: true });
+
+      const providers = imageProviderManager.getProvidersForClient();
+      expect(providers[0]?.id).toBe("gemini");
+      expect(providers[1]?.id).toBe("huggingface");
+    });
+
+    it("auto-cascades to Hugging Face when Gemini quota is exhausted (remaining = 0)", async () => {
+      // Set Gemini quota to 0 to simulate finished credit
+      const gemini = imageProviderManager.getProvider("gemini");
+      if (gemini?.quotaInfo) {
+        gemini.quotaInfo.remaining = 0;
+      }
+
+      // Configure a valid key for Hugging Face
+      imageProviderManager.updateProvider("huggingface", {
+        apiKey: "hf_test_mock_cascade_key_12345",
+        enabled: true,
+      });
+
+      // Execute Presentation Maker generation
+      const result = await imageProviderManager.generateImage({
+        source: "presentation_maker",
+        prompt: "A modern technological pipeline for real-time edge streaming",
+        concept: "Edge Pipeline",
+        slideTitle: "Architecture Overview",
+      });
+
+      expect(result.success).toBe(true);
+      // Since Gemini had 0 quota remaining, generation should have skipped Gemini and cascaded!
+      expect(result.provider).not.toBe("gemini");
+
+      // Verify that an alert was recorded notifying admin of Gemini quota depletion
+      const alerts = imageProviderManager.getAlerts();
+      const geminiAlert = alerts.find((a) => a.providerId === "gemini");
+      expect(geminiAlert).toBeDefined();
+      expect(geminiAlert?.severity).toBe("critical");
+      expect(geminiAlert?.title).toContain("Gemini");
+    });
+
+    it("raises admin alert and provides working reset-quota endpoint to restore provider", async () => {
+      // Call reset-quota endpoint
+      const res = await fetch(`${baseUrl}/api/admin/providers/gemini/reset-quota`, {
+        method: "POST",
+        headers: { "X-Admin-Key": adminKey },
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.data.quotaInfo.remaining).toBe(json.data.quotaInfo.total);
+
+      // Verify alert for Gemini was dismissed
+      const alerts = imageProviderManager.getAlerts();
+      const activeGeminiAlert = alerts.find((a) => a.providerId === "gemini" && !a.dismissed);
+      expect(activeGeminiAlert).toBeUndefined();
+    });
+
+    it("allows resetting all provider quotas in batch via API", async () => {
+      const res = await fetch(`${baseUrl}/api/admin/providers/reset-all-quotas`, {
+        method: "POST",
+        headers: { "X-Admin-Key": adminKey },
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(Array.isArray(json.data)).toBe(true);
+    });
+
+    it("returns list of active alerts from /api/admin/providers/alerts", async () => {
+      // Add a test alert
+      imageProviderManager.addAlert({
+        id: "test_low_credit_hf",
+        providerId: "huggingface",
+        providerName: "Hugging Face Inference",
+        severity: "warning",
+        title: "Hugging Face Low Credit Warning",
+        message: "Only 15% of inference credits remaining for this month.",
+        remainingQuota: 150,
+        totalQuota: 1000,
+        unit: "Monthly Requests",
+        cascadedTo: "Cloudflare Workers AI",
+      });
+
+      const res = await fetch(`${baseUrl}/api/admin/providers/alerts`, {
+        headers: { "X-Admin-Key": adminKey },
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.count).toBeGreaterThanOrEqual(1);
+
+      const hfAlert = json.data.find((a: any) => a.id === "test_low_credit_hf");
+      expect(hfAlert).toBeDefined();
+      expect(hfAlert.cascadedTo).toBe("Cloudflare Workers AI");
+
+      // Dismiss the test alert
+      const dismissRes = await fetch(`${baseUrl}/api/admin/providers/alerts/test_low_credit_hf/dismiss`, {
+        method: "POST",
+        headers: { "X-Admin-Key": adminKey },
+      });
+      expect(dismissRes.status).toBe(200);
+    });
+  });
 });

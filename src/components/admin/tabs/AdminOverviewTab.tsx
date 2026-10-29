@@ -12,6 +12,7 @@ import {
   Download,
   Trash2,
   Sparkles,
+  RotateCcw,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -24,7 +25,7 @@ import {
   Bar,
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import type { AdminMetrics, ProviderItem, ImageLogItem } from "../types";
+import type { AdminMetrics, ProviderItem, ImageLogItem, ProviderAlertItem } from "../types";
 
 interface AdminOverviewTabProps {
   metrics: AdminMetrics;
@@ -36,6 +37,8 @@ interface AdminOverviewTabProps {
   onNavigateTab: (tab: any) => void;
   testingAll: boolean;
   purging: boolean;
+  alerts?: ProviderAlertItem[];
+  onResetQuota?: (providerId: string) => void;
 }
 
 export function AdminOverviewTab({
@@ -48,6 +51,8 @@ export function AdminOverviewTab({
   onNavigateTab,
   testingAll,
   purging,
+  alerts = [],
+  onResetQuota,
 }: AdminOverviewTabProps) {
   const [timeRange, setTimeRange] = useState<"today" | "7d" | "30d" | "all">("7d");
 
@@ -61,6 +66,57 @@ export function AdminOverviewTab({
 
   return (
     <div className="space-y-6">
+      {/* Real-time AI Quota & Failover Alert Banner */}
+      {alerts && alerts.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs animate-in fade-in duration-150">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-serif text-sm font-bold text-foreground">
+                  AI Provider Quota & Cascade Warning
+                </h4>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 font-semibold">
+                  {alerts.length} Active Notice{alerts.length > 1 ? "s" : ""}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl leading-relaxed">
+                {alerts[0]?.title}: {alerts[0]?.message}
+                {alerts[0]?.cascadedTo && (
+                  <span className="font-semibold text-foreground ml-1">
+                    Requests automatically directed to {alerts[0].cascadedTo}.
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {onResetQuota && alerts[0] && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onResetQuota(alerts[0].providerId)}
+                className="text-xs font-mono gap-1 text-primary hover:text-primary"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset Quota</span>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="hero"
+              onClick={() => onNavigateTab("providers")}
+              className="text-xs font-mono"
+            >
+              Manage Providers →
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* 4 Primary Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Users */}

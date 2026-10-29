@@ -62,6 +62,21 @@ export interface IImageProviderAdapter {
   ): Promise<{ imageUrl: string; format: "png" | "jpeg" | "svg+xml" }>;
 }
 
+export interface ProviderAlert {
+  id: string;
+  providerId: ImageProviderId;
+  providerName: string;
+  severity: "warning" | "critical" | "info";
+  title: string;
+  message: string;
+  timestamp: string;
+  remainingQuota: number;
+  totalQuota: number;
+  unit: string;
+  cascadedTo?: string;
+  dismissed?: boolean;
+}
+
 export interface ImageGenerationSettings {
   globallyEnabled: boolean;
   newUserAccess: boolean;

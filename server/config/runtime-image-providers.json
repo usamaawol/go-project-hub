@@ -12,17 +12,17 @@
         "imagen-3.0-fast-generate-001",
         "gemini-2.5-flash"
       ],
-      "apiKey": "",
-      "status": "needs_key",
+      "apiKey": "AIzaSy_customPresentationTestKey_1234567",
+      "status": "ready",
       "freeTierInfo": "Free tier available via Google AI Studio API with daily rate limits.",
       "quotaInfo": {
         "isEstimate": true,
         "unit": "Requests / Min",
         "total": 15,
-        "remaining": 15
+        "remaining": 15,
+        "used": 0
       },
-      "lastTestedAt": "2026-10-29T09:17:19.061Z",
-      "lastError": "Connection failed: API key not valid. Please pass a valid API key."
+      "lastTestedAt": "2026-10-29T16:57:34.374Z"
     },
     {
       "id": "huggingface",
@@ -36,14 +36,15 @@
         "stabilityai/stable-diffusion-xl-base-1.0",
         "runwayml/stable-diffusion-v1-5"
       ],
-      "apiKey": "",
-      "status": "needs_key",
+      "apiKey": "hf_test_mock_cascade_key_12345",
+      "status": "ready",
       "freeTierInfo": "Free community inference API with Hugging Face user access token.",
       "quotaInfo": {
         "isEstimate": true,
         "unit": "Monthly Requests",
         "total": 1000,
-        "remaining": 1000
+        "remaining": 1000,
+        "used": 0
       }
     },
     {
@@ -65,7 +66,8 @@
         "isEstimate": true,
         "unit": "Neurons / Day",
         "total": 10000,
-        "remaining": 10000
+        "remaining": 10000,
+        "used": 0
       }
     },
     {
@@ -86,7 +88,8 @@
         "isEstimate": true,
         "unit": "Credits ($)",
         "total": 10,
-        "remaining": 10
+        "remaining": 10,
+        "used": 0
       }
     },
     {
@@ -107,7 +110,8 @@
         "isEstimate": true,
         "unit": "Predictions",
         "total": 50,
-        "remaining": 50
+        "remaining": 50,
+        "used": 0
       }
     }
   ],
@@ -122,6 +126,370 @@
     "preferredAspectRatio": "16:9"
   },
   "logs": [
+    {
+      "id": "img_1793293055759_4hjux",
+      "timestamp": "2026-10-29T16:57:35.759Z",
+      "source": "presentation_maker",
+      "prompt": "A modern technological pipeline for real-time edge streaming",
+      "concept": "Edge Pipeline",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293055748_eunft",
+      "timestamp": "2026-10-29T16:57:35.748Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Comprehensive overview of service mesh, API gateways, event-driven streamin. Hig",
+      "concept": "Comprehensive overview of service mesh, API gateways, event-driven streamin",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293055733_52ere",
+      "timestamp": "2026-10-29T16:57:35.733Z",
+      "source": "presentation_maker",
+      "prompt": "Detailed container orchestration topology with Kubernetes pods and nodes",
+      "concept": "Agenda & Structural Roadmap",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293055692_d5ypb",
+      "timestamp": "2026-10-29T16:57:35.692Z",
+      "source": "presentation_maker",
+      "prompt": "Photosynthesis chloroplast energy cycle",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "AI Image Generation is currently disabled by system administrator."
+    },
+    {
+      "id": "img_1793293055689_1erlq",
+      "timestamp": "2026-10-29T16:57:35.689Z",
+      "source": "presentation_maker",
+      "prompt": "Deep learning neural network layers and forward propagation",
+      "concept": "Neural Topology",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293055687_3mln8",
+      "timestamp": "2026-10-29T16:57:35.687Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1300,
+      "errorMessage": "All primary providers failed (getaddrinfo ENOTFOUND api-inference.huggingface.co). Activated high-fidelity contextual visual engine."
+    },
+    {
+      "id": "img_1793293055686_6fzhb",
+      "timestamp": "2026-10-29T16:57:35.686Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "huggingface",
+      "model": "black-forest-labs/FLUX.1-schnell",
+      "status": "failed",
+      "durationMs": 504,
+      "errorCategory": "Provider Error",
+      "errorMessage": "getaddrinfo ENOTFOUND api-inference.huggingface.co"
+    },
+    {
+      "id": "img_1793293055182_ge9bi",
+      "timestamp": "2026-10-29T16:57:35.182Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "gemini",
+      "model": "imagen-3.0-generate-002",
+      "status": "failed",
+      "durationMs": 794,
+      "errorCategory": "Provider Error",
+      "errorMessage": "Google Gemini could not generate image for model imagen-3.0-generate-002. Please verify your API key privileges."
+    },
+    {
+      "id": "img_1793293022857_ej144",
+      "timestamp": "2026-10-29T16:57:02.857Z",
+      "source": "presentation_maker",
+      "prompt": "A modern technological pipeline for real-time edge streaming",
+      "concept": "Edge Pipeline",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293022850_bix0r",
+      "timestamp": "2026-10-29T16:57:02.850Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Comprehensive overview of service mesh, API gateways, event-driven streamin. Hig",
+      "concept": "Comprehensive overview of service mesh, API gateways, event-driven streamin",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293022841_17zqq",
+      "timestamp": "2026-10-29T16:57:02.841Z",
+      "source": "presentation_maker",
+      "prompt": "Detailed container orchestration topology with Kubernetes pods and nodes",
+      "concept": "Agenda & Structural Roadmap",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293022812_dgvrm",
+      "timestamp": "2026-10-29T16:57:02.812Z",
+      "source": "presentation_maker",
+      "prompt": "Photosynthesis chloroplast energy cycle",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "AI Image Generation is currently disabled by system administrator."
+    },
+    {
+      "id": "img_1793293022809_hpqk0",
+      "timestamp": "2026-10-29T16:57:02.809Z",
+      "source": "presentation_maker",
+      "prompt": "Deep learning neural network layers and forward propagation",
+      "concept": "Neural Topology",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793293022807_6cgo2",
+      "timestamp": "2026-10-29T16:57:02.807Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 2772,
+      "errorMessage": "All primary providers failed (getaddrinfo ENOTFOUND api-inference.huggingface.co). Activated high-fidelity contextual visual engine."
+    },
+    {
+      "id": "img_1793293022805_baikv",
+      "timestamp": "2026-10-29T16:57:02.805Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "huggingface",
+      "model": "black-forest-labs/FLUX.1-schnell",
+      "status": "failed",
+      "durationMs": 1344,
+      "errorCategory": "Provider Error",
+      "errorMessage": "getaddrinfo ENOTFOUND api-inference.huggingface.co"
+    },
+    {
+      "id": "img_1793293021461_5jf8w",
+      "timestamp": "2026-10-29T16:57:01.461Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "gemini",
+      "model": "imagen-3.0-generate-002",
+      "status": "failed",
+      "durationMs": 1426,
+      "errorCategory": "Provider Error",
+      "errorMessage": "Google Gemini could not generate image for model imagen-3.0-generate-002. Please verify your API key privileges."
+    },
+    {
+      "id": "img_1793291410171_aindz",
+      "timestamp": "2026-10-29T16:30:10.171Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Comprehensive overview of service mesh, API gateways, event-driven streamin. Hig",
+      "concept": "Comprehensive overview of service mesh, API gateways, event-driven streamin",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793291410143_vjbcz",
+      "timestamp": "2026-10-29T16:30:10.143Z",
+      "source": "presentation_maker",
+      "prompt": "Detailed container orchestration topology with Kubernetes pods and nodes",
+      "concept": "Agenda & Structural Roadmap",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793291410047_nbbrx",
+      "timestamp": "2026-10-29T16:30:10.047Z",
+      "source": "presentation_maker",
+      "prompt": "Photosynthesis chloroplast energy cycle",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "AI Image Generation is currently disabled by system administrator."
+    },
+    {
+      "id": "img_1793291410041_y3evw",
+      "timestamp": "2026-10-29T16:30:10.041Z",
+      "source": "presentation_maker",
+      "prompt": "Deep learning neural network layers and forward propagation",
+      "concept": "Neural Topology",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793291410038_1it1p",
+      "timestamp": "2026-10-29T16:30:10.038Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 958,
+      "errorMessage": "All primary providers failed (getaddrinfo ENOTFOUND api-inference.huggingface.co). Activated high-fidelity contextual visual engine."
+    },
+    {
+      "id": "img_1793291410035_ipfai",
+      "timestamp": "2026-10-29T16:30:10.035Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "huggingface",
+      "model": "black-forest-labs/FLUX.1-schnell",
+      "status": "failed",
+      "durationMs": 479,
+      "errorCategory": "Provider Error",
+      "errorMessage": "getaddrinfo ENOTFOUND api-inference.huggingface.co"
+    },
+    {
+      "id": "img_1793291409556_46e4i",
+      "timestamp": "2026-10-29T16:30:09.556Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "gemini",
+      "model": "imagen-3.0-generate-002",
+      "status": "failed",
+      "durationMs": 476,
+      "errorCategory": "Provider Error",
+      "errorMessage": "Google Gemini could not generate image for model imagen-3.0-generate-002. Please verify your API key privileges."
+    },
+    {
+      "id": "img_1793291402208_9hmek",
+      "timestamp": "2026-10-29T16:30:02.208Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Comprehensive overview of service mesh, API gateways, event-driven streamin. Hig",
+      "concept": "Comprehensive overview of service mesh, API gateways, event-driven streamin",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 2432,
+      "errorMessage": "All primary providers failed (getaddrinfo ENOTFOUND api-inference.huggingface.co). Activated high-fidelity contextual visual engine."
+    },
+    {
+      "id": "img_1793291402207_kva55",
+      "timestamp": "2026-10-29T16:30:02.207Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Comprehensive overview of service mesh, API gateways, event-driven streamin. Hig",
+      "concept": "Comprehensive overview of service mesh, API gateways, event-driven streamin",
+      "provider": "huggingface",
+      "model": "black-forest-labs/FLUX.1-schnell",
+      "status": "failed",
+      "durationMs": 1626,
+      "errorCategory": "Provider Error",
+      "errorMessage": "getaddrinfo ENOTFOUND api-inference.huggingface.co"
+    },
+    {
+      "id": "img_1793291400580_3w9wo",
+      "timestamp": "2026-10-29T16:30:00.580Z",
+      "source": "presentation_maker",
+      "prompt": "A professional, clean, educational 16:9 presentation illustration of: Comprehensive overview of service mesh, API gateways, event-driven streamin. Hig",
+      "concept": "Comprehensive overview of service mesh, API gateways, event-driven streamin",
+      "provider": "gemini",
+      "model": "imagen-3.0-generate-002",
+      "status": "failed",
+      "durationMs": 804,
+      "errorCategory": "Provider Error",
+      "errorMessage": "Google Gemini could not generate image for model imagen-3.0-generate-002. Please verify your API key privileges."
+    },
+    {
+      "id": "img_1793291399763_v9oxj",
+      "timestamp": "2026-10-29T16:29:59.763Z",
+      "source": "presentation_maker",
+      "prompt": "Detailed container orchestration topology with Kubernetes pods and nodes",
+      "concept": "Agenda & Structural Roadmap",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793291399707_qg1te",
+      "timestamp": "2026-10-29T16:29:59.707Z",
+      "source": "presentation_maker",
+      "prompt": "Photosynthesis chloroplast energy cycle",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "AI Image Generation is currently disabled by system administrator."
+    },
+    {
+      "id": "img_1793291399705_bak8d",
+      "timestamp": "2026-10-29T16:29:59.705Z",
+      "source": "presentation_maker",
+      "prompt": "Deep learning neural network layers and forward propagation",
+      "concept": "Neural Topology",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 0,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
+    {
+      "id": "img_1793291399703_e1jc3",
+      "timestamp": "2026-10-29T16:29:59.703Z",
+      "source": "admin_test",
+      "prompt": "Flowchart of distributed database consensus algorithm",
+      "concept": "Consensus Algorithm",
+      "provider": "local-svg",
+      "model": "contextual-svg-engine",
+      "status": "fallback",
+      "durationMs": 1,
+      "errorMessage": "No AI image providers are currently configured or enabled."
+    },
     {
       "id": "img_1793265439428_h50n3",
       "timestamp": "2026-10-29T09:17:19.428Z",
@@ -335,6 +703,22 @@
       "status": "fallback",
       "durationMs": 0,
       "errorMessage": "No AI image providers are currently configured or enabled."
+    }
+  ],
+  "alerts": [
+    {
+      "id": "test_low_credit_hf",
+      "providerId": "huggingface",
+      "providerName": "Hugging Face Inference",
+      "severity": "warning",
+      "title": "Hugging Face Low Credit Warning",
+      "message": "Only 15% of inference credits remaining for this month.",
+      "remainingQuota": 150,
+      "totalQuota": 1000,
+      "unit": "Monthly Requests",
+      "cascadedTo": "Cloudflare Workers AI",
+      "timestamp": "2026-10-29T16:57:35.763Z",
+      "dismissed": true
     }
   ]
 }

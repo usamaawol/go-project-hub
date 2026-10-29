@@ -11,6 +11,7 @@ import type {
   ProviderConnectionTestResult,
   ImageGenerationSettings,
   ImageGenerationLogEntry,
+  ProviderAlert,
 } from "./types";
 import { GeminiImageAdapter } from "./adapters/geminiAdapter";
 import { HuggingFaceImageAdapter } from "./adapters/huggingfaceAdapter";
@@ -155,6 +156,7 @@ export class ImageProviderManager {
   private adapters: Map<ImageProviderId, IImageProviderAdapter> = new Map();
   private settings: ImageGenerationSettings = { ...DEFAULT_SETTINGS };
   private logs: ImageGenerationLogEntry[] = [];
+  private alerts: ProviderAlert[] = [];
   private cooldowns: Map<ImageProviderId, number> = new Map();
 
   private constructor() {
@@ -208,6 +210,9 @@ export class ImageProviderManager {
         if (Array.isArray(parsed.logs)) {
           this.logs = parsed.logs.slice(0, 100);
         }
+        if (Array.isArray(parsed.alerts)) {
+          this.alerts = parsed.alerts.slice(0, 50);
+        }
       }
     } catch (e) {
       console.warn("Could not load runtime image provider settings from disk:", e);
@@ -227,6 +232,7 @@ export class ImageProviderManager {
             providers: Array.from(this.providers.values()),
             settings: this.settings,
             logs: this.logs.slice(0, 100),
+            alerts: this.alerts.slice(0, 50),
           },
           null,
           2,
@@ -243,6 +249,78 @@ export class ImageProviderManager {
     if (!trimmed) return "";
     if (trimmed.length <= 8) return "••••••••";
     return `${trimmed.slice(0, 4)}••••••••${trimmed.slice(-4)}`;
+  }
+
+  /**
+   * Adds or updates an active alert regarding provider quota, failure, or cascading status
+   */
+  public addAlert(alert: Omit<ProviderAlert, "timestamp"> & { timestamp?: string }) {
+    const newAlert: ProviderAlert = {
+      ...alert,
+      timestamp: alert.timestamp || new Date().toISOString(),
+      dismissed: false,
+    };
+    const existingIndex = this.alerts.findIndex(
+      (a) => !a.dismissed && a.providerId === newAlert.providerId && a.title === newAlert.title,
+    );
+    if (existingIndex >= 0) {
+      this.alerts[existingIndex] = newAlert;
+    } else {
+      this.alerts.unshift(newAlert);
+    }
+    if (this.alerts.length > 50) {
+      this.alerts = this.alerts.slice(0, 50);
+    }
+    this.persistToDisk();
+  }
+
+  public getAlerts(): ProviderAlert[] {
+    return this.alerts.filter((a) => !a.dismissed);
+  }
+
+  public dismissAlert(alertId: string): void {
+    const alert = this.alerts.find((a) => a.id === alertId);
+    if (alert) {
+      alert.dismissed = true;
+      this.persistToDisk();
+    }
+  }
+
+  public clearAlerts(): void {
+    this.alerts = [];
+    this.persistToDisk();
+  }
+
+  public resetProviderQuota(id: ImageProviderId): ImageProviderConfig {
+    const provider = this.providers.get(id);
+    if (!provider) {
+      throw new Error(`Provider "${id}" not found.`);
+    }
+
+    if (provider.quotaInfo) {
+      provider.quotaInfo.used = 0;
+      provider.quotaInfo.remaining = provider.quotaInfo.total;
+    }
+
+    this.cooldowns.delete(id);
+    if (provider.apiKey && provider.apiKey.trim().length > 6) {
+      provider.status = "ready";
+      provider.lastError = undefined;
+    }
+
+    // Dismiss active alerts for this provider
+    this.alerts = this.alerts.filter((a) => a.providerId !== id);
+
+    this.providers.set(id, provider);
+    this.persistToDisk();
+    return provider;
+  }
+
+  public resetAllQuotas(): Array<ImageProviderConfig & { isConfigured: boolean; maskedKey: string }> {
+    for (const id of this.providers.keys()) {
+      this.resetProviderQuota(id);
+    }
+    return this.getProvidersForClient();
   }
 
   /**
@@ -345,6 +423,8 @@ export class ImageProviderManager {
     if (result.success) {
       current.status = "ready";
       current.lastError = undefined;
+      this.cooldowns.delete(id);
+      this.alerts = this.alerts.filter((a) => a.providerId !== id || a.severity !== "critical");
       if (result.quota) current.quotaInfo = result.quota;
       if (result.models && result.models.length > 0) {
         current.supportedModels = Array.from(new Set([...current.supportedModels, ...result.models]));
@@ -403,9 +483,36 @@ export class ImageProviderManager {
       );
     }
 
-    // 4. Try providers in priority sequence with auto-fallback
+    // 4. Try providers in priority sequence with auto-fallback (#1 Gemini, #2 Hugging Face, etc.)
     let lastError = "No provider attempted";
-    for (const provider of eligibleProviders) {
+    for (let i = 0; i < eligibleProviders.length; i++) {
+      const provider = eligibleProviders[i];
+      const nextProvider = eligibleProviders.slice(i + 1).find((p) => {
+        return !p.quotaInfo || typeof p.quotaInfo.remaining !== "number" || p.quotaInfo.remaining > 0;
+      });
+      const cascadeTarget = nextProvider ? nextProvider.name : "High-Fidelity Contextual Visualizer";
+
+      // 4a. Quota check: if provider has finished all its quota/credits, auto-cascade to next provider!
+      if (
+        provider.quotaInfo &&
+        typeof provider.quotaInfo.remaining === "number" &&
+        provider.quotaInfo.remaining <= 0
+      ) {
+        this.addAlert({
+          id: `alert_${provider.id}_depleted`,
+          providerId: provider.id,
+          providerName: provider.name,
+          severity: "critical",
+          title: `${provider.name} Quota Finished`,
+          message: `${provider.name} has exhausted all remaining ${provider.quotaInfo.unit || "credits"}. System has automatically cascaded Presentation Maker visual requests to ${cascadeTarget}.`,
+          remainingQuota: 0,
+          totalQuota: provider.quotaInfo.total || 0,
+          unit: provider.quotaInfo.unit || "requests",
+          cascadedTo: cascadeTarget,
+        });
+        continue; // Immediately cascade to next priority provider (e.g. Hugging Face)!
+      }
+
       const adapter = this.adapters.get(provider.id);
       if (!adapter) continue;
 
@@ -413,6 +520,48 @@ export class ImageProviderManager {
       try {
         const res = await adapter.generateImage(provider, options);
         const durationMs = Date.now() - attemptStart;
+
+        // Decrement quota and check for low credit
+        if (provider.quotaInfo && typeof provider.quotaInfo.remaining === "number") {
+          provider.quotaInfo.used = (provider.quotaInfo.used || 0) + 1;
+          provider.quotaInfo.remaining = Math.max(
+            0,
+            (provider.quotaInfo.total || 0) - provider.quotaInfo.used,
+          );
+          const total = provider.quotaInfo.total || 1;
+          const remaining = provider.quotaInfo.remaining;
+          const unit = provider.quotaInfo.unit || "requests";
+
+          // Notify admin in dashboard as credit is finishing (< 20% or <= 3 remaining)
+          if (remaining > 0 && (remaining <= Math.ceil(total * 0.2) || remaining <= 3)) {
+            this.addAlert({
+              id: `alert_${provider.id}_low`,
+              providerId: provider.id,
+              providerName: provider.name,
+              severity: "warning",
+              title: `${provider.name} Credits Finishing Soon`,
+              message: `${provider.name} has only ${remaining} of ${total} ${unit} remaining (~${Math.round((remaining / total) * 100)}% left). When depleted, generation will cascade to ${cascadeTarget}.`,
+              remainingQuota: remaining,
+              totalQuota: total,
+              unit,
+              cascadedTo: cascadeTarget,
+            });
+          } else if (remaining === 0) {
+            provider.status = "rate_limited";
+            this.addAlert({
+              id: `alert_${provider.id}_depleted`,
+              providerId: provider.id,
+              providerName: provider.name,
+              severity: "critical",
+              title: `${provider.name} Quota Fully Exhausted`,
+              message: `${provider.name} has consumed all ${total} ${unit}. All subsequent Presentation Maker requests are automatically cascading to ${cascadeTarget}.`,
+              remainingQuota: 0,
+              totalQuota: total,
+              unit,
+              cascadedTo: cascadeTarget,
+            });
+          }
+        }
 
         // Record successful event
         this.logEvent({
@@ -439,10 +588,40 @@ export class ImageProviderManager {
         const errorMsg = err instanceof Error ? err.message : String(err);
         lastError = errorMsg;
 
+        const isRateLimitOrQuota =
+          errorMsg.includes("429") ||
+          errorMsg.toLowerCase().includes("quota") ||
+          errorMsg.toLowerCase().includes("resourceexhausted") ||
+          errorMsg.toLowerCase().includes("rate limit") ||
+          errorMsg.toLowerCase().includes("credit") ||
+          errorMsg.toLowerCase().includes("insufficient");
+
+        if (isRateLimitOrQuota && provider.quotaInfo) {
+          provider.quotaInfo.remaining = 0;
+          provider.status = "rate_limited";
+        } else {
+          provider.status = "error";
+        }
+
         // Apply temporary cooldown (2 minutes)
         this.cooldowns.set(provider.id, Date.now() + 120000);
         provider.lastError = errorMsg;
-        provider.status = "error";
+
+        // Notify admin about provider finishing or error and cascading
+        this.addAlert({
+          id: `alert_${provider.id}_error_${Date.now()}`,
+          providerId: provider.id,
+          providerName: provider.name,
+          severity: "critical",
+          title: isRateLimitOrQuota
+            ? `${provider.name} Quota Finished / Rate Limited`
+            : `${provider.name} Provider Error`,
+          message: `${provider.name} finished or hit limit (${errorMsg.slice(0, 140)}). System automatically cascaded visual generation to ${cascadeTarget}.`,
+          remainingQuota: provider.quotaInfo?.remaining || 0,
+          totalQuota: provider.quotaInfo?.total || 0,
+          unit: provider.quotaInfo?.unit || "requests",
+          cascadedTo: cascadeTarget,
+        });
 
         this.logEvent({
           id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -454,7 +633,7 @@ export class ImageProviderManager {
           model: provider.selectedModel,
           status: "failed",
           durationMs: Date.now() - attemptStart,
-          errorCategory: errorMsg.includes("429") ? "Rate Limit Exceeded" : "Provider Error",
+          errorCategory: isRateLimitOrQuota ? "Rate Limit Exceeded" : "Provider Error",
           errorMessage: errorMsg,
         });
 
