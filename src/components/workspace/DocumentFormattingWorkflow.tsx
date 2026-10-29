@@ -1545,32 +1545,36 @@ export function DocumentFormattingWorkflow({
       setIsExportingDocx(true);
       toast.loading("Generating real Microsoft Word document (.docx)...", { id: "export-docx" });
 
-      const activeMeta = assignmentMode
-        ? { ...assignmentMetadata, isAssignment: true }
-        : {
-            ...getDefaultAssignmentMetadata(),
-            isAssignment: false,
-            assignmentTitle: config.docTitle || "Document Title",
-            courseName: config.docSubtitle || "",
-            studentName: config.authorName || "",
-            universityName: config.institution || "",
-            submissionDate: config.dateStr || "",
-            accentColor: config.accentColor || "#1E3A8A",
-            identityPlacement: config.assignmentMetadata?.identityPlacement || "cover-only",
-          };
+      const chosenMeta = config.assignmentMetadata || assignmentMetadata;
+      const activeMeta: AssignmentMetadata = {
+        ...getDefaultAssignmentMetadata(),
+        ...(chosenMeta || {}),
+        isAssignment: Boolean(assignmentMode || chosenMeta?.isAssignment),
+        assignmentTitle: config.docTitle || chosenMeta?.assignmentTitle || "Document Title",
+        courseName: config.docSubtitle || chosenMeta?.courseName || "",
+        studentName: config.authorName || chosenMeta?.studentName || "",
+        universityName: config.institution || chosenMeta?.universityName || "",
+        submissionDate: config.dateStr || chosenMeta?.submissionDate || "",
+        accentColor: chosenMeta?.accentColor || config.accentColor || "#1B365D",
+        secondaryColor: chosenMeta?.secondaryColor || "#F59E0B",
+        coverTemplateId: chosenMeta?.coverTemplateId || "canva-salford-wave",
+        customCoverElements: chosenMeta?.customCoverElements,
+        logoDataUrl: chosenMeta?.logoDataUrl,
+        identityPlacement: chosenMeta?.identityPlacement || "cover-only",
+      };
 
       // Extract blocks from bodyHtml if user edited the body, else rawText
       const blocks = bodyHtml ? parseHtmlToBlocks(bodyHtml) : parsePlainTextToBlocks(rawText);
 
       const docxResult = await renderExecutiveDocx(blocks, config.docTitle || activeMeta.assignmentTitle || "Document", {
-        hasCoverPage: config.hasCoverPage || assignmentMode,
+        hasCoverPage: config.hasCoverPage || Boolean(chosenMeta?.customCoverElements || chosenMeta?.coverTemplateId) || assignmentMode,
         coverMetadata: activeMeta,
         docTitle: config.docTitle || activeMeta.assignmentTitle,
         docSubtitle: config.docSubtitle || activeMeta.courseName,
         institution: config.institution || activeMeta.universityName,
         authorName: config.authorName || activeMeta.studentName,
         dateStr: config.dateStr || activeMeta.submissionDate,
-        primaryColor: activeMeta.accentColor || config.accentColor || "#1E3A8A",
+        primaryColor: activeMeta.accentColor || config.accentColor || "#1B365D",
         identityPlacement: activeMeta.identityPlacement || "cover-only",
       });
 
@@ -1606,31 +1610,35 @@ export function DocumentFormattingWorkflow({
       setIsExportingPdf(true);
       toast.loading("Generating publication-grade PDF (.pdf)...", { id: "export-pdf" });
 
-      const activeMeta = assignmentMode
-        ? { ...assignmentMetadata, isAssignment: true }
-        : {
-            ...getDefaultAssignmentMetadata(),
-            isAssignment: false,
-            assignmentTitle: config.docTitle || "Document Title",
-            courseName: config.docSubtitle || "",
-            studentName: config.authorName || "",
-            universityName: config.institution || "",
-            submissionDate: config.dateStr || "",
-            accentColor: config.accentColor || "#1E3A8A",
-            identityPlacement: config.assignmentMetadata?.identityPlacement || "cover-only",
-          };
+      const chosenMeta = config.assignmentMetadata || assignmentMetadata;
+      const activeMeta: AssignmentMetadata = {
+        ...getDefaultAssignmentMetadata(),
+        ...(chosenMeta || {}),
+        isAssignment: Boolean(assignmentMode || chosenMeta?.isAssignment),
+        assignmentTitle: config.docTitle || chosenMeta?.assignmentTitle || "Document Title",
+        courseName: config.docSubtitle || chosenMeta?.courseName || "",
+        studentName: config.authorName || chosenMeta?.studentName || "",
+        universityName: config.institution || chosenMeta?.universityName || "",
+        submissionDate: config.dateStr || chosenMeta?.submissionDate || "",
+        accentColor: chosenMeta?.accentColor || config.accentColor || "#1B365D",
+        secondaryColor: chosenMeta?.secondaryColor || "#F59E0B",
+        coverTemplateId: chosenMeta?.coverTemplateId || "canva-salford-wave",
+        customCoverElements: chosenMeta?.customCoverElements,
+        logoDataUrl: chosenMeta?.logoDataUrl,
+        identityPlacement: chosenMeta?.identityPlacement || "cover-only",
+      };
 
       const blocks = bodyHtml ? parseHtmlToBlocks(bodyHtml) : parsePlainTextToBlocks(rawText);
 
       const pdfBytes = await renderExecutivePdf(blocks, config.docTitle || activeMeta.assignmentTitle || "Document", {
-        hasCoverPage: config.hasCoverPage || assignmentMode,
+        hasCoverPage: config.hasCoverPage || Boolean(chosenMeta?.customCoverElements || chosenMeta?.coverTemplateId) || assignmentMode,
         coverMetadata: activeMeta,
         docTitle: config.docTitle || activeMeta.assignmentTitle,
         docSubtitle: config.docSubtitle || activeMeta.courseName,
         institution: config.institution || activeMeta.universityName,
         authorName: config.authorName || activeMeta.studentName,
         dateStr: config.dateStr || activeMeta.submissionDate,
-        primaryColor: activeMeta.accentColor || config.accentColor || "#1E3A8A",
+        primaryColor: activeMeta.accentColor || config.accentColor || "#1B365D",
         identityPlacement: activeMeta.identityPlacement || "cover-only",
       });
 
@@ -1657,13 +1665,32 @@ export function DocumentFormattingWorkflow({
 
   // Legacy Word (.doc) export
   const handleExportLegacyDoc = () => {
-    const activeConfig = assignmentMode
-      ? { ...config, hasCoverPage: true, assignmentMetadata: { ...assignmentMetadata, isAssignment: true } }
-      : config;
+    const chosenMeta = config.assignmentMetadata || assignmentMetadata;
+    const activeMeta: AssignmentMetadata = {
+      ...getDefaultAssignmentMetadata(),
+      ...(chosenMeta || {}),
+      isAssignment: Boolean(assignmentMode || chosenMeta?.isAssignment),
+      assignmentTitle: config.docTitle || chosenMeta?.assignmentTitle || "Document Title",
+      courseName: config.docSubtitle || chosenMeta?.courseName || "",
+      studentName: config.authorName || chosenMeta?.studentName || "",
+      universityName: config.institution || chosenMeta?.universityName || "",
+      submissionDate: config.dateStr || chosenMeta?.submissionDate || "",
+      accentColor: chosenMeta?.accentColor || config.accentColor || "#1B365D",
+      secondaryColor: chosenMeta?.secondaryColor || "#F59E0B",
+      coverTemplateId: chosenMeta?.coverTemplateId || "canva-salford-wave",
+      customCoverElements: chosenMeta?.customCoverElements,
+      logoDataUrl: chosenMeta?.logoDataUrl,
+      identityPlacement: chosenMeta?.identityPlacement || "cover-only",
+    };
+    const activeConfig = {
+      ...config,
+      hasCoverPage: config.hasCoverPage || Boolean(chosenMeta?.customCoverElements || chosenMeta?.coverTemplateId) || assignmentMode,
+      assignmentMetadata: activeMeta,
+    };
     const htmlContent = generateFormattedHtml(rawText, activeConfig, bodyHtml || undefined);
     const blob = new Blob([htmlContent], { type: "application/msword;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const docName = `${(activeConfig.docTitle || "formatted_document").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32)}.doc`;
+    const docName = `${(config.docTitle || activeMeta.assignmentTitle || "formatted_document").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32)}.doc`;
     const a = document.createElement("a");
     a.href = url;
     a.download = docName;
@@ -1678,9 +1705,28 @@ export function DocumentFormattingWorkflow({
 
   const handlePrintPreview = () => {
     eraseWorkspaceJobsOnDownload();
-    const activeConfig = assignmentMode
-      ? { ...config, hasCoverPage: true, assignmentMetadata: { ...assignmentMetadata, isAssignment: true } }
-      : config;
+    const chosenMeta = config.assignmentMetadata || assignmentMetadata;
+    const activeMeta: AssignmentMetadata = {
+      ...getDefaultAssignmentMetadata(),
+      ...(chosenMeta || {}),
+      isAssignment: Boolean(assignmentMode || chosenMeta?.isAssignment),
+      assignmentTitle: config.docTitle || chosenMeta?.assignmentTitle || "Document Title",
+      courseName: config.docSubtitle || chosenMeta?.courseName || "",
+      studentName: config.authorName || chosenMeta?.studentName || "",
+      universityName: config.institution || chosenMeta?.universityName || "",
+      submissionDate: config.dateStr || chosenMeta?.submissionDate || "",
+      accentColor: chosenMeta?.accentColor || config.accentColor || "#1B365D",
+      secondaryColor: chosenMeta?.secondaryColor || "#F59E0B",
+      coverTemplateId: chosenMeta?.coverTemplateId || "canva-salford-wave",
+      customCoverElements: chosenMeta?.customCoverElements,
+      logoDataUrl: chosenMeta?.logoDataUrl,
+      identityPlacement: chosenMeta?.identityPlacement || "cover-only",
+    };
+    const activeConfig = {
+      ...config,
+      hasCoverPage: config.hasCoverPage || Boolean(chosenMeta?.customCoverElements || chosenMeta?.coverTemplateId) || assignmentMode,
+      assignmentMetadata: activeMeta,
+    };
     const htmlContent = generateFormattedHtml(rawText, activeConfig, bodyHtml || undefined);
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
@@ -2370,33 +2416,41 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Choose from 50+ distinct professional cover-page designs across 8 categories (Academic, Modern, Formal, Research, Business, Minimalist, Geometric, Creative). Upload institutional crests, university logos, or company branding and position elements freely on the canvas.
+                Choose from 84+ distinct modern cover-page designs across 8 categories (Academic, Modern, Formal, Research, Business, Minimalist, Geometric, Creative). Upload institutional crests, university logos, or company branding and position elements freely on the canvas.
               </p>
               <CoverTemplateGallery
                 mode="document"
-                metadata={assignmentMetadata}
+                metadata={config.assignmentMetadata || assignmentMetadata}
                 onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                 onSelectTemplate={(templateId, defaultAccent) => {
                   setAssignmentMetadata((prev) => ({
                     ...prev,
                     coverTemplateId: templateId,
                     accentColor: defaultAccent || prev.accentColor,
+                    customCoverElements: undefined,
                   }));
-                  setConfig((prev) => ({
-                    ...prev,
-                    hasCoverPage: true,
-                    assignmentMetadata: {
-                      ...assignmentMetadata,
-                      coverTemplateId: templateId,
-                      accentColor: defaultAccent || assignmentMetadata.accentColor,
-                    },
-                  }));
+                  setConfig((prev) => {
+                    const baseMeta = prev.assignmentMetadata || assignmentMetadata;
+                    return {
+                      ...prev,
+                      hasCoverPage: true,
+                      assignmentMetadata: {
+                        ...baseMeta,
+                        coverTemplateId: templateId,
+                        accentColor: defaultAccent || baseMeta.accentColor,
+                        customCoverElements: undefined,
+                      },
+                    };
+                  });
                 }}
                 onUpdateAccentColor={(color) => {
                   setAssignmentMetadata((prev) => ({ ...prev, accentColor: color }));
                   setConfig((prev) => ({
                     ...prev,
-                    assignmentMetadata: { ...assignmentMetadata, accentColor: color },
+                    assignmentMetadata: {
+                      ...(prev.assignmentMetadata || assignmentMetadata),
+                      accentColor: color,
+                    },
                   }));
                 }}
               />
@@ -3179,22 +3233,23 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
             const currentDisplayWidth = Math.round(BASE_A4_WIDTH * effectiveScale);
             const currentDisplayHeight = Math.round(BASE_A4_HEIGHT * effectiveScale);
 
-            const effectiveCoverMetadata: AssignmentMetadata = config.assignmentMetadata?.isAssignment
-              ? (config.assignmentMetadata || getDefaultAssignmentMetadata())
-              : {
-                  ...getDefaultAssignmentMetadata(),
-                  isAssignment: false,
-                  assignmentTitle: config.docTitle || "Document Title",
-                  courseName: config.docSubtitle || "",
-                  studentName: config.authorName || "",
-                  universityName: config.institution || "",
-                  submissionDate: config.dateStr || "",
-                  coverTemplateId: config.assignmentMetadata?.coverTemplateId || "executive-bold",
-                  primaryColor: config.assignmentMetadata?.primaryColor,
-                  secondaryColor: config.assignmentMetadata?.secondaryColor,
-                  logoUrl: config.assignmentMetadata?.logoUrl,
-                  customElements: config.assignmentMetadata?.customElements,
-                };
+            const rawPreviewMeta = config.assignmentMetadata || assignmentMetadata;
+            const effectiveCoverMetadata: AssignmentMetadata = {
+              ...getDefaultAssignmentMetadata(),
+              ...(rawPreviewMeta || {}),
+              isAssignment: Boolean(rawPreviewMeta?.isAssignment || config.hasCoverPage || assignmentMode),
+              assignmentTitle: config.docTitle || rawPreviewMeta?.assignmentTitle || "Document Title",
+              courseName: config.docSubtitle || rawPreviewMeta?.courseName || "",
+              studentName: config.authorName || rawPreviewMeta?.studentName || "",
+              universityName: config.institution || rawPreviewMeta?.universityName || "",
+              submissionDate: config.dateStr || rawPreviewMeta?.submissionDate || "",
+              coverTemplateId: rawPreviewMeta?.coverTemplateId || "canva-salford-wave",
+              accentColor: rawPreviewMeta?.accentColor || config.accentColor || "#1B365D",
+              secondaryColor: rawPreviewMeta?.secondaryColor || "#F59E0B",
+              customCoverElements: rawPreviewMeta?.customCoverElements,
+              logoDataUrl: rawPreviewMeta?.logoDataUrl,
+              identityPlacement: rawPreviewMeta?.identityPlacement || "cover-only",
+            };
 
             return (
               <div className="space-y-4">
@@ -3729,7 +3784,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
             <div className="space-y-6">
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center justify-between">
-                  <span>Cover Template & Accent Color (50+ Layouts)</span>
+                  <span>Cover Template & Accent Color (84+ Modern Layouts)</span>
                   <Button
                     type="button"
                     size="sm"
@@ -3742,28 +3797,37 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                 </h3>
                 <CoverTemplateGallery
                   mode="document"
-                  metadata={assignmentMetadata}
+                  metadata={config.assignmentMetadata || assignmentMetadata}
                   onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                   onSelectTemplate={(tid, defaultAccent) => {
                     setAssignmentMetadata((prev) => ({
                       ...prev,
                       coverTemplateId: tid,
                       accentColor: defaultAccent || prev.accentColor,
+                      customCoverElements: undefined,
                     }));
-                    setConfig((prev) => ({
-                      ...prev,
-                      assignmentMetadata: {
-                        ...assignmentMetadata,
-                        coverTemplateId: tid,
-                        accentColor: defaultAccent || assignmentMetadata.accentColor,
-                      },
-                    }));
+                    setConfig((prev) => {
+                      const baseMeta = prev.assignmentMetadata || assignmentMetadata;
+                      return {
+                        ...prev,
+                        hasCoverPage: true,
+                        assignmentMetadata: {
+                          ...baseMeta,
+                          coverTemplateId: tid,
+                          accentColor: defaultAccent || baseMeta.accentColor,
+                          customCoverElements: undefined,
+                        },
+                      };
+                    });
                   }}
                   onUpdateAccentColor={(col) => {
                     setAssignmentMetadata((prev) => ({ ...prev, accentColor: col }));
                     setConfig((prev) => ({
                       ...prev,
-                      assignmentMetadata: { ...assignmentMetadata, accentColor: col },
+                      assignmentMetadata: {
+                        ...(prev.assignmentMetadata || assignmentMetadata),
+                        accentColor: col,
+                      },
                     }));
                   }}
                 />
@@ -3774,7 +3838,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                   Assignment Information
                 </h3>
                 <AssignmentInformationForm
-                  metadata={assignmentMetadata}
+                  metadata={config.assignmentMetadata || assignmentMetadata}
                   onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                   onChange={(updated) => {
                     setAssignmentMetadata(updated);
@@ -3807,7 +3871,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
       {/* Native Canva-Like Cover Page Canvas Editor */}
       <CoverCanvasEditor
         isOpen={isCanvasEditorOpen}
-        metadata={assignmentMetadata}
+        metadata={config.assignmentMetadata || assignmentMetadata}
         onClose={() => setIsCanvasEditorOpen(false)}
         onApply={(updatedMeta) => {
           setAssignmentMetadata(updatedMeta);
@@ -3938,22 +4002,23 @@ function A4PageCard({
         ? "p-10 sm:p-14"
         : "p-8 sm:p-12";
 
-  const effectiveCoverMetadata: AssignmentMetadata = config.assignmentMetadata?.isAssignment
-    ? (config.assignmentMetadata || getDefaultAssignmentMetadata())
-    : {
-        ...getDefaultAssignmentMetadata(),
-        isAssignment: false,
-        assignmentTitle: config.docTitle || "Document Title",
-        courseName: config.docSubtitle || "",
-        studentName: config.authorName || "",
-        universityName: config.institution || "",
-        submissionDate: config.dateStr || "",
-        coverTemplateId: config.assignmentMetadata?.coverTemplateId || "executive-bold",
-        primaryColor: config.assignmentMetadata?.primaryColor,
-        secondaryColor: config.assignmentMetadata?.secondaryColor,
-        logoUrl: config.assignmentMetadata?.logoUrl,
-        customElements: config.assignmentMetadata?.customElements,
-      };
+  const rawCardMeta = config.assignmentMetadata;
+  const effectiveCoverMetadata: AssignmentMetadata = {
+    ...getDefaultAssignmentMetadata(),
+    ...(rawCardMeta || {}),
+    isAssignment: Boolean(rawCardMeta?.isAssignment || config.hasCoverPage),
+    assignmentTitle: config.docTitle || rawCardMeta?.assignmentTitle || "Document Title",
+    courseName: config.docSubtitle || rawCardMeta?.courseName || "",
+    studentName: config.authorName || rawCardMeta?.studentName || "",
+    universityName: config.institution || rawCardMeta?.universityName || "",
+    submissionDate: config.dateStr || rawCardMeta?.submissionDate || "",
+    coverTemplateId: rawCardMeta?.coverTemplateId || "canva-salford-wave",
+    accentColor: rawCardMeta?.accentColor || config.accentColor || "#1B365D",
+    secondaryColor: rawCardMeta?.secondaryColor || "#F59E0B",
+    customCoverElements: rawCardMeta?.customCoverElements,
+    logoDataUrl: rawCardMeta?.logoDataUrl,
+    identityPlacement: rawCardMeta?.identityPlacement || "cover-only",
+  };
 
   return (
     <div
@@ -4468,22 +4533,23 @@ export function generateFormattedHtml(
   const sections = parseDocumentSections(rawText, config.headingNumbering);
   const a4Pages = paginateSectionsIntoA4Pages(sections, config);
 
-  const effectiveCoverMetadata: AssignmentMetadata = config.assignmentMetadata?.isAssignment
-    ? (config.assignmentMetadata || getDefaultAssignmentMetadata())
-    : {
-        ...getDefaultAssignmentMetadata(),
-        isAssignment: false,
-        assignmentTitle: config.docTitle || "Document Title",
-        courseName: config.docSubtitle || "",
-        studentName: config.authorName || "",
-        universityName: config.institution || "",
-        submissionDate: config.dateStr || "",
-        coverTemplateId: config.assignmentMetadata?.coverTemplateId || "executive-bold",
-        primaryColor: config.assignmentMetadata?.primaryColor,
-        secondaryColor: config.assignmentMetadata?.secondaryColor,
-        logoUrl: config.assignmentMetadata?.logoUrl,
-        customElements: config.assignmentMetadata?.customElements,
-      };
+  const rawCardMeta = config.assignmentMetadata;
+  const effectiveCoverMetadata: AssignmentMetadata = {
+    ...getDefaultAssignmentMetadata(),
+    ...(rawCardMeta || {}),
+    isAssignment: Boolean(rawCardMeta?.isAssignment || config.hasCoverPage),
+    assignmentTitle: config.docTitle || rawCardMeta?.assignmentTitle || "Document Title",
+    courseName: config.docSubtitle || rawCardMeta?.courseName || "",
+    studentName: config.authorName || rawCardMeta?.studentName || "",
+    universityName: config.institution || rawCardMeta?.universityName || "",
+    submissionDate: config.dateStr || rawCardMeta?.submissionDate || "",
+    coverTemplateId: rawCardMeta?.coverTemplateId || "canva-salford-wave",
+    accentColor: rawCardMeta?.accentColor || config.accentColor || "#1B365D",
+    secondaryColor: rawCardMeta?.secondaryColor || "#F59E0B",
+    customCoverElements: rawCardMeta?.customCoverElements,
+    logoDataUrl: rawCardMeta?.logoDataUrl,
+    identityPlacement: rawCardMeta?.identityPlacement || "cover-only",
+  };
 
   // Generate HTML for each A4 page
   const pagesHtml = a4Pages

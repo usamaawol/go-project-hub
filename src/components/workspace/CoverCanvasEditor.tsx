@@ -104,7 +104,10 @@ export function CoverCanvasEditor({
 }: CoverCanvasEditorProps) {
   if (!isOpen) return null;
 
-  const currentTemplate = getCoverTemplateById(metadata.coverTemplateId || "classic-university");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
+    metadata.coverTemplateId || "canva-salford-wave"
+  );
+  const currentTemplate = getCoverTemplateById(selectedTemplateId);
 
   // Page dimensions
   const isLetter = metadata.pageFormat === "Letter";
@@ -119,7 +122,12 @@ export function CoverCanvasEditor({
     if (metadata.customCoverElements && metadata.customCoverElements.length > 0) {
       return metadata.customCoverElements;
     }
-    return generateDefaultCoverElements(currentTemplate, metadata, pageW, pageH);
+    return generateDefaultCoverElements(currentTemplate, {
+      ...metadata,
+      coverTemplateId: currentTemplate.id,
+      accentColor: currentTemplate.defaultAccent,
+      secondaryColor: currentTemplate.secondaryColor,
+    }, pageW, pageH);
   });
 
   const [history, setHistory] = useState<CanvasCoverElement[][]>([]);
@@ -256,10 +264,12 @@ export function CoverCanvasEditor({
 
   // Switch Template
   const handleSelectTemplate = (tpl: ExtendedCoverTemplateDefinition) => {
+    setSelectedTemplateId(tpl.id);
     const newElements = generateDefaultCoverElements(tpl, {
       ...metadata,
       coverTemplateId: tpl.id,
       accentColor: tpl.defaultAccent,
+      secondaryColor: tpl.secondaryColor,
     }, pageW, pageH);
     pushState(newElements);
     setSelectedId(null);
@@ -270,7 +280,12 @@ export function CoverCanvasEditor({
 
   // Reset to original template default
   const handleResetToTemplate = () => {
-    const reset = generateDefaultCoverElements(currentTemplate, metadata, pageW, pageH);
+    const reset = generateDefaultCoverElements(currentTemplate, {
+      ...metadata,
+      coverTemplateId: currentTemplate.id,
+      accentColor: currentTemplate.defaultAccent,
+      secondaryColor: currentTemplate.secondaryColor,
+    }, pageW, pageH);
     pushState(reset);
     setSelectedId(null);
     toast.info("Reset to default template layout");
@@ -713,15 +728,17 @@ export function CoverCanvasEditor({
     // Synchronize elements back to metadata
     const updatedMeta: AssignmentMetadata = {
       ...metadata,
-      customCoverElements: elements,
+      coverTemplateId: currentTemplate.id,
       accentColor: currentTemplate.defaultAccent,
+      secondaryColor: currentTemplate.secondaryColor,
+      customCoverElements: elements,
       pageFormat: isLetter ? "Letter" : "A4",
       pageOrientation: isLandscape ? "landscape" : "portrait",
     };
 
     onApply(updatedMeta);
     toast.success("Cover Design Adjusted & Applied Successfully!", {
-      description: "Custom layout, typography, and styling applied to your active document.",
+      description: `"${currentTemplate.name}" layout and styling applied to your document.`,
     });
     onClose();
   };
@@ -841,7 +858,7 @@ export function CoverCanvasEditor({
                 ? "bg-primary text-white shadow-md shadow-primary/20"
                 : "text-slate-400 hover:text-white hover:bg-slate-900"
             }`}
-            title="Cover Templates (52+ Layouts)"
+            title={`Cover Templates (${COVER_TEMPLATES_REGISTRY.length}+ Modern Layouts)`}
           >
             <Layout className="h-5 w-5" />
             <span className="text-[9px] mt-0.5 font-medium">Templates</span>
@@ -911,7 +928,7 @@ export function CoverCanvasEditor({
             <div className="space-y-3.5">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Cover Templates ({COVER_TEMPLATES_REGISTRY.length})
+                  Cover Templates ({COVER_TEMPLATES_REGISTRY.length}+ Modern)
                 </h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">
                   Click any template to adapt its visual geometry and styling.
@@ -923,7 +940,7 @@ export function CoverCanvasEditor({
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search 50+ templates..."
+                  placeholder={`Search ${COVER_TEMPLATES_REGISTRY.length}+ modern templates...`}
                   value={templateSearch}
                   onChange={(e) => setTemplateSearch(e.target.value)}
                   className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
@@ -975,16 +992,23 @@ export function CoverCanvasEditor({
                     onClick={() => handleSelectTemplate(tpl)}
                     className={`p-3 rounded-xl border cursor-pointer transition-all ${
                       currentTemplate.id === tpl.id
-                        ? "border-primary bg-primary/10 ring-1 ring-primary"
+                        ? "border-emerald-500 bg-emerald-950/20 ring-2 ring-emerald-500/50 shadow-md"
                         : "border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-950"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-white">{tpl.name}</h4>
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: tpl.defaultAccent }}
-                      />
+                    <div className="flex items-center justify-between gap-1">
+                      <h4 className="text-xs font-bold text-white flex-1">{tpl.name}</h4>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {currentTemplate.id === tpl.id && (
+                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-1.5 py-0.5 rounded">
+                            Active
+                          </span>
+                        )}
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: tpl.defaultAccent }}
+                        />
+                      </div>
                     </div>
                     <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{tpl.tagline}</p>
                     <div className="mt-2 flex items-center justify-between text-[9px] text-slate-500 font-mono">

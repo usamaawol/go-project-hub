@@ -27,7 +27,9 @@ import {
   Packer,
   PageBreak,
 } from "docx";
-import type { AssignmentMetadata } from "./assignment-types";
+import type { AssignmentMetadata, CanvasCoverElement } from "./assignment-types";
+import { getDefaultAssignmentMetadata } from "./assignment-types";
+import { generateCoverElements } from "./cover-templates-registry";
 
 export interface DocTableData {
   headers?: string[];
@@ -175,6 +177,231 @@ export function hexToRgb(hex?: string): { r: number; g: number; b: number } {
     g: ((num >> 8) & 255) / 255,
     b: (num & 255) / 255,
   };
+}
+
+function escapeSvg(str?: string): string {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+export function buildCoverPageSvg(
+  elements: CanvasCoverElement[],
+  width = 794,
+  height = 1123,
+): string {
+  const sorted = [...elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+  const innerItems = sorted
+    .map((el) => {
+      const opacity = el.opacity ?? 1;
+      if (el.type === "shape") {
+        if (el.svgContent) {
+          let svgInner = el.svgContent.trim();
+          if (svgInner.startsWith("<svg")) {
+            svgInner = svgInner.replace(/^<svg[^>]*>/i, "").replace(/<\/svg>$/i, "");
+          }
+          return `<g transform="translate(${el.x}, ${el.y})" opacity="${opacity}">
+            <svg width="${el.width}" height="${el.height}" viewBox="0 0 794 1123" preserveAspectRatio="none">
+              ${svgInner}
+            </svg>
+          </g>`;
+        }
+        const rx = el.borderRadius || (el.shapeType === "circle" ? el.width / 2 : 0);
+        return `<rect x="${el.x}" y="${el.y}" width="${el.width}" height="${el.height}" rx="${rx}" ry="${rx}" fill="${el.fillColor || "transparent"}" stroke="${el.borderColor || "none"}" stroke-width="${el.borderWidth || 0}" opacity="${opacity}" />`;
+      }
+      if (el.type === "divider") {
+        return `<rect x="${el.x}" y="${el.y}" width="${el.width}" height="${el.height}" fill="${el.fillColor || "#CBD5E1"}" opacity="${opacity}" />`;
+      }
+      if (el.type === "image" && el.imageUrl) {
+        return `<image href="${el.imageUrl}" x="${el.x}" y="${el.y}" width="${el.width}" height="${el.height}" preserveAspectRatio="${el.imageFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"}" opacity="${opacity}" />`;
+      }
+      if (el.type === "text" && el.text) {
+        const fontSize = el.fontSize || 14;
+        const fontFamily = el.fontFamily?.includes("serif")
+          ? "serif"
+          : el.fontFamily?.includes("mono")
+            ? "monospace"
+            : "sans-serif";
+        const fontWeight = el.fontWeight || "normal";
+        const fill = el.textColor || "#0F172A";
+        const lines = el.text.split("\n");
+        const lineHeight = (el.lineHeight || 1.25) * fontSize;
+        const anchor = el.textAlign === "center" ? "middle" : el.textAlign === "right" ? "end" : "start";
+        const textX = el.textAlign === "center" ? el.x + el.width / 2 : el.textAlign === "right" ? el.x + el.width : el.x;
+
+        return lines
+          .map((line, idx) => {
+            const lineY = el.y + fontSize + idx * lineHeight;
+            return `<text x="${textX}" y="${lineY}" text-anchor="${anchor}" font-family="${fontFamily}" font-size="${fontSize}" font-weight="${fontWeight}" fill="${fill}" opacity="${opacity}">${escapeSvg(line)}</text>`;
+          })
+          .join("\n");
+      }
+      return "";
+    })
+    .join("\n");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+    <rect width="${width}" height="${height}" fill="#FFFFFF" />
+    ${innerItems}
+  </svg>`;
+}
+
+async function rasterizeSvgToPngBytes(
+  svgString: string,
+  targetWidth = 1588,
+  targetHeight = 2246,
+): Promise<Uint8Array | null> {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return null;
+  }
+  return new Promise((resolve) => {
+    try {
+      const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      const timer = setTimeout(() => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      }, 3500);
+
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            URL.revokeObjectURL(url);
+            return resolve(null);
+          }
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          URL.revokeObjectURL(url);
+
+          canvas.toBlob((b) => {
+            if (!b) return resolve(null);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              if (reader.result instanceof ArrayBuffer) {
+                resolve(new Uint8Array(reader.result));
+              } else {
+                resolve(null);
+              }
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsArrayBuffer(b);
+          }, "image/png", 0.98);
+        } catch {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        }
+      };
+
+      img.onerror = () => {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+
+      img.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export function renderCoverElementsDirectlyToPdf(
+  coverPage: PDFPage,
+  elements: CanvasCoverElement[],
+  pageWidth: number,
+  pageHeight: number,
+  fontBold: any,
+  fontRegular: any,
+  accentRgb: { r: number; g: number; b: number },
+) {
+  const scaleX = pageWidth / 794;
+  const scaleY = pageHeight / 1123;
+  const sorted = [...elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+
+  for (const el of sorted) {
+    const x = el.x * scaleX;
+    const width = el.width * scaleX;
+    const height = el.height * scaleY;
+    const y = pageHeight - (el.y * scaleY + height);
+
+    if (el.type === "shape" || el.type === "divider") {
+      let fillColor = el.fillColor;
+      if (!fillColor && el.svgContent) {
+        fillColor = `rgb(${Math.round(accentRgb.r * 255)}, ${Math.round(accentRgb.g * 255)}, ${Math.round(accentRgb.b * 255)})`;
+      }
+      if (fillColor && fillColor !== "transparent") {
+        const c = hexToRgb(fillColor);
+        coverPage.drawRectangle({
+          x: Math.max(0, x),
+          y: Math.max(0, y),
+          width: Math.min(pageWidth, width),
+          height: Math.min(pageHeight, height),
+          color: rgb(c.r, c.g, c.b),
+          opacity: el.opacity ?? 1,
+        });
+      }
+    } else if (el.type === "text" && el.text) {
+      const rawFontSize = el.fontSize || 14;
+      const pdfFontSize = Math.max(7, Math.round(rawFontSize * scaleY));
+      const font =
+        el.fontWeight === "bold" || el.fontWeight === "700" || el.fontWeight === "800"
+          ? fontBold
+          : fontRegular;
+      const c = hexToRgb(el.textColor || "#0F172A");
+      const lines = el.text.split("\n");
+      const lineSpacing = (el.lineHeight || 1.25) * pdfFontSize;
+
+      let curY = pageHeight - (el.y * scaleY + pdfFontSize);
+      for (const line of lines) {
+        const sanitized = sanitizeLine(line, font);
+        if (!sanitized.trim()) {
+          curY -= lineSpacing;
+          continue;
+        }
+        let lineX = x;
+        if (el.textAlign === "center") {
+          try {
+            const textWidth = font.widthOfTextAtSize(sanitized, pdfFontSize);
+            lineX = x + Math.max(0, (width - textWidth) / 2);
+          } catch {
+            lineX = x;
+          }
+        } else if (el.textAlign === "right") {
+          try {
+            const textWidth = font.widthOfTextAtSize(sanitized, pdfFontSize);
+            lineX = x + Math.max(0, width - textWidth);
+          } catch {
+            lineX = x;
+          }
+        }
+
+        try {
+          coverPage.drawText(sanitized, {
+            x: Math.max(10, Math.min(pageWidth - 20, lineX)),
+            y: Math.max(10, curY),
+            size: pdfFontSize,
+            font,
+            color: rgb(c.r, c.g, c.b),
+            opacity: el.opacity ?? 1,
+          });
+        } catch (e) {
+          // ignore glyph encoding issues in fallback
+        }
+        curY -= lineSpacing;
+      }
+    }
+  }
 }
 
 
@@ -596,188 +823,73 @@ export async function renderExecutivePdf(
   if (hasCoverPage) {
     const coverPage = pdfDoc.addPage([pageWidth, pageHeight]);
 
-    // Top primary accent banner
-    coverPage.drawRectangle({
-      x: 0,
-      y: pageHeight - 160,
-      width: pageWidth,
-      height: 160,
-      color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
-    });
+    const templateId = meta?.coverTemplateId || "canva-salford-wave";
+    const rawElements =
+      meta?.customCoverElements && meta.customCoverElements.length > 0
+        ? meta.customCoverElements
+        : generateCoverElements(templateId, meta || getDefaultAssignmentMetadata(), 794, 1123);
 
-    // Institution / University text
-    const instText = sanitizeLine(
-      (options?.institution || meta?.universityName || "DOCUMIND STUDIO").toUpperCase(),
-      fontBold,
-    );
-    coverPage.drawText(instText, {
-      x: margin,
-      y: pageHeight - 75,
-      size: 15,
-      font: fontBold,
-      color: rgb(1, 1, 1),
-    });
-
-    if (meta?.department || meta?.collegeOrFaculty) {
-      const deptText = sanitizeLine(
-        [meta.department, meta.collegeOrFaculty].filter(Boolean).join(" · "),
-        fontRegular,
-      );
-      coverPage.drawText(deptText, {
-        x: margin,
-        y: pageHeight - 96,
-        size: 10,
-        font: fontRegular,
-        color: rgb(0.85, 0.9, 0.98),
-      });
-    }
-
-    // Document Title
-    let yCover = pageHeight - 240;
-    const coverTitle = sanitizeLine(mainTitle, fontBold);
-    const wrappedCoverTitle = wrapPdfText(coverTitle, fontBold, 24, contentWidth);
-    for (const line of wrappedCoverTitle) {
-      coverPage.drawText(line, {
-        x: margin,
-        y: yCover,
-        size: 24,
-        font: fontBold,
-        color: rgb(0.06, 0.09, 0.16),
-      });
-      yCover -= 28;
-    }
-
-    // Subtitle
-    const sub = options?.docSubtitle || meta?.courseName;
-    if (sub) {
-      yCover -= 6;
-      const wrappedSub = wrapPdfText(sanitizeLine(sub, fontRegular), fontRegular, 13, contentWidth);
-      for (const line of wrappedSub) {
-        coverPage.drawText(line, {
-          x: margin,
-          y: yCover,
-          size: 13,
-          font: fontRegular,
-          color: rgb(0.35, 0.42, 0.52),
-        });
-        yCover -= 18;
-      }
-    }
-
-    // Decorative rule
-    yCover -= 12;
-    coverPage.drawLine({
-      start: { x: margin, y: yCover },
-      end: { x: margin + 120, y: yCover },
-      thickness: 3,
-      color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
-    });
-    yCover -= 36;
-
-    // Identity Information (if showOnCover)
-    if (showOnCover) {
-      if (meta?.assignmentType === "group") {
-        const grpTitle = sanitizeLine(
-          meta.groupName ? `PROJECT GROUP: ${meta.groupName.toUpperCase()}` : "PROJECT GROUP MEMBERS",
-          fontBold,
-        );
-        coverPage.drawText(grpTitle, {
-          x: margin,
-          y: yCover,
-          size: 12,
-          font: fontBold,
-          color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
-        });
-        yCover -= 20;
-
-        for (const m of meta.groupMembers || []) {
-          if (m && (m.fullName || m.studentId)) {
-            const mLine = sanitizeLine(
-              `• ${m.fullName || "Student"}${m.studentId ? ` (ID: ${m.studentId})` : ""}${m.role ? ` — ${m.role}` : ""}`,
-              fontRegular,
-            );
-            coverPage.drawText(mLine, {
-              x: margin + 8,
-              y: yCover,
-              size: 10,
-              font: fontRegular,
-              color: rgb(0.12, 0.16, 0.24),
-            });
-            yCover -= 16;
-          }
+    // Sync titles and identity placement into elements
+    const elements = rawElements
+      .filter((el) => {
+        if (
+          !showOnCover &&
+          (el.isMetadataField === "studentName" ||
+            el.isMetadataField === "groupMembersList" ||
+            el.id === "group-banner-card")
+        ) {
+          return false;
         }
-      } else {
-        const studentName = options?.authorName || meta?.studentName;
-        if (studentName) {
-          coverPage.drawText("SUBMITTED BY:", {
-            x: margin,
-            y: yCover,
-            size: 9.5,
-            font: fontBold,
-            color: rgb(0.45, 0.52, 0.62),
-          });
-          yCover -= 18;
-          const sLine = sanitizeLine(
-            `${studentName}${meta?.studentId ? `  (ID: ${meta.studentId})` : ""}`,
-            fontBold,
-          );
-          coverPage.drawText(sLine, {
-            x: margin,
-            y: yCover,
-            size: 14,
-            font: fontBold,
-            color: rgb(0.06, 0.09, 0.16),
-          });
-          yCover -= 28;
+        return true;
+      })
+      .map((el) => {
+        if (el.isMetadataField === "assignmentTitle" && mainTitle) {
+          return { ...el, text: mainTitle };
         }
+        if (el.isMetadataField === "courseName" && (options?.docSubtitle || meta?.courseName)) {
+          return { ...el, text: options?.docSubtitle || meta?.courseName || "" };
+        }
+        if (el.isMetadataField === "studentName" && (options?.authorName || meta?.studentName)) {
+          return { ...el, text: options?.authorName || meta?.studentName || "" };
+        }
+        if (el.isMetadataField === "universityName" && (options?.institution || meta?.universityName)) {
+          return { ...el, text: options?.institution || meta?.universityName || "" };
+        }
+        if (el.isMetadataField === "submissionDate" && (options?.dateStr || meta?.submissionDate)) {
+          return { ...el, text: options?.dateStr || meta?.submissionDate || "" };
+        }
+        return el;
+      });
+
+    let renderedRaster = false;
+    try {
+      const svgString = buildCoverPageSvg(elements, 794, 1123);
+      const pngBytes = await rasterizeSvgToPngBytes(svgString, 1588, 2246);
+      if (pngBytes && pngBytes.length > 0) {
+        const pngImage = await pdfDoc.embedPng(pngBytes);
+        coverPage.drawImage(pngImage, {
+          x: 0,
+          y: 0,
+          width: pageWidth,
+          height: pageHeight,
+        });
+        renderedRaster = true;
       }
+    } catch (e) {
+      console.warn("High-res SVG rasterization fallback to vector PDF primitives:", e);
     }
 
-    // Bottom Metadata Card
-    let yBottom = 160;
-    if (meta?.courseName || meta?.courseCode) {
-      const cLine = sanitizeLine(
-        `Course: ${meta.courseName || ""}${meta.courseCode ? ` (${meta.courseCode})` : ""}`,
+    if (!renderedRaster) {
+      renderCoverElementsDirectlyToPdf(
+        coverPage,
+        elements,
+        pageWidth,
+        pageHeight,
+        fontBold,
         fontRegular,
+        accentRgb,
       );
-      coverPage.drawText(cLine, {
-        x: margin,
-        y: yBottom,
-        size: 10.5,
-        font: fontRegular,
-        color: rgb(0.2, 0.25, 0.35),
-      });
-      yBottom -= 18;
     }
-    if (meta?.instructorName) {
-      const iLine = sanitizeLine(`Instructor: ${meta.instructorName}`, fontRegular);
-      coverPage.drawText(iLine, {
-        x: margin,
-        y: yBottom,
-        size: 10.5,
-        font: fontRegular,
-        color: rgb(0.2, 0.25, 0.35),
-      });
-      yBottom -= 18;
-    }
-    const subDate = options?.dateStr || meta?.submissionDate;
-    if (subDate) {
-      const dLine = sanitizeLine(`Submission Date: ${subDate}`, fontRegular);
-      coverPage.drawText(dLine, {
-        x: margin,
-        y: yBottom,
-        size: 10,
-        font: fontRegular,
-        color: rgb(0.45, 0.52, 0.62),
-      });
-    }
-
-    coverPage.drawLine({
-      start: { x: margin, y: 70 },
-      end: { x: pageWidth - margin, y: 70 },
-      thickness: 0.75,
-      color: rgb(0.88, 0.9, 0.94),
-    });
   }
 
   // 2. Body Pages

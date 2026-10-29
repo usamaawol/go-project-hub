@@ -1,6 +1,6 @@
 /**
  * DocuMind Universal Cover-Page Template Registry & Canvas Schema
- * Contains 52+ distinct, editable cover-page templates spanning 8 categories:
+ * Contains 75+ distinct, modern editable cover-page templates spanning 8 categories:
  * Academic, Modern, Formal, Research, Business, Minimalist, Geometric, and Creative.
  * Compatible with A4 and Letter page geometry.
  */
@@ -2606,11 +2606,775 @@ export function generateCanvaWarmEditorial(
 }
 
 // -------------------------------------------------------------
-// Scalable Registry of 60+ Distinct Cover Templates
+
+// -------------------------------------------------------------
+// -------------------------------------------------------------
+// PREMIER MODERN CANVA-GRADE GENERATORS (70+ Collection Expansion)
+// -------------------------------------------------------------
+
+export function generateCanvaVioletAuroraWave(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const violet = meta.accentColor || "#4C1D95";
+  const cyan = "#06B6D4";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Project Team")
+    : (meta.studentName || "Benjamin Shah");
+  const brand = meta.universityName || meta.department || "DocuMind Studio";
+  const title = meta.assignmentTitle || "Comprehensive Research Proposal";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Next-Generation Systems Architecture & Analysis";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "aurora-top-cyan", type: "shape", name: "Top Cyan Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: cyan, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${cyan}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "aurora-top-violet", type: "shape", name: "Top Violet Wave", shapeType: "svg", x: 0, y: 0, width: 455, height: 198, fillColor: violet, svgContent: `<svg viewBox="0 0 455 198" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 455,0 C 375,88 265,162 145,162 C 82,162 28,182 0,198 Z" fill="${violet}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "aurora-brand-pill", type: "badge", name: "Brand Pill Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: violet, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "aurora-brand-text", type: "text", name: "Brand Label Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 12, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "aurora-title-main", type: "text", name: "Proposal Title", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 48, fontWeight: "800", textColor: violet, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "aurora-subtitle", type: "text", name: "Proposal Subtitle", x: 80, y: 400, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "aurora-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "aurora-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: violet, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.studentId) {
+    elements.push({ id: "aurora-meta-id", type: "text", name: "Student ID", x: 80, y: 540, width: 320, height: 22, text: `Student ID: ${meta.studentId}`, fontFamily: "monospace", fontSize: 12, fontWeight: "600", textColor: "#64748B", isMetadataField: "studentId", zIndex: zIndex++ });
+  }
+  if (meta.instructorName) {
+    elements.push({ id: "aurora-instructor", type: "text", name: "Instructor", x: 80, y: meta.studentId ? 566 : 542, width: 360, height: 24, text: `Submitted to: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "aurora-br-cyan", type: "shape", name: "Bottom-Right Cyan Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: cyan, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${cyan}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "aurora-br-violet", type: "shape", name: "Bottom-Right Violet Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: violet, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${violet}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "aurora-footer-contact", type: "text", name: "Contact Information", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ hello@documind.io\n🌐 www.documind.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaTokyoNeomodern(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const obsidian = meta.accentColor || "#0F172A";
+  const lime = "#84CC16";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Development Lead")
+    : (meta.studentName || "Kaito Takahashi");
+  const brand = meta.universityName || meta.department || "Tokyo Tech Lab";
+  const title = meta.assignmentTitle || "NEO-SYSTEMS BLUEPRINT";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "High-Frequency Distributed Consensus Protocol";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FAFAFA", zIndex: zIndex++ });
+  elements.push({ id: "tokyo-header-bar", type: "shape", name: "Top Header Obsidian Block", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: 170, fillColor: obsidian, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-lime-ribbon", type: "shape", name: "Lime Accent Rule", shapeType: "rectangle", x: 0, y: 170, width: pageW, height: 12, fillColor: lime, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-spec-badge", type: "badge", name: "Spec Badge", shapeType: "badge-pill", x: 60, y: 55, width: 220, height: 32, fillColor: "#1E293B", borderRadius: 4, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-spec-text", type: "text", name: "Spec Badge Text", x: 70, y: 62, width: 200, height: 20, text: `[ TECH // SPEC ${year} ]`, fontFamily: "monospace", fontSize: 11, fontWeight: "700", textAlign: "left", textColor: lime, letterSpacing: 2, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-brand-text", type: "text", name: "Brand Text", x: pageW - 280, y: 60, width: 220, height: 24, text: brand.toUpperCase(), fontFamily: "monospace", fontSize: 12, fontWeight: "700", textAlign: "right", textColor: "#F8FAFC", letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-dot-matrix", type: "shape", name: "Dot Matrix Accent", shapeType: "svg", x: pageW - 90, y: 220, width: 40, height: 80, fillColor: obsidian, svgContent: `<svg viewBox="0 0 40 80" width="100%" height="100%"><circle cx="8" cy="10" r="3" fill="${obsidian}" opacity="0.6"/><circle cx="24" cy="10" r="3" fill="${obsidian}" opacity="0.6"/><circle cx="8" cy="30" r="3" fill="${obsidian}" opacity="0.6"/><circle cx="24" cy="30" r="3" fill="${obsidian}" opacity="0.6"/><circle cx="8" cy="50" r="3" fill="${obsidian}" opacity="0.6"/><circle cx="24" cy="50" r="3" fill="${obsidian}" opacity="0.6"/><circle cx="8" cy="70" r="3" fill="${obsidian}" opacity="0.6"/><circle cx="24" cy="70" r="3" fill="${obsidian}" opacity="0.6"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-title", type: "text", name: "Title Main", x: 60, y: 240, width: pageW - 180, height: 130, text: title, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 46, fontWeight: "800", textColor: obsidian, lineHeight: 1.05, letterSpacing: -1.5, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "tokyo-subtitle", type: "text", name: "Subtitle", x: 60, y: 390, width: pageW - 180, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: "500", textColor: "#475569", zIndex: zIndex++ });
+  elements.push({ id: "tokyo-author-card", type: "shape", name: "Author Card", shapeType: "rectangle", x: 60, y: 475, width: pageW - 120, height: 105, fillColor: "#F1F5F9", borderColor: lime, borderWidth: 3, borderRadius: 2, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-author-label", type: "text", name: "Author Label", x: 80, y: 490, width: 300, height: 18, text: "PRIMARY RESEARCHER / AUTHOR:", fontFamily: "monospace", fontSize: 10, fontWeight: "700", textColor: "#64748B", letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-author-name", type: "text", name: "Author Name", x: 80, y: 510, width: 400, height: 30, text: author, fontFamily: "Inter, sans-serif", fontSize: 21, fontWeight: "800", textColor: obsidian, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.instructorName) {
+    elements.push({ id: "tokyo-instructor", type: "text", name: "Instructor", x: 80, y: 545, width: 400, height: 22, text: `Reviewed by: ${meta.instructorName}`, fontFamily: "monospace", fontSize: 11, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "tokyo-bottom-poly", type: "shape", name: "Bottom Accent Polygon", shapeType: "svg", x: pageW - 280, y: pageH - 160, width: 280, height: 160, fillColor: obsidian, svgContent: `<svg viewBox="0 0 280 160" width="100%" height="100%" preserveAspectRatio="none"><polygon points="60,160 280,0 280,160" fill="${obsidian}" /><polygon points="0,160 80,160 280,10 260,0" fill="${lime}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "tokyo-footer-text", type: "text", name: "Footer Text", x: 60, y: pageH - 65, width: 400, height: 30, text: "VERIFIED BLUEPRINT • DOCUMIND ACADEMIC • ISO 2026", fontFamily: "monospace", fontSize: 9.5, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaScandinavianFrost(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const teal = meta.accentColor || "#0D9488";
+  const mint = "#5EEAD4";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Nordic Research Collective")
+    : (meta.studentName || "Astrid Lindgren");
+  const brand = meta.universityName || meta.department || "Stockholm University";
+  const title = meta.assignmentTitle || "Nordic Sustainable Architecture";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Environmental Lifecycle Assessment & Passive Heating";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "frost-top-mint", type: "shape", name: "Mint Ribbon Underlay", shapeType: "svg", x: 0, y: 0, width: 460, height: 210, fillColor: mint, svgContent: `<svg viewBox="0 0 460 210" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 460,0 C 370,100 270,170 140,170 C 70,170 20,190 0,210 Z" fill="${mint}" opacity="0.6" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "frost-top-teal", type: "shape", name: "Top Teal Wave", shapeType: "svg", x: 0, y: 0, width: 420, height: 185, fillColor: teal, svgContent: `<svg viewBox="0 0 420 185" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 420,0 C 340,80 240,150 120,150 C 60,150 20,170 0,185 Z" fill="${teal}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "frost-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 200, y: 45, width: 140, height: 36, fillColor: teal, borderRadius: 18, zIndex: zIndex++ });
+  elements.push({ id: "frost-brand-text", type: "text", name: "Brand Text", x: pageW - 195, y: 53, width: 130, height: 20, text: brand, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "frost-title", type: "text", name: "Title Main", x: 80, y: 270, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, sans-serif", fontSize: 44, fontWeight: "700", textColor: "#0F172A", lineHeight: 1.15, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "frost-subtitle", type: "text", name: "Subtitle", x: 80, y: 395, width: pageW - 160, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "400", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "frost-divider", type: "divider", name: "Thin Divider Rule", x: 80, y: 460, width: 120, height: 3, fillColor: teal, zIndex: zIndex++ });
+  elements.push({ id: "frost-meta-label", type: "text", name: "Author Label", x: 80, y: 485, width: 300, height: 18, text: "SUBMITTED BY :", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "frost-meta-name", type: "text", name: "Author Name", x: 80, y: 508, width: 360, height: 30, text: author, fontFamily: "Inter, sans-serif", fontSize: 19, fontWeight: "700", textColor: teal, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.instructorName) {
+    elements.push({ id: "frost-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 22, text: `Under Academic Supervision: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 11.5, fontWeight: "500", textColor: "#64748B", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "frost-br-mint", type: "shape", name: "Bottom Mint Wave", shapeType: "svg", x: pageW - 350, y: pageH - 240, width: 350, height: 240, fillColor: mint, svgContent: `<svg viewBox="0 0 350 240" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,240 C 120,240 190,160 350,80 L 350,240 Z" fill="${mint}" opacity="0.6" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "frost-br-teal", type: "shape", name: "Bottom Teal Wave", shapeType: "svg", x: pageW - 320, y: pageH - 210, width: 320, height: 210, fillColor: teal, svgContent: `<svg viewBox="0 0 320 210" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,210 C 110,210 180,140 320,70 L 320,210 Z" fill="${teal}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "frost-footer", type: "text", name: "Footer Details", x: 80, y: pageH - 95, width: 350, height: 40, text: "Stockholm • Faculty of Natural Sciences\nwww.su.se • official academic document", fontFamily: "Inter, sans-serif", fontSize: 10.5, fontWeight: "400", textColor: "#64748B", lineHeight: 1.4, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaCrimsonExecutiveCurve(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const crimson = meta.accentColor || "#991B1B";
+  const gold = "#D97706";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Executive Committee")
+    : (meta.studentName || "Arthur Pendelton");
+  const brand = meta.universityName || meta.department || "Vanguard & Partners";
+  const title = meta.assignmentTitle || "Executive Strategic Assessment";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Global Market Expansion & Capital Allocation Framework";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "crimson-top-gold", type: "shape", name: "Top Gold Wave", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: gold, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${gold}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "crimson-top-crimson", type: "shape", name: "Top Crimson Wave", shapeType: "svg", x: 0, y: 0, width: 450, height: 195, fillColor: crimson, svgContent: `<svg viewBox="0 0 450 195" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 450,0 C 370,85 260,160 140,160 C 80,160 25,180 0,195 Z" fill="${crimson}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "crimson-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: crimson, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "crimson-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Georgia, serif", fontSize: 12, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "crimson-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Georgia, 'Playfair Display', serif", fontSize: 44, fontWeight: "700", textColor: crimson, lineHeight: 1.15, letterSpacing: -0.5, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "crimson-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "crimson-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 485, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "crimson-meta-name", type: "text", name: "Author Name", x: 80, y: 510, width: 360, height: 32, text: author, fontFamily: "Georgia, serif", fontSize: 21, fontWeight: "700", textColor: crimson, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.instructorName) {
+    elements.push({ id: "crimson-instructor", type: "text", name: "Instructor", x: 80, y: 548, width: 360, height: 24, text: `Presented to: ${meta.instructorName}`, fontFamily: "Georgia, serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "crimson-br-gold", type: "shape", name: "Bottom Gold Wave", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: gold, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${gold}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "crimson-br-crimson", type: "shape", name: "Bottom Crimson Wave", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: crimson, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${crimson}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "crimson-footer", type: "text", name: "Footer Coordinates", x: 80, y: pageH - 110, width: 360, height: 45, text: "Executive Confidential • Board Review • DocuMind", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaSunsetHorizon(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const rose = meta.accentColor || "#E11D48";
+  const amber = "#F59E0B";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Creative Direction Group")
+    : (meta.studentName || "Maya Lin");
+  const brand = meta.universityName || meta.department || "Design & Media Institute";
+  const title = meta.assignmentTitle || "Visual Brand Strategy";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Contemporary Design Systems & Digital Identity";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "sunset-top-amber", type: "shape", name: "Top Amber Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: amber, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${amber}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "sunset-top-rose", type: "shape", name: "Top Rose Wave", shapeType: "svg", x: 0, y: 0, width: 455, height: 198, fillColor: rose, svgContent: `<svg viewBox="0 0 455 198" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 455,0 C 375,88 265,162 145,162 C 82,162 28,182 0,198 Z" fill="${rose}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "sunset-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: rose, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "sunset-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "sunset-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 48, fontWeight: "800", textColor: rose, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "sunset-subtitle", type: "text", name: "Subtitle", x: 80, y: 400, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "sunset-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "sunset-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: rose, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.instructorName) {
+    elements.push({ id: "sunset-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 24, text: `Submitted to: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "sunset-br-amber", type: "shape", name: "Bottom Amber Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: amber, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${amber}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "sunset-br-rose", type: "shape", name: "Bottom Rose Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: rose, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${rose}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "sunset-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ creative@documind.io\n🌐 www.documind.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaCyberHexMesh(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const cobalt = meta.accentColor || "#2563EB";
+  const cyan = "#06B6D4";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Security Research Squad")
+    : (meta.studentName || "Devon Vance");
+  const brand = meta.universityName || meta.department || "Cyber Defense Institute";
+  const title = meta.assignmentTitle || "FAULT-TOLERANT ARCHITECTURE";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Zero-Trust Distributed Cryptographic Consensus Engine";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "cyber-top-poly", type: "shape", name: "Top Cyber Polygon", shapeType: "svg", x: 0, y: 0, width: 440, height: 180, fillColor: cobalt, svgContent: `<svg viewBox="0 0 440 180" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 440,0 360,180 0,180" fill="${cobalt}" /><polygon points="360,0 440,0 390,180 310,180" fill="${cyan}" opacity="0.8" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cyber-spec-badge", type: "badge", name: "Badge Pill", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 38, fillColor: cobalt, borderRadius: 19, zIndex: zIndex++ });
+  elements.push({ id: "cyber-badge-text", type: "text", name: "Badge Text", x: pageW - 215, y: 53, width: 150, height: 20, text: brand, fontFamily: "monospace", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "cyber-dot-matrix", type: "shape", name: "Hex Dot Cluster", shapeType: "svg", x: pageW - 80, y: 160, width: 40, height: 80, fillColor: cyan, svgContent: `<svg viewBox="0 0 40 80" width="100%" height="100%"><circle cx="8" cy="10" r="3" fill="${cyan}"/><circle cx="24" cy="10" r="3" fill="${cyan}"/><circle cx="8" cy="30" r="3" fill="${cyan}"/><circle cx="24" cy="30" r="3" fill="${cyan}"/><circle cx="8" cy="50" r="3" fill="${cyan}"/><circle cx="24" cy="50" r="3" fill="${cyan}"/><circle cx="8" cy="70" r="3" fill="${cyan}"/><circle cx="24" cy="70" r="3" fill="${cyan}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cyber-title", type: "text", name: "Title Main", x: 75, y: 260, width: pageW - 150, height: 120, text: `${title} // ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "800", textColor: cobalt, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "cyber-subtitle", type: "text", name: "Subtitle", x: 75, y: 395, width: pageW - 150, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#475569", zIndex: zIndex++ });
+  elements.push({ id: "cyber-author-box", type: "shape", name: "Author Box", shapeType: "rectangle", x: 75, y: 470, width: pageW - 150, height: 95, fillColor: "#F8FAFC", borderColor: "#E2E8F0", borderWidth: 1, borderRadius: 8, zIndex: zIndex++ });
+  elements.push({ id: "cyber-meta-label", type: "text", name: "Author Label", x: 95, y: 485, width: 300, height: 18, text: "PRINCIPAL INVESTIGATOR // AUTHOR:", fontFamily: "monospace", fontSize: 10, fontWeight: "700", textColor: "#64748B", letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "cyber-meta-name", type: "text", name: "Author Name", x: 95, y: 508, width: 380, height: 32, text: author, fontFamily: "Inter, sans-serif", fontSize: 20, fontWeight: "800", textColor: cobalt, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.instructorName) {
+    elements.push({ id: "cyber-instructor", type: "text", name: "Instructor", x: 95, y: 540, width: 380, height: 20, text: `Reviewer: ${meta.instructorName}`, fontFamily: "monospace", fontSize: 11, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "cyber-br-poly", type: "shape", name: "Bottom Cyber Poly", shapeType: "svg", x: pageW - 320, y: pageH - 200, width: 320, height: 200, fillColor: cobalt, svgContent: `<svg viewBox="0 0 320 200" width="100%" height="100%" preserveAspectRatio="none"><polygon points="80,200 320,0 320,200" fill="${cobalt}" /><polygon points="0,200 120,200 320,40 200,0" fill="${cyan}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cyber-footer", type: "text", name: "Footer Text", x: 75, y: pageH - 85, width: 350, height: 35, text: "CLASSIFIED SPECIFICATION • SYSTEM CORE v4.2", fontFamily: "monospace", fontSize: 10, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaAcademicCrestModern(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const navy = meta.accentColor || "#1E3A8A";
+  const gold = "#EAB308";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Graduate Research Syndicate")
+    : (meta.studentName || "Eleanor Vance");
+  const brand = meta.universityName || meta.department || "Oxford Collegiate Faculty";
+  const title = meta.assignmentTitle || "Constitutional Jurisprudence & Governance";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Comparative Treaties in Public Law & Statutory Interpretation";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "crest-top-gold", type: "shape", name: "Top Gold Arch", shapeType: "svg", x: 0, y: 0, width: pageW, height: 165, fillColor: gold, svgContent: `<svg viewBox="0 0 794 165" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 794,0 L 794,145 C 550,165 250,165 0,145 Z" fill="${gold}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "crest-top-navy", type: "shape", name: "Top Navy Arch", shapeType: "svg", x: 0, y: 0, width: pageW, height: 150, fillColor: navy, svgContent: `<svg viewBox="0 0 794 150" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 794,0 L 794,130 C 550,150 250,150 0,130 Z" fill="${navy}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "crest-inst-text", type: "text", name: "Institution Text", x: 60, y: 50, width: pageW - 120, height: 26, text: brand.toUpperCase(), fontFamily: "Georgia, serif", fontSize: 14, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 2.5, zIndex: zIndex++ });
+  elements.push({ id: "crest-sub-header", type: "text", name: "Sub Header Text", x: 60, y: 80, width: pageW - 120, height: 20, text: `ACADEMIC YEAR ${year} • FACULTY OF LAW`, fontFamily: "Inter, sans-serif", fontSize: 10.5, fontWeight: "600", textAlign: "center", textColor: "#E2E8F0", letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "crest-title", type: "text", name: "Title Main", x: 80, y: 250, width: pageW - 160, height: 120, text: title, fontFamily: "Georgia, 'Playfair Display', serif", fontSize: 42, fontWeight: "700", textAlign: "center", textColor: navy, lineHeight: 1.2, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "crest-divider", type: "divider", name: "Gold Divider", x: pageW / 2 - 60, y: 390, width: 120, height: 3, fillColor: gold, zIndex: zIndex++ });
+  elements.push({ id: "crest-subtitle", type: "text", name: "Subtitle", x: 80, y: 415, width: pageW - 160, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 13.5, fontWeight: "500", textAlign: "center", textColor: "#475569", zIndex: zIndex++ });
+  elements.push({ id: "crest-author-card", type: "shape", name: "Credentials Card", shapeType: "rectangle", x: 120, y: 490, width: pageW - 240, height: 105, fillColor: "#F8FAFC", borderColor: "#E2E8F0", borderWidth: 1, borderRadius: 8, zIndex: zIndex++ });
+  elements.push({ id: "crest-meta-label", type: "text", name: "Author Label", x: 140, y: 505, width: pageW - 280, height: 18, text: "SUBMITTED BY CANDIDATE :", fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: "700", textAlign: "center", textColor: "#64748B", letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "crest-meta-name", type: "text", name: "Author Name", x: 140, y: 526, width: pageW - 280, height: 28, text: author, fontFamily: "Georgia, serif", fontSize: 19, fontWeight: "700", textAlign: "center", textColor: navy, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.instructorName) {
+    elements.push({ id: "crest-instructor", type: "text", name: "Instructor", x: 140, y: 558, width: pageW - 280, height: 22, text: `Supervisor: ${meta.instructorName}`, fontFamily: "Georgia, serif", fontSize: 12, fontWeight: "600", textAlign: "center", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "crest-bottom-navy", type: "shape", name: "Bottom Navy Bar", shapeType: "rectangle", x: 0, y: pageH - 50, width: pageW, height: 50, fillColor: navy, zIndex: zIndex++ });
+  elements.push({ id: "crest-bottom-gold", type: "shape", name: "Bottom Gold Rule", shapeType: "rectangle", x: 0, y: pageH - 53, width: pageW, height: 3, fillColor: gold, zIndex: zIndex++ });
+  elements.push({ id: "crest-bottom-text", type: "text", name: "Bottom Text", x: 60, y: pageH - 35, width: pageW - 120, height: 20, text: "DISSERTATION SUBMISSION • ALL RIGHTS RESERVED", fontFamily: "Inter, sans-serif", fontSize: 9.5, fontWeight: "600", textAlign: "center", textColor: "#E2E8F0", letterSpacing: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaForestBotanical(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const emerald = meta.accentColor || "#064E3B";
+  const sage = "#34D399";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Ecology Project Group")
+    : (meta.studentName || "Rowan Thorne");
+  const brand = meta.universityName || meta.department || "Institute for Ecological Sciences";
+  const title = meta.assignmentTitle || "Biodiversity Conservation & Climate Resilience";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Restoration Ecology & Ecosystem Services Valuation";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "forest-top-sage", type: "shape", name: "Top Sage Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: sage, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${sage}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "forest-top-emerald", type: "shape", name: "Top Emerald Wave", shapeType: "svg", x: 0, y: 0, width: 455, height: 198, fillColor: emerald, svgContent: `<svg viewBox="0 0 455 198" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 455,0 C 375,88 265,162 145,162 C 82,162 28,182 0,198 Z" fill="${emerald}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "forest-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: emerald, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "forest-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "forest-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "800", textColor: emerald, lineHeight: 1.15, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "forest-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "forest-meta-label", type: "text", name: "Author Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "forest-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: emerald, isMetadataField: "studentName", zIndex: zIndex++ });
+
+  if (meta.instructorName) {
+    elements.push({ id: "forest-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 24, text: `Submitted to: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+
+  elements.push({ id: "forest-br-sage", type: "shape", name: "Bottom Sage Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: sage, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${sage}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "forest-br-emerald", type: "shape", name: "Bottom Emerald Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: emerald, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${emerald}" /></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "forest-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ eco@documind.io\n🌐 www.documind.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+// -------------------------------------------------------------
+// Scalable Registry of 75+ Distinct Cover Templates
+// -------------------------------------------------------------
+
+export function generateCanvaQuantumIndigo(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const indigo = meta.accentColor || "#312E81";
+  const cyan = meta.secondaryColor || "#06B6D4";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Quantum Systems Research Group")
+    : (meta.studentName || "Dr. Elena Rostova");
+  const brand = meta.universityName || meta.department || "Quantum Dynamics Laboratory";
+  const title = meta.assignmentTitle || "QUANTUM ENTANGLEMENT & CRYPTOGRAPHY";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "High-Coherence Qubit Simulation & Fault-Tolerant Gate Synthesis";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "quantum-top-cyan", type: "shape", name: "Top Cyan Tech Polygon", shapeType: "svg", x: 0, y: 0, width: 480, height: 210, fillColor: cyan, svgContent: `<svg viewBox="0 0 480 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 480,0 380,210 0,210" fill="${cyan}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "quantum-top-indigo", type: "shape", name: "Top Indigo Tech Polygon", shapeType: "svg", x: 0, y: 0, width: 440, height: 185, fillColor: indigo, svgContent: `<svg viewBox="0 0 440 185" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 440,0 350,185 0,185" fill="${indigo}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "quantum-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: indigo, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "quantum-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "monospace", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "quantum-dot-cluster", type: "shape", name: "Tech Dot Cluster", shapeType: "svg", x: pageW - 75, y: 150, width: 36, height: 75, fillColor: cyan, svgContent: `<svg viewBox="0 0 36 75" width="100%" height="100%"><circle cx="8" cy="10" r="3" fill="${cyan}"/><circle cx="24" cy="10" r="3" fill="${cyan}"/><circle cx="8" cy="30" r="3" fill="${cyan}"/><circle cx="24" cy="30" r="3" fill="${cyan}"/><circle cx="8" cy="50" r="3" fill="${cyan}"/><circle cx="24" cy="50" r="3" fill="${cyan}"/><circle cx="8" cy="70" r="3" fill="${cyan}"/><circle cx="24" cy="70" r="3" fill="${cyan}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "quantum-title", type: "text", name: "Title Main", x: 80, y: 275, width: pageW - 160, height: 115, text: `${title} [${year}]`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 42, fontWeight: "800", textColor: indigo, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "quantum-subtitle", type: "text", name: "Subtitle", x: 80, y: 400, width: pageW - 160, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "quantum-meta-box", type: "shape", name: "Author Box", shapeType: "rectangle", x: 80, y: 475, width: pageW - 160, height: 95, fillColor: "#F8FAFC", borderColor: "#E2E8F0", borderWidth: 1, borderRadius: 8, zIndex: zIndex++ });
+  elements.push({ id: "quantum-meta-label", type: "text", name: "Author Label", x: 100, y: 490, width: 320, height: 18, text: "PRIMARY RESEARCHER / AUTHOR :", fontFamily: "monospace", fontSize: 10, fontWeight: "700", textColor: "#64748B", letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "quantum-meta-name", type: "text", name: "Author Name", x: 100, y: 512, width: 380, height: 32, text: author, fontFamily: "Inter, sans-serif", fontSize: 20, fontWeight: "800", textColor: indigo, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "quantum-instructor", type: "text", name: "Instructor", x: 100, y: 544, width: 380, height: 20, text: `Supervisor: ${meta.instructorName}`, fontFamily: "monospace", fontSize: 11, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "quantum-br-cyan", type: "shape", name: "Bottom Cyan Polygon", shapeType: "svg", x: pageW - 360, y: pageH - 240, width: 360, height: 240, fillColor: cyan, svgContent: `<svg viewBox="0 0 360 240" width="100%" height="100%" preserveAspectRatio="none"><polygon points="100,240 360,0 360,240" fill="${cyan}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "quantum-br-indigo", type: "shape", name: "Bottom Indigo Polygon", shapeType: "svg", x: pageW - 330, y: pageH - 215, width: 330, height: 215, fillColor: indigo, svgContent: `<svg viewBox="0 0 330 215" width="100%" height="100%" preserveAspectRatio="none"><polygon points="90,215 330,0 330,215" fill="${indigo}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "quantum-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 95, width: 380, height: 40, text: "📞 +123-456-7890 • ✉️ quantum@documind.io\nVerified Academic Research • DocuMind", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaMonochromeArch(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const charcoal = meta.accentColor || "#18181B";
+  const zinc = meta.secondaryColor || "#71717A";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Architectural Collective")
+    : (meta.studentName || "Julian Sterling");
+  const brand = meta.universityName || meta.department || "Atelier Modern Architecture";
+  const title = meta.assignmentTitle || "MONOCHROME SPATIAL DESIGN";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Brutalist Form, Sustainable Timber Structures, and Natural Illumination";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "mono-top-arch", type: "shape", name: "Architectural Top Arch", shapeType: "svg", x: 0, y: 0, width: 440, height: 210, fillColor: charcoal, svgContent: `<svg viewBox="0 0 440 210" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 440,0 C 440,110 330,210 200,210 L 0,210 Z" fill="${charcoal}"/><path d="M 0,210 L 220,210 C 350,210 440,120 440,0 L 455,0 C 455,130 360,225 220,225 L 0,225 Z" fill="${zinc}" opacity="0.6"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "mono-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: charcoal, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "mono-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "mono-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "800", textColor: charcoal, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "mono-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "mono-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "mono-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: charcoal, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "mono-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 24, text: `Submitted to: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "mono-br-arch", type: "shape", name: "Bottom Arch", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: charcoal, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 230,130 230,0 L 360,0 L 360,230 Z" fill="${charcoal}"/><path d="M 0,215 C 120,215 215,120 215,0 L 230,0 C 230,130 130,230 0,230 Z" fill="${zinc}" opacity="0.6"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "mono-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ design@atelier.io\n🌐 www.atelier.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaPrismGeometric(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const cobalt = meta.accentColor || "#1D4ED8";
+  const coral = meta.secondaryColor || "#F43F5E";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Prismatic Analytics Team")
+    : (meta.studentName || "Claire Beaumont");
+  const brand = meta.universityName || meta.department || "Prism Analytics Co";
+  const title = meta.assignmentTitle || "PRISMATIC DATA ARCHITECTURE";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "High-Throughput Analytics & Vector Embedding Pipelines";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "prism-tl-coral", type: "shape", name: "Top Coral Facet", shapeType: "svg", x: 0, y: 0, width: 440, height: 210, fillColor: coral, svgContent: `<svg viewBox="0 0 440 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 440,0 320,210 0,210" fill="${coral}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "prism-tl-cobalt", type: "shape", name: "Top Cobalt Facet", shapeType: "svg", x: 0, y: 0, width: 400, height: 185, fillColor: cobalt, svgContent: `<svg viewBox="0 0 400 185" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 400,0 290,185 0,185" fill="${cobalt}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "prism-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: cobalt, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "prism-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "prism-dot-cluster", type: "shape", name: "Prism Dot Matrix", shapeType: "svg", x: pageW - 75, y: 150, width: 36, height: 75, fillColor: coral, svgContent: `<svg viewBox="0 0 36 75" width="100%" height="100%"><circle cx="8" cy="10" r="3" fill="${coral}"/><circle cx="24" cy="10" r="3" fill="${coral}"/><circle cx="8" cy="30" r="3" fill="${coral}"/><circle cx="24" cy="30" r="3" fill="${coral}"/><circle cx="8" cy="50" r="3" fill="${coral}"/><circle cx="24" cy="50" r="3" fill="${coral}"/><circle cx="8" cy="70" r="3" fill="${coral}"/><circle cx="24" cy="70" r="3" fill="${coral}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "prism-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "800", textColor: cobalt, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "prism-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "prism-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "prism-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: cobalt, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "prism-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 24, text: `Reviewed by: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "prism-br-coral", type: "shape", name: "Bottom Coral Facet", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: coral, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><polygon points="120,250 380,0 380,250" fill="${coral}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "prism-br-cobalt", type: "shape", name: "Bottom Cobalt Facet", shapeType: "svg", x: pageW - 350, y: pageH - 225, width: 350, height: 225, fillColor: cobalt, svgContent: `<svg viewBox="0 0 350 225" width="100%" height="100%" preserveAspectRatio="none"><polygon points="110,225 350,0 350,225" fill="${cobalt}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "prism-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ info@prism.io\n🌐 www.prism.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaBauhausModernist(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const navy = meta.accentColor || "#0F172A";
+  const vermilion = meta.secondaryColor || "#EF4444";
+  const yellow = "#F59E0B";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Bauhaus Design Studio")
+    : (meta.studentName || "Walter Gropius");
+  const brand = meta.universityName || meta.department || "Bauhaus Visual Studies";
+  const title = meta.assignmentTitle || "BAUHAUS MODERNIST PROPOSAL";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Form Follows Function • Asymmetric Modern Typography & Color Blocking";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FAFAFA", zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-top-bar", type: "shape", name: "Top Navy Bar", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: 160, fillColor: navy, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-yellow-rule", type: "shape", name: "Yellow Accent Rule", shapeType: "rectangle", x: 0, y: 160, width: pageW, height: 14, fillColor: yellow, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-red-circle", type: "shape", name: "Red Circle Accent", shapeType: "svg", x: pageW - 180, y: 90, width: 140, height: 140, fillColor: vermilion, svgContent: `<svg viewBox="0 0 140 140" width="100%" height="100%"><circle cx="70" cy="70" r="70" fill="${vermilion}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-brand-text", type: "text", name: "Brand Text", x: 60, y: 60, width: 340, height: 30, text: brand.toUpperCase(), fontFamily: "Inter, Montserrat, sans-serif", fontSize: 13, fontWeight: "800", textAlign: "left", textColor: "#FFFFFF", letterSpacing: 2, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-year-badge", type: "text", name: "Year Numeral", x: pageW - 170, y: 145, width: 120, height: 35, text: year, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 24, fontWeight: "900", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-title", type: "text", name: "Title Main", x: 60, y: 260, width: pageW - 160, height: 130, text: title, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 48, fontWeight: "900", textColor: navy, lineHeight: 1.05, letterSpacing: -1.5, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-subtitle", type: "text", name: "Subtitle", x: 60, y: 405, width: pageW - 160, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: "600", textColor: "#475569", zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-author-card", type: "shape", name: "Author Block", shapeType: "rectangle", x: 60, y: 485, width: pageW - 120, height: 100, fillColor: "#FFFFFF", borderColor: navy, borderWidth: 3, borderRadius: 0, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-author-label", type: "text", name: "Author Label", x: 80, y: 500, width: 300, height: 18, text: "PRINCIPAL DESIGNER / AUTHOR :", fontFamily: "monospace", fontSize: 10, fontWeight: "800", textColor: vermilion, letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-author-name", type: "text", name: "Author Name", x: 80, y: 522, width: 400, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 22, fontWeight: "800", textColor: navy, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "bauhaus-instructor", type: "text", name: "Instructor", x: 80, y: 556, width: 400, height: 20, text: `Faculty Advisor: ${meta.instructorName}`, fontFamily: "monospace", fontSize: 11, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "bauhaus-bottom-vermilion", type: "shape", name: "Bottom Vermilion Block", shapeType: "rectangle", x: 0, y: pageH - 100, width: 140, height: 100, fillColor: vermilion, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-bottom-yellow", type: "shape", name: "Bottom Yellow Block", shapeType: "rectangle", x: 140, y: pageH - 40, width: 200, height: 40, fillColor: yellow, zIndex: zIndex++ });
+  elements.push({ id: "bauhaus-footer-text", type: "text", name: "Footer Text", x: 160, y: pageH - 85, width: pageW - 200, height: 30, text: "DOCUMIND DESIGN STUDIO • MODERN ARCHIVE 2026", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textColor: navy, letterSpacing: 1, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaGradientGlassmorphism(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const primary = meta.accentColor || "#6366F1";
+  const secondary = meta.secondaryColor || "#EC4899";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Innovation Research Lab")
+    : (meta.studentName || "Amara Vance");
+  const brand = meta.universityName || meta.department || "NextGen Innovation Labs";
+  const title = meta.assignmentTitle || "DIGITAL TRANSFORMATION STRATEGY";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Artificial Intelligence Adoption, Cloud Modernization & UX Agility";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "glass-top-pink", type: "shape", name: "Top Pink Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: secondary, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${secondary}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "glass-top-indigo", type: "shape", name: "Top Indigo Wave", shapeType: "svg", x: 0, y: 0, width: 455, height: 198, fillColor: primary, svgContent: `<svg viewBox="0 0 455 198" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 455,0 C 375,88 265,162 145,162 C 82,162 28,182 0,198 Z" fill="${primary}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "glass-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: primary, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "glass-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "glass-card", type: "shape", name: "Glass Card Container", shapeType: "rectangle", x: 60, y: 250, width: pageW - 120, height: 350, fillColor: "#F8FAFC", borderColor: "#E2E8F0", borderWidth: 1.5, borderRadius: 16, zIndex: zIndex++ });
+  elements.push({ id: "glass-title", type: "text", name: "Title Main", x: 90, y: 280, width: pageW - 180, height: 105, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 40, fontWeight: "800", textColor: primary, lineHeight: 1.15, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "glass-subtitle", type: "text", name: "Subtitle", x: 90, y: 395, width: pageW - 180, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "glass-divider", type: "divider", name: "Divider", x: 90, y: 450, width: 120, height: 3, fillColor: primary, zIndex: zIndex++ });
+  elements.push({ id: "glass-meta-label", type: "text", name: "Author Label", x: 90, y: 475, width: 300, height: 18, text: "SUBMITTED BY :", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "glass-meta-name", type: "text", name: "Author Name", x: 90, y: 498, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: primary, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "glass-instructor", type: "text", name: "Instructor", x: 90, y: 536, width: 360, height: 22, text: `Evaluated by: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "glass-br-pink", type: "shape", name: "Bottom Pink Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: secondary, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${secondary}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "glass-br-indigo", type: "shape", name: "Bottom Indigo Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: primary, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${primary}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "glass-footer", type: "text", name: "Footer Details", x: 80, y: pageH - 100, width: 360, height: 45, text: "📞 +123-456-7890 • ✉️ innovate@documind.io\nVerified Document Export • DocuMind", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaTerracottaEditorial(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const terracotta = meta.accentColor || "#C2410C";
+  const sand = meta.secondaryColor || "#D97706";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Editorial Board")
+    : (meta.studentName || "Camilla Sterling");
+  const brand = meta.universityName || meta.department || "Atelier Literary Press";
+  const title = meta.assignmentTitle || "MEDITERRANEAN ARCHITECTURAL REVIEW";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Earth, Terracotta & Coastal Urban Planning in Southern Europe";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "terra-top-sand", type: "shape", name: "Top Sand Wave", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: sand, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${sand}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "terra-top-terra", type: "shape", name: "Top Terracotta Wave", shapeType: "svg", x: 0, y: 0, width: 450, height: 195, fillColor: terracotta, svgContent: `<svg viewBox="0 0 450 195" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 450,0 C 370,85 260,160 140,160 C 80,160 25,180 0,195 Z" fill="${terracotta}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "terra-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: terracotta, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "terra-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Georgia, serif", fontSize: 12, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "terra-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Georgia, 'Playfair Display', serif", fontSize: 42, fontWeight: "700", textColor: terracotta, lineHeight: 1.15, letterSpacing: -0.5, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "terra-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "terra-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 485, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "terra-meta-name", type: "text", name: "Author Name", x: 80, y: 510, width: 360, height: 32, text: author, fontFamily: "Georgia, serif", fontSize: 21, fontWeight: "700", textColor: terracotta, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "terra-instructor", type: "text", name: "Instructor", x: 80, y: 548, width: 360, height: 24, text: `Presented to: ${meta.instructorName}`, fontFamily: "Georgia, serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "terra-br-sand", type: "shape", name: "Bottom Sand Wave", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: sand, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${sand}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "terra-br-terra", type: "shape", name: "Bottom Terracotta Wave", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: terracotta, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${terracotta}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "terra-footer", type: "text", name: "Footer Coordinates", x: 80, y: pageH - 110, width: 360, height: 45, text: "Mediterranean Monograph • Architecture Series • DocuMind", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaCyberpunkNeon(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const cyan = meta.accentColor || "#00F0FF";
+  const magenta = meta.secondaryColor || "#EC4899";
+  const darkBg = "#0A0F1D";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Cybernetics Core Team")
+    : (meta.studentName || "Kenji Sato");
+  const brand = meta.universityName || meta.department || "Cyber Systems Lab";
+  const title = meta.assignmentTitle || "NEURAL INTERFACE & QUANTUM MESH";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "High-Bandwidth Brain-Machine Systems & Cryptographic Substrates";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "cyber-top-dark", type: "shape", name: "Top Dark Hex Polygon", shapeType: "svg", x: 0, y: 0, width: 500, height: 210, fillColor: darkBg, svgContent: `<svg viewBox="0 0 500 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 500,0 410,210 0,210" fill="${darkBg}"/><line x1="0" y1="208" x2="410" y2="208" stroke="${cyan}" stroke-width="4"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cyber-neon-ribbon", type: "shape", name: "Neon Magenta Slice", shapeType: "svg", x: 410, y: 0, width: 70, height: 210, fillColor: magenta, svgContent: `<svg viewBox="0 0 70 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 70,0 40,210 0,210" fill="${magenta}" opacity="0.9"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cyber-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: darkBg, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "cyber-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "monospace", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: cyan, letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "cyber-dot-matrix", type: "shape", name: "Matrix Dots", shapeType: "svg", x: pageW - 70, y: 140, width: 36, height: 80, fillColor: cyan, svgContent: `<svg viewBox="0 0 36 80" width="100%" height="100%"><circle cx="8" cy="10" r="3" fill="${cyan}"/><circle cx="24" cy="10" r="3" fill="${cyan}"/><circle cx="8" cy="30" r="3" fill="${cyan}"/><circle cx="24" cy="30" r="3" fill="${cyan}"/><circle cx="8" cy="50" r="3" fill="${cyan}"/><circle cx="24" cy="50" r="3" fill="${cyan}"/><circle cx="8" cy="70" r="3" fill="${cyan}"/><circle cx="24" cy="70" r="3" fill="${cyan}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cyber-title", type: "text", name: "Title Main", x: 75, y: 280, width: pageW - 150, height: 115, text: `${title} // ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "900", textColor: darkBg, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "cyber-subtitle", type: "text", name: "Subtitle", x: 75, y: 405, width: pageW - 150, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "cyber-author-box", type: "shape", name: "Author Box", shapeType: "rectangle", x: 75, y: 480, width: pageW - 150, height: 95, fillColor: "#F8FAFC", borderColor: cyan, borderWidth: 2, borderRadius: 6, zIndex: zIndex++ });
+  elements.push({ id: "cyber-meta-label", type: "text", name: "Author Label", x: 95, y: 495, width: 300, height: 18, text: "CHIEF ARCHITECT / AUTHOR :", fontFamily: "monospace", fontSize: 10, fontWeight: "700", textColor: magenta, letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "cyber-meta-name", type: "text", name: "Author Name", x: 95, y: 518, width: 380, height: 32, text: author, fontFamily: "Inter, sans-serif", fontSize: 20, fontWeight: "800", textColor: darkBg, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "cyber-instructor", type: "text", name: "Instructor", x: 95, y: 550, width: 380, height: 20, text: `Evaluator: ${meta.instructorName}`, fontFamily: "monospace", fontSize: 11, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "cyber-br-dark", type: "shape", name: "Bottom Dark Polygon", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: darkBg, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><polygon points="90,220 350,0 350,220" fill="${darkBg}"/><line x1="90" y1="218" x2="350" y2="2" stroke="${cyan}" stroke-width="4"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cyber-footer", type: "text", name: "Footer Text", x: 75, y: pageH - 90, width: 350, height: 35, text: "CYBER SPECIFICATION • SECURE LAYER 2026", fontFamily: "monospace", fontSize: 10, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaEmeraldBlueprint(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const emerald = meta.accentColor || "#065F46";
+  const mint = meta.secondaryColor || "#10B981";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Sustainable Systems Team")
+    : (meta.studentName || "Harrison Brooks");
+  const brand = meta.universityName || meta.department || "Nordic Ecology & Architecture";
+  const title = meta.assignmentTitle || "EMERALD SUSTAINABLE BLUEPRINT";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Passive Solar Envelope, Geothermal Grids, and Zero-Carbon Material Life Cycle";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "em-top-mint", type: "shape", name: "Top Mint Ribbon", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: mint, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${mint}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "em-top-emerald", type: "shape", name: "Top Emerald Wave", shapeType: "svg", x: 0, y: 0, width: 450, height: 195, fillColor: emerald, svgContent: `<svg viewBox="0 0 450 195" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 450,0 C 370,85 260,160 140,160 C 80,160 25,180 0,195 Z" fill="${emerald}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "em-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: emerald, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "em-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "em-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "800", textColor: emerald, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "em-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "em-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "em-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: emerald, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "em-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 24, text: `Submitted to: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "em-br-mint", type: "shape", name: "Bottom Mint Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: mint, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${mint}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "em-br-emerald", type: "shape", name: "Bottom Emerald Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: emerald, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${emerald}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "em-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ eco@documind.io\n🌐 www.documind.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaRoseGoldLuxury(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const rose = meta.accentColor || "#E11D48";
+  const gold = meta.secondaryColor || "#FBBF24";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Prestige Strategic Group")
+    : (meta.studentName || "Genevieve Monet");
+  const brand = meta.universityName || meta.department || "Haute Prestige Luxury Group";
+  const title = meta.assignmentTitle || "GLOBAL LUXURY BRAND STRATEGY";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "High-Net-Worth Consumer Acquisition & Heritage Craftsmanship Positioning";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "rose-top-gold", type: "shape", name: "Top Gold Ribbon", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: gold, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${gold}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "rose-top-rose", type: "shape", name: "Top Rose Ribbon", shapeType: "svg", x: 0, y: 0, width: 450, height: 195, fillColor: rose, svgContent: `<svg viewBox="0 0 450 195" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 450,0 C 370,85 260,160 140,160 C 80,160 25,180 0,195 Z" fill="${rose}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "rose-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: rose, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "rose-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Georgia, serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "rose-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Georgia, 'Playfair Display', serif", fontSize: 44, fontWeight: "700", textColor: rose, lineHeight: 1.15, letterSpacing: -0.5, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "rose-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 45, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "rose-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 485, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "rose-meta-name", type: "text", name: "Author Name", x: 80, y: 510, width: 360, height: 32, text: author, fontFamily: "Georgia, serif", fontSize: 21, fontWeight: "700", textColor: rose, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "rose-instructor", type: "text", name: "Instructor", x: 80, y: 548, width: 360, height: 24, text: `Presented to: ${meta.instructorName}`, fontFamily: "Georgia, serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "rose-br-gold", type: "shape", name: "Bottom Gold Wave", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: gold, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${gold}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "rose-br-rose", type: "shape", name: "Bottom Rose Wave", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: rose, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${rose}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "rose-footer", type: "text", name: "Footer Details", x: 80, y: pageH - 110, width: 360, height: 45, text: "Haute Prestige Luxury Edition • DocuMind Verified", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaSwissInternational(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const black = meta.accentColor || "#111827";
+  const orange = meta.secondaryColor || "#EA580C";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Swiss Typography Laboratory")
+    : (meta.studentName || "Max Miedinger");
+  const brand = meta.universityName || meta.department || "Kunstgewerbeschule Zürich";
+  const title = meta.assignmentTitle || "SWISS INTERNATIONAL TYPOGRAPHIC STYLE";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Mathematical Grid Alignment, Asymmetric Structure & Objective Photography";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "swiss-orange-block", type: "shape", name: "Orange Anchor Block", shapeType: "rectangle", x: 60, y: 60, width: 140, height: 140, fillColor: orange, zIndex: zIndex++ });
+  elements.push({ id: "swiss-numeral", type: "text", name: "Numeral Badge", x: 60, y: 85, width: 140, height: 90, text: "01", fontFamily: "Inter, Montserrat, sans-serif", fontSize: 72, fontWeight: "900", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "swiss-brand-label", type: "text", name: "Brand Text", x: 220, y: 65, width: pageW - 280, height: 30, text: brand.toUpperCase(), fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "800", textColor: black, letterSpacing: 2, zIndex: zIndex++ });
+  elements.push({ id: "swiss-spec-label", type: "text", name: "Spec Header", x: 220, y: 100, width: pageW - 280, height: 25, text: `SPECIFICATION DOSSIER // ${year}`, fontFamily: "monospace", fontSize: 11, fontWeight: "600", textColor: orange, letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "swiss-grid-line", type: "divider", name: "Main Grid Line", x: 60, y: 230, width: pageW - 120, height: 4, fillColor: black, zIndex: zIndex++ });
+  elements.push({ id: "swiss-title", type: "text", name: "Title Main", x: 60, y: 270, width: pageW - 120, height: 140, text: title, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 50, fontWeight: "900", textColor: black, lineHeight: 1.05, letterSpacing: -2, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "swiss-subtitle", type: "text", name: "Subtitle", x: 60, y: 430, width: pageW - 120, height: 50, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: "500", textColor: "#4B5563", zIndex: zIndex++ });
+  elements.push({ id: "swiss-card", type: "shape", name: "Author Card", shapeType: "rectangle", x: 60, y: 510, width: pageW - 120, height: 110, fillColor: "#F9FAFB", borderColor: "#E5E7EB", borderWidth: 1, borderRadius: 0, zIndex: zIndex++ });
+  elements.push({ id: "swiss-author-label", type: "text", name: "Author Label", x: 85, y: 525, width: 300, height: 18, text: "SUBMITTED BY // RESEARCH LEAD:", fontFamily: "monospace", fontSize: 10, fontWeight: "700", textColor: orange, letterSpacing: 1.5, zIndex: zIndex++ });
+  elements.push({ id: "swiss-author-name", type: "text", name: "Author Name", x: 85, y: 550, width: 400, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 22, fontWeight: "900", textColor: black, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "swiss-instructor", type: "text", name: "Instructor", x: 85, y: 585, width: 400, height: 20, text: `Under Supervision: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#6B7280", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "swiss-bottom-bar", type: "shape", name: "Bottom Black Bar", shapeType: "rectangle", x: 60, y: pageH - 90, width: pageW - 120, height: 6, fillColor: black, zIndex: zIndex++ });
+  elements.push({ id: "swiss-footer-text", type: "text", name: "Footer Text", x: 60, y: pageH - 70, width: pageW - 120, height: 30, text: "ZÜRICH DESIGN ARCHIVE • HELVETICA STANDARDS • DOCUMIND EXPORT", fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: "700", textColor: "#9CA3AF", letterSpacing: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaStanfordCardinalWave(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const cardinal = meta.accentColor || "#8C1515";
+  const gold = meta.secondaryColor || "#E98300";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Stanford Engineering Cohort")
+    : (meta.studentName || "Alexander Hayes");
+  const brand = meta.universityName || meta.department || "Stanford University";
+  const title = meta.assignmentTitle || "DISTRIBUTED MACHINE LEARNING ACCELERATION";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "CS 349 — Tensor Parallelism, Ring All-Reduce, and GPU Kernel Optimization";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "cardinal-top-gold", type: "shape", name: "Top Gold Ribbon", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: gold, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${gold}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cardinal-top-red", type: "shape", name: "Top Cardinal Wave", shapeType: "svg", x: 0, y: 0, width: 450, height: 195, fillColor: cardinal, svgContent: `<svg viewBox="0 0 450 195" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 450,0 C 370,85 260,160 140,160 C 80,160 25,180 0,195 Z" fill="${cardinal}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cardinal-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: cardinal, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "cardinal-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", letterSpacing: 1, zIndex: zIndex++ });
+  elements.push({ id: "cardinal-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "800", textColor: cardinal, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "cardinal-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "cardinal-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "cardinal-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: cardinal, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "cardinal-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 24, text: `Under Direction of: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "cardinal-br-gold", type: "shape", name: "Bottom Gold Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: gold, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${gold}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cardinal-br-red", type: "shape", name: "Bottom Cardinal Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: cardinal, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${cardinal}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "cardinal-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "Stanford Engineering • CS Research Publishing\nVerified Academic Presentation • DocuMind", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+export function generateCanvaOceanicMaritimeCurve(
+  meta: AssignmentMetadata,
+  pageW: number = CANVAS_A4_WIDTH,
+  pageH: number = CANVAS_A4_HEIGHT,
+): CanvasCoverElement[] {
+  const elements: CanvasCoverElement[] = [];
+  let zIndex = 1;
+  const ocean = meta.accentColor || "#0369A1";
+  const aqua = meta.secondaryColor || "#0D9488";
+  const isGroup = meta.assignmentType === "group";
+  const author = isGroup
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Marine Research Expedition")
+    : (meta.studentName || "Dr. Douglas Ballard");
+  const brand = meta.universityName || meta.department || "Institute for Oceanographic Sciences";
+  const title = meta.assignmentTitle || "OCEANIC BIODIVERSITY & THERMAL CURRENTS";
+  const year = meta.academicYear || "2026";
+  const subtitle = meta.courseName || meta.courseCode || "Deep-Sea Pelagic Ecosystems & Autonomous Submersible Bathymetry";
+
+  elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "ocean-top-aqua", type: "shape", name: "Top Aqua Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: aqua, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${aqua}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "ocean-top-blue", type: "shape", name: "Top Ocean Wave", shapeType: "svg", x: 0, y: 0, width: 455, height: 198, fillColor: ocean, svgContent: `<svg viewBox="0 0 455 198" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 455,0 C 375,88 265,162 145,162 C 82,162 28,182 0,198 Z" fill="${ocean}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "ocean-brand-pill", type: "badge", name: "Brand Badge", shapeType: "badge-pill", x: pageW - 220, y: 45, width: 160, height: 40, fillColor: ocean, borderRadius: 20, zIndex: zIndex++ });
+  elements.push({ id: "ocean-brand-text", type: "text", name: "Brand Text", x: pageW - 215, y: 54, width: 150, height: 22, text: brand, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textAlign: "center", textColor: "#FFFFFF", zIndex: zIndex++ });
+  elements.push({ id: "ocean-title", type: "text", name: "Title Main", x: 80, y: 280, width: pageW - 160, height: 110, text: `${title} ${year}`, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 44, fontWeight: "800", textColor: ocean, lineHeight: 1.1, letterSpacing: -1, isMetadataField: "assignmentTitle", zIndex: zIndex++ });
+  elements.push({ id: "ocean-subtitle", type: "text", name: "Subtitle", x: 80, y: 405, width: pageW - 160, height: 40, text: subtitle, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "ocean-meta-label", type: "text", name: "Prepared by Label", x: 80, y: 480, width: 320, height: 20, text: "Prepared by :", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
+  elements.push({ id: "ocean-meta-name", type: "text", name: "Author Name", x: 80, y: 505, width: 360, height: 32, text: author, fontFamily: "Inter, Montserrat, sans-serif", fontSize: 20, fontWeight: "800", textColor: ocean, isMetadataField: "studentName", zIndex: zIndex++ });
+  if (meta.instructorName) {
+    elements.push({ id: "ocean-instructor", type: "text", name: "Instructor", x: 80, y: 544, width: 360, height: 24, text: `Expedition Lead: ${meta.instructorName}`, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: "600", textColor: "#475569", isMetadataField: "instructorName", zIndex: zIndex++ });
+  }
+  elements.push({ id: "ocean-br-aqua", type: "shape", name: "Bottom Aqua Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: aqua, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${aqua}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "ocean-br-blue", type: "shape", name: "Bottom Ocean Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: ocean, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${ocean}"/></svg>`, zIndex: zIndex++ });
+  elements.push({ id: "ocean-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "LAT 32°44'N LONG 117°10'W • SCRIPPS SECTOR\nMarine Research Publishing • DocuMind", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
+  return elements;
+}
+
+// -------------------------------------------------------------
+// Scalable Registry of 84+ Modern Distinct Cover Templates
 // -------------------------------------------------------------
 export const COVER_TEMPLATES_REGISTRY: ExtendedCoverTemplateDefinition[] = [
   // -----------------------------------------------------------
-  // 0. CANVA PREMIER ARCHETYPES (Directly matching Canva Studio)
+  // 0. CANVA PREMIER ARCHETYPES (Modern Executive & Proposal Templates)
   // -----------------------------------------------------------
   {
     id: "canva-salford-wave",
@@ -2693,6 +3457,326 @@ export const COVER_TEMPLATES_REGISTRY: ExtendedCoverTemplateDefinition[] = [
     generateElements: generateCanvaBlueYellowProposal,
   },
   {
+    id: "canva-violet-aurora-wave",
+    name: "Violet & Cyan Fluid Aurora Modern Proposal",
+    tagline: "Canva Layered Aurora Waves & Modern Badge",
+    description: "Deep violet organic curved header with electric cyan underlay ribbon, dark brand pill badge, bold modern title, and matching dual-tone bottom wave curve.",
+    category: "Modern",
+    defaultAccent: "#4C1D95",
+    secondaryColor: "#06B6D4",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Aurora", "Violet", "Cyan", "Modern", "Proposal", "Wave"],
+    generateElements: generateCanvaVioletAuroraWave,
+  },
+  {
+    id: "canva-tokyo-neomodern",
+    name: "Tokyo Neo-Brutalist Tech Grid & Lime Ribbon",
+    tagline: "Canva High-Contrast Obsidian & Electric Lime Spec",
+    description: "Architectural dark charcoal header with electric lime pinstripe ribbon, dot matrix grid, monospace spec badge, and high-impact title block.",
+    category: "Modern",
+    defaultAccent: "#0F172A",
+    secondaryColor: "#84CC16",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, monospace",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Tokyo", "Brutalist", "Lime", "Tech", "Modern"],
+    generateElements: generateCanvaTokyoNeomodern,
+  },
+  {
+    id: "canva-scandinavian-frost",
+    name: "Nordic Minimalist Glacial Teal Curve",
+    tagline: "Canva Swiss Refined Organic Teal Ribbon",
+    description: "Flowing glacial teal organic curve with soft mint underlay, ultra-clean sans typography, minimalist divider rules, and elegant bottom accent.",
+    category: "Minimalist",
+    defaultAccent: "#0D9488",
+    secondaryColor: "#5EEAD4",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Nordic", "Teal", "Minimalist", "Clean"],
+    generateElements: generateCanvaScandinavianFrost,
+  },
+  {
+    id: "canva-crimson-executive-curve",
+    name: "Crimson Carmine & Gold Executive Ribbons",
+    tagline: "Canva Dynamic Fluid Corporate Curves",
+    description: "Flowing rich carmine red and warm gold dynamic wave curves, luxury editorial serif typography, executive metadata card, and matching bottom curve.",
+    category: "Business",
+    defaultAccent: "#991B1B",
+    secondaryColor: "#D97706",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Georgia, 'Playfair Display', serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Crimson", "Gold", "Executive", "Corporate", "Wave"],
+    generateElements: generateCanvaCrimsonExecutiveCurve,
+  },
+  {
+    id: "canva-sunset-horizon",
+    name: "Sunset Coral & Amber Organic Fluid Wave",
+    tagline: "Canva Warm Sunset Layered Flowing Contours",
+    description: "Radiant rose-coral and amber fluid wave ribbons curving gracefully across top and bottom, clean modern typography, and credentials badge.",
+    category: "Creative",
+    defaultAccent: "#E11D48",
+    secondaryColor: "#F59E0B",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Sunset", "Coral", "Amber", "Creative", "Wave"],
+    generateElements: generateCanvaSunsetHorizon,
+  },
+  {
+    id: "canva-cyber-hex-mesh",
+    name: "Cybernetic Cobalt & Aqua Hex Lattice",
+    tagline: "Canva STEM Architecture & System Blueprint",
+    description: "Deep cobalt angled tech polygons with aqua hexagon matrix accents, tech spec pill badge, and structured engineering metadata layout.",
+    category: "Research",
+    defaultAccent: "#2563EB",
+    secondaryColor: "#06B6D4",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, monospace",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Cyber", "Hex", "Research", "Tech", "Cobalt"],
+    generateElements: generateCanvaCyberHexMesh,
+  },
+  {
+    id: "canva-academic-crest-modern",
+    name: "Modern Ivy Academic Crest & Navy Arch",
+    tagline: "Canva Contemporary Collegiate Heraldry",
+    description: "Deep navy curved arch with heraldic crest emblem ribbon, golden amber rules, refined academic serif typography, and evaluator box.",
+    category: "Academic",
+    defaultAccent: "#1E3A8A",
+    secondaryColor: "#D97706",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Georgia, 'Playfair Display', serif",
+    borderStyle: "none",
+    logoPosition: "top-center",
+    metadataLayout: "centered",
+    tags: ["Canva", "Academic", "Ivy", "Crest", "University", "Navy"],
+    generateElements: generateCanvaAcademicCrestModern,
+  },
+  {
+    id: "canva-forest-botanical",
+    name: "Modern Emerald Botanical & Sage Ribbon",
+    tagline: "Canva Organic Nature & Sustainability Curve",
+    description: "Rich forest emerald and sage green flowing wave ribbons, clean modern typography, and environmental credentials stamp.",
+    category: "Modern",
+    defaultAccent: "#047857",
+    secondaryColor: "#10B981",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Emerald", "Botanical", "Sage", "Modern", "Sustainability"],
+    generateElements: generateCanvaForestBotanical,
+  },
+  {
+    id: "canva-terracotta-editorial",
+    name: "Terracotta & Warm Sand Editorial Magazine",
+    tagline: "Canva Organic Diagonal Earth Tone Waves",
+    description: "Warm terracotta and golden sand flowing organic wave ribbons, editorial serif typography, and elegant credentials layout.",
+    category: "Formal",
+    defaultAccent: "#C2410C",
+    secondaryColor: "#D97706",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Georgia, 'Playfair Display', serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Terracotta", "Editorial", "Earth", "Formal", "Wave"],
+    generateElements: generateCanvaTerracottaEditorial,
+  },
+  {
+    id: "canva-quantum-indigo",
+    name: "Quantum Indigo & Electric Violet Deck",
+    tagline: "Canva High-Coherence Tech Polygon Architecture",
+    description: "Deep indigo and electric cyan angular tech polygons with STEM dot cluster, monospace specs badge, and high-impact title block.",
+    category: "Research",
+    defaultAccent: "#312E81",
+    secondaryColor: "#06B6D4",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, monospace",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Quantum", "Indigo", "Research", "Tech", "Polygon"],
+    generateElements: generateCanvaQuantumIndigo,
+  },
+  {
+    id: "canva-monochrome-arch",
+    name: "Architectural Charcoal Arch & Zinc Slice",
+    tagline: "Canva Spatial Design & Brutalist Minimalism",
+    description: "Architectural charcoal geometric arch with zinc pinstripe contour, pill badge, and stark modern typography.",
+    category: "Geometric",
+    defaultAccent: "#18181B",
+    secondaryColor: "#71717A",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Charcoal", "Arch", "Architecture", "Geometric", "Brutalist"],
+    generateElements: generateCanvaMonochromeArch,
+  },
+  {
+    id: "canva-prism-geometric",
+    name: "Prismatic Cobalt & Coral Dynamic Facets",
+    tagline: "Canva Multi-Angle Polygons & Tech Grid",
+    description: "Dynamic cobalt and coral diagonal faceted polygons with dot matrix cluster and modern corporate credentials box.",
+    category: "Geometric",
+    defaultAccent: "#1D4ED8",
+    secondaryColor: "#F43F5E",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Prism", "Cobalt", "Coral", "Geometric", "Facet"],
+    generateElements: generateCanvaPrismGeometric,
+  },
+  {
+    id: "canva-bauhaus-modernist",
+    name: "Modern Bauhaus Primary Color Blocking",
+    tagline: "Canva Asymmetric Modernism & Bold Geometry",
+    description: "Deep navy header bar with vermilion circle cutout, golden yellow underlay rule, and heavy grotesque typography.",
+    category: "Creative",
+    defaultAccent: "#0F172A",
+    secondaryColor: "#EF4444",
+    backgroundColor: "#FAFAFA",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Bauhaus", "Primary", "Creative", "Color Block", "Modernist"],
+    generateElements: generateCanvaBauhausModernist,
+  },
+  {
+    id: "canva-gradient-glassmorphism",
+    name: "Pastel Gradient Wave & Glass Card",
+    tagline: "Canva Soft Mesh Gradient & Glassmorphism Card",
+    description: "Pastel indigo and pink fluid waves surrounding a central rounded glass card with contemporary badge and typography.",
+    category: "Modern",
+    defaultAccent: "#6366F1",
+    secondaryColor: "#EC4899",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Pastel", "Gradient", "Glass", "Modern", "Wave"],
+    generateElements: generateCanvaGradientGlassmorphism,
+  },
+  {
+    id: "canva-cyberpunk-neon",
+    name: "Cyberpunk Neon Grid & Cyan Wedge",
+    tagline: "Canva High-Impact Dark Matrix & Neon Geometry",
+    description: "Obsidian dark polygon wedge header with electric neon cyan and magenta laser rules, dot matrix grid, and monospace specs badge.",
+    category: "Research",
+    defaultAccent: "#00F0FF",
+    secondaryColor: "#EC4899",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, monospace",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Cyberpunk", "Neon", "Cyan", "Research", "Tech"],
+    generateElements: generateCanvaCyberpunkNeon,
+  },
+  {
+    id: "canva-emerald-blueprint",
+    name: "Emerald Quartz Hexagonal Blueprint",
+    tagline: "Canva Sustainable Engineering & Hex Lattice",
+    description: "Deep emerald and mint flowing wave ribbons, pill badge, and sustainable architectural credentials box.",
+    category: "Geometric",
+    defaultAccent: "#065F46",
+    secondaryColor: "#10B981",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Emerald", "Blueprint", "Hex", "Sustainability", "Geometric"],
+    generateElements: generateCanvaEmeraldBlueprint,
+  },
+  {
+    id: "canva-rose-gold-luxury",
+    name: "Rose Gold Luxury Fluid Ribbon",
+    tagline: "Canva High-End Editorial Metallic Waves",
+    description: "Flowing luxury rose-coral and metallic gold wave ribbons sweeping across top and bottom, editorial serif typography, and credentials badge.",
+    category: "Creative",
+    defaultAccent: "#E11D48",
+    secondaryColor: "#FBBF24",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Georgia, 'Playfair Display', serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Rose Gold", "Luxury", "Waves", "Creative", "Editorial"],
+    generateElements: generateCanvaRoseGoldLuxury,
+  },
+  {
+    id: "canva-swiss-international",
+    name: "Swiss International Bold Grid 2026",
+    tagline: "Canva Zurich Objective Grotesque Layout",
+    description: "Heavy black and international orange anchor block with oversized numeral, clean mathematical grid line, and authoritative typography.",
+    category: "Minimalist",
+    defaultAccent: "#111827",
+    secondaryColor: "#EA580C",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Swiss", "International", "Minimalist", "Grotesque", "Grid"],
+    generateElements: generateCanvaSwissInternational,
+  },
+  {
+    id: "canva-stanford-cardinal-wave",
+    name: "Stanford Cardinal Executive Diagonal Wave",
+    tagline: "Canva Dynamic Cardinal Crimson & Gold Contours",
+    description: "Dynamic Stanford cardinal red and warm gold organic wave ribbons, collegiate pill badge, and academic research publication footer.",
+    category: "Academic",
+    defaultAccent: "#8C1515",
+    secondaryColor: "#E98300",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Stanford", "Cardinal", "Academic", "Wave", "Gold"],
+    generateElements: generateCanvaStanfordCardinalWave,
+  },
+  {
+    id: "canva-oceanic-maritime-curve",
+    name: "Oceanic Deep Sapphire & Aquamarine Curve",
+    tagline: "Canva Marine Expedition & Pelagic Oceanography",
+    description: "Deep ocean sapphire and aquamarine layered fluid wave ribbons with research vessel coordinates stamp and environmental metadata layout.",
+    category: "Creative",
+    defaultAccent: "#0369A1",
+    secondaryColor: "#0D9488",
+    backgroundColor: "#FFFFFF",
+    fontFamily: "Inter, Montserrat, sans-serif",
+    borderStyle: "none",
+    logoPosition: "top-left",
+    metadataLayout: "left-stacked",
+    tags: ["Canva", "Ocean", "Maritime", "Aquamarine", "Creative", "Wave"],
+    generateElements: generateCanvaOceanicMaritimeCurve,
+  },
+  {
     id: "canva-diagonal-stripes",
     name: "Modern Diagonal Tech Stripes",
     tagline: "Dynamic Angular Slices & Dot Accents",
@@ -2772,8 +3856,7 @@ export const COVER_TEMPLATES_REGISTRY: ExtendedCoverTemplateDefinition[] = [
     tags: ["Canva", "Warm", "Editorial", "Split"],
     generateElements: generateCanvaWarmEditorial,
   },
-  // -----------------------------------------------------------
-  // 1. ACADEMIC ARCHETYPES (1 - 8)
+// 1. ACADEMIC ARCHETYPES (1 - 8)
   // -----------------------------------------------------------
   {
     id: "classic-university",

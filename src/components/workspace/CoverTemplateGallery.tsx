@@ -90,7 +90,7 @@ export function CoverTemplateGallery({
             </span>
           </div>
           <h3 className="text-base font-serif font-bold text-foreground flex items-center gap-2">
-            <span>50+ Cover-Page Template Library</span>
+            <span>75+ Modern Cover-Page Template Library</span>
             <span className="font-mono text-[11px] font-semibold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
               {COVER_TEMPLATES.length} Styles
             </span>
