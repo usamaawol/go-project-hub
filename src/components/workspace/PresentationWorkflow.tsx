@@ -1189,7 +1189,7 @@ export function PresentationWorkflow({
               {/* 100% Free Themes Policy */}
               <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3.5 py-1.5 font-mono text-xs font-semibold border border-emerald-500/25 shadow-xs">
                 <Check className="h-3.5 w-3.5" />
-                <span>110 Themes 100% Free</span>
+                <span>{TEMPLATES.length}+ Modern Themes 100% Free</span>
               </div>
             </div>
 
@@ -1247,7 +1247,7 @@ export function PresentationWorkflow({
                     <div>
                       {/* Mini Thumbnail */}
                       <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-border/80">
-                        <ThemeThumb kind={t.kind} slide={0} />
+                        <ThemeThumb template={t} kind={t.kind} slide={0} />
                         <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
                           <span className="rounded-full bg-emerald-600/90 px-1.5 py-0.2 font-mono text-[9px] font-bold text-white uppercase">
                             Free
@@ -1849,7 +1849,7 @@ export function PresentationWorkflow({
             {/* Slide Preview Viewer */}
             <div className="mt-4 space-y-4">
               <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-border shadow-inner">
-                <ThemeThumb kind={previewTemplate.kind} slide={previewSlideIdx} />
+                <ThemeThumb template={previewTemplate} kind={previewTemplate.kind} slide={previewSlideIdx} />
               </div>
 
               {/* Slide Type Switcher Tabs */}

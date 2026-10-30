@@ -1,5 +1,7 @@
-export type ThemeKind =
-  "academic" | "business" | "tech" | "pitch" | "research" | "education" | "creative" | "minimal";
+import React from "react";
+import type { ThemeKind } from "@/lib/presentation-theme";
+
+export { type ThemeKind };
 
 export type SlideType = 0 | 1 | 2 | 3;
 
@@ -10,184 +12,224 @@ export const SLIDE_LABELS: Record<SlideType, string> & readonly string[] = [
   "Summary & Takeaways",
 ];
 
-interface ThemeThumbProps {
-  kind: ThemeKind;
+export interface ThemeThumbTemplate {
+  id?: string;
+  name?: string;
+  category?: string;
+  kind?: ThemeKind;
+  fonts?: string;
+  colors?: {
+    primary: string;
+    accent: string;
+    bg: string;
+  };
+  description?: string;
+}
+
+export interface ThemeThumbProps {
+  kind?: ThemeKind;
   slideIndex?: SlideType;
   slide?: SlideType;
   className?: string;
+  template?: ThemeThumbTemplate | null;
+  templateId?: string;
+  name?: string;
+  category?: string;
+  colors?: {
+    primary: string;
+    accent: string;
+    bg: string;
+  };
+  fonts?: string;
 }
 
-/** Original slide compositions — each kind has its own layout, not a recolor. */
-export function ThemeThumb({ kind, slideIndex = 0, slide, className = "" }: ThemeThumbProps) {
-  const activeSlide = slide !== undefined ? slide : slideIndex;
+function getLuminance(hex: string): number {
+  const clean = (hex || "").replace("#", "").trim();
+  if (clean.length !== 6) return 0.5;
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+/**
+ * Modern Slidesgo-Inspired Presentation Slide Thumbnail
+ * Accurately renders Slidesgo minimalist aesthetic with high-contrast typography,
+ * organic curves, geometric cutouts, frosted mesh gradients, and palette switchers.
+ */
+export function ThemeThumb({
+  kind,
+  slideIndex = 0,
+  slide,
+  className = "",
+  template,
+  templateId,
+  name,
+  category,
+  colors,
+}: ThemeThumbProps) {
+  const activeSlide: SlideType = slide !== undefined ? slide : slideIndex;
   const base = `relative aspect-video w-full overflow-hidden rounded-md select-none ${className}`;
 
+  const id = template?.id || templateId || "";
+
+  // 1. Bespoke Slidesgo Minimalist Template Renderers (Matching User's Reference Screenshots)
+  switch (id) {
+    case "slidesgo-minimalist-grayscale":
+      return renderSlidesgoMinimalistGrayscale(base, activeSlide);
+    case "slidesgo-minimalist-business":
+      return renderSlidesgoMinimalistBusiness(base, activeSlide);
+    case "slidesgo-korean-aesthetic":
+      return renderSlidesgoKoreanAesthetic(base, activeSlide);
+    case "slidesgo-minimal-gradient":
+      return renderSlidesgoMinimalGradient(base, activeSlide);
+    case "slidesgo-lead-funnel":
+      return renderSlidesgoLeadFunnel(base, activeSlide);
+    case "slidesgo-interior-design":
+      return renderSlidesgoInteriorDesign(base, activeSlide);
+    case "slidesgo-minimalist-pitch":
+      return renderSlidesgoMinimalistPitch(base, activeSlide);
+    case "slidesgo-work-life":
+      return renderSlidesgoWorkLife(base, activeSlide);
+    case "slidesgo-thesis-defense":
+      return renderSlidesgoThesisDefense(base, activeSlide);
+    case "slidesgo-minimal-charm":
+      return renderSlidesgoMinimalCharm(base, activeSlide);
+    case "slidesgo-industrial-project":
+      return renderSlidesgoIndustrialProject(base, activeSlide);
+    case "slidesgo-engineering-proposal":
+      return renderSlidesgoEngineeringProposal(base, activeSlide);
+    case "slidesgo-oncology-breakthrough":
+      return renderSlidesgoOncologyBreakthrough(base, activeSlide);
+    case "slidesgo-clean-portfolio":
+      return renderSlidesgoCleanPortfolio(base, activeSlide);
+    case "slidesgo-green-slides":
+      return renderSlidesgoGreenSlides(base, activeSlide);
+    case "slidesgo-argumentative-fallacy":
+      return renderSlidesgoArgumentativeFallacy(base, activeSlide);
+    case "slidesgo-hs-planner":
+      return renderSlidesgoHsPlanner(base, activeSlide);
+    case "slidesgo-elegant-thesis":
+      return renderSlidesgoElegantThesis(base, activeSlide);
+    case "slidesgo-case-report":
+      return renderSlidesgoCaseReport(base, activeSlide);
+    case "slidesgo-formal-portfolio":
+      return renderSlidesgoFormalPortfolio(base, activeSlide);
+  }
+
+  // 2. Dynamic Modern Slidesgo-Grade Renderer for Any of the 100+ Catalog Templates
+  if (template || colors || name) {
+    const effectiveTemplate: ThemeThumbTemplate = {
+      id: id || "custom-template",
+      name: template?.name || name || "Modern Presentation",
+      category: template?.category || category || "Business",
+      kind: template?.kind || kind || "minimal",
+      fonts: template?.fonts || "Inter",
+      colors: template?.colors || colors || { primary: "#0F172A", accent: "#2563EB", bg: "#FFFFFF" },
+    };
+    return renderModernDynamicTemplate(base, activeSlide, effectiveTemplate);
+  }
+
+  // 3. Fallback when only `kind` is provided (with upgraded Slidesgo-level aesthetics)
   switch (kind) {
     case "academic":
-      return renderAcademic(base, activeSlide);
+      return renderModernAcademic(base, activeSlide);
     case "business":
-      return renderBusiness(base, activeSlide);
+      return renderModernBusiness(base, activeSlide);
     case "tech":
-      return renderTech(base, activeSlide);
+      return renderModernTech(base, activeSlide);
     case "pitch":
-      return renderPitch(base, activeSlide);
+      return renderModernPitch(base, activeSlide);
     case "research":
-      return renderResearch(base, activeSlide);
+      return renderModernResearch(base, activeSlide);
     case "education":
-      return renderEducation(base, activeSlide);
+      return renderModernEducation(base, activeSlide);
     case "creative":
-      return renderCreative(base, activeSlide);
+      return renderModernCreative(base, activeSlide);
     case "minimal":
-      return renderMinimal(base, activeSlide);
+    default:
+      return renderSlidesgoMinimalistBusiness(base, activeSlide);
   }
 }
 
-function renderAcademic(base: string, slide: SlideType) {
+// -----------------------------------------------------------------------------
+// 1. BESPOKE SLIDESGO MINIMALIST RENDERERS (From User's Screenshots)
+// -----------------------------------------------------------------------------
+
+/** 1. Minimalist Grayscale Pitch Deck (Stark diagonal black triangle, crisp architectural lines) */
+function renderSlidesgoMinimalistGrayscale(base: string, slide: SlideType) {
   if (slide === 0) {
     return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute inset-y-0 left-0 w-[6%] bg-ink" />
-        <div className="absolute left-[12%] top-[14%] h-[4%] w-[26%] bg-primary/70 rounded-xs" />
-        <div className="absolute left-[12%] top-[24%] h-[10%] w-[64%] rounded-sm bg-ink" />
-        <div className="absolute left-[12%] top-[38%] h-[5%] w-[44%] rounded-sm bg-ink/40" />
-        <div className="absolute bottom-[14%] left-[12%] right-[10%] space-y-[3%]">
-          {[90, 80, 86].map((w) => (
-            <div key={w} className="h-[3px] rounded bg-ink/20" style={{ width: `${w}%` }} />
-          ))}
+      <div className={`${base} bg-[#F8FAFC]`}>
+        {/* Left Stark Architecture */}
+        <div className="absolute left-[7%] top-[14%] flex items-center gap-1.5">
+          <span className="px-1.5 py-0.5 rounded-xs bg-zinc-200 text-zinc-800 font-mono text-[8px] font-bold">16:9</span>
+          <span className="font-mono text-[7px] text-zinc-400">PITCH DECK</span>
         </div>
-        <div className="absolute right-[8%] top-[14%] flex h-[26%] w-[16%] items-center justify-center rounded-full border-2 border-ink/30 text-[7px] font-serif font-bold text-ink/40">
-          EST.
+        <div className="absolute left-[7%] top-[30%] space-y-1">
+          <div className="h-[2px] w-8 bg-zinc-300" />
+          <div className="h-[1.5px] w-12 bg-zinc-200" />
         </div>
+        {/* Diagonal Dark Charcoal Wedge */}
+        <div
+          style={{ clipPath: "polygon(34% 0, 100% 0, 100% 100%, 14% 100%)", backgroundColor: "#18181B" }}
+          className="absolute inset-0 flex flex-col justify-center items-end pr-[8%] pl-[35%]"
+        >
+          <h3 className="font-sans font-black text-white text-[12px] sm:text-[14px] tracking-tight uppercase leading-tight text-right">
+            MINIMALIST<br />GRAYSCALE<br />PITCH DECK
+          </h3>
+          <p className="text-[6.5px] sm:text-[7.5px] text-zinc-400 mt-2 font-light text-right">
+            Here is where your presentation begins
+          </p>
+        </div>
+        {/* Razor-thin diagonal line overlay */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "linear-gradient(114deg, transparent 33.6%, #71717A 33.8%, transparent 34.2%)" }}
+        />
       </div>
     );
   }
   if (slide === 1) {
     return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute inset-y-0 left-0 w-[6%] bg-ink" />
-        <div className="absolute left-[12%] top-[12%] flex items-center justify-between right-[8%] border-b border-ink/20 pb-1">
-          <div className="h-[6px] w-[35%] rounded-xs bg-ink" />
-          <span className="font-mono text-[7px] text-ink/50">Lecture Outline</span>
+      <div className={`${base} bg-[#FFFFFF] flex`}>
+        <div className="w-[30%] bg-[#18181B] p-[4%] flex flex-col justify-between text-white">
+          <span className="font-mono text-[8px] tracking-widest text-zinc-400">01 // ROADMAP</span>
+          <h4 className="font-sans font-black text-[11px] leading-tight uppercase">AGENDA</h4>
         </div>
-        <div className="absolute left-[12%] right-[8%] top-[30%] space-y-[6%]">
-          {[
-            { num: "01", w: 75 },
-            { num: "02", w: 85 },
-            { num: "03", w: 60 },
-          ].map((item) => (
-            <div key={item.num} className="flex items-center gap-[4%]">
-              <span className="font-mono text-[8px] font-bold text-primary">{item.num}</span>
-              <div className="h-[4px] rounded bg-ink/70" style={{ width: `${item.w}%` }} />
-            </div>
-          ))}
+        <div className="w-[70%] p-[5%] flex flex-col justify-center space-y-2">
+          {["01. The Problem Space", "02. Minimalist Architecture", "03. Unit Economics & Scale", "04. Capital Horizon"].map(
+            (item, i) => (
+              <div key={i} className="flex items-center justify-between border-b border-zinc-200 pb-1 text-[7.5px] text-zinc-800 font-medium">
+                <span>{item}</span>
+                <span className="font-mono text-zinc-400 text-[6.5px]">0{i + 1}</span>
+              </div>
+            ),
+          )}
         </div>
       </div>
     );
   }
   if (slide === 2) {
     return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute inset-y-0 left-0 w-[6%] bg-ink" />
-        <div className="absolute left-[12%] top-[12%] h-[6px] w-[40%] rounded-xs bg-ink" />
-        <div className="absolute left-[12%] top-[26%] grid grid-cols-2 gap-[6%] right-[8%] bottom-[12%]">
-          <div className="rounded border border-ink/20 p-[4%] space-y-[4%]">
-            <div className="h-[4px] w-[60%] rounded bg-primary" />
-            <div className="space-y-[3%]">
-              {[90, 80, 85].map((w) => (
-                <div key={w} className="h-[2px] rounded bg-ink/30" style={{ width: `${w}%` }} />
-              ))}
-            </div>
-          </div>
-          <div className="flex flex-col items-center justify-center rounded bg-ink/5 border border-dashed border-ink/20 p-[4%]">
-            <div className="h-[40%] w-[60%] rounded bg-primary/20 flex items-center justify-center text-[7px] font-serif text-ink">
-              Diagram
-            </div>
-            <div className="mt-1 h-[2px] w-[70%] rounded bg-ink/20" />
-          </div>
+      <div className={`${base} bg-[#F8FAFC] p-[5%]`}>
+        <div className="flex items-center justify-between border-b border-zinc-300 pb-1">
+          <span className="font-sans font-bold text-[9px] uppercase text-zinc-900">Key Traction Metrics</span>
+          <span className="font-mono text-[7px] text-zinc-400">16:9 • Q4 2026</span>
         </div>
-      </div>
-    );
-  }
-  return (
-    <div className={`${base} bg-paper`}>
-      <div className="absolute inset-y-0 left-0 w-[6%] bg-ink" />
-      <div className="absolute left-[12%] top-[12%] h-[6px] w-[35%] rounded-xs bg-ink" />
-      <div className="absolute left-[12%] right-[8%] top-[28%] rounded-sm bg-primary/10 p-[4%] border-l-2 border-primary">
-        <div className="h-[5px] w-[80%] rounded bg-ink" />
-        <div className="mt-1 h-[3px] w-[65%] rounded bg-ink/50" />
-      </div>
-      <div className="absolute left-[12%] right-[8%] bottom-[14%] border-t border-ink/15 pt-1 flex justify-between text-[6px] text-ink/40 font-mono">
-        <span>Citations: Smith et al. (2025)</span>
-        <span>p. 142-159</span>
-      </div>
-    </div>
-  );
-}
-
-function renderBusiness(base: string, slide: SlideType) {
-  if (slide === 0) {
-    return (
-      <div className={`${base} bg-ink`}>
-        <div className="absolute left-[7%] top-[12%] h-[7%] w-[40%] rounded-sm bg-paper" />
-        <div className="absolute left-[7%] top-[24%] h-[4%] w-[28%] rounded-sm bg-paper/40" />
-        <div className="absolute bottom-[14%] left-[7%] flex h-[48%] w-[44%] items-end gap-[6%]">
-          {[40, 62, 50, 82, 96].map((h, i) => (
-            <div
-              key={i}
-              className={`flex-1 rounded-t-sm ${i === 4 ? "bg-warning" : "bg-paper/30"}`}
-              style={{ height: `${h}%` }}
-            />
-          ))}
-        </div>
-        <div className="absolute right-[7%] top-[30%] grid w-[36%] grid-cols-2 gap-[8%]">
-          {["bg-warning", "bg-paper/25", "bg-paper/25", "bg-paper/25"].map((c, i) => (
-            <div key={i} className={`aspect-[4/3] rounded-sm ${c}`} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-  if (slide === 1) {
-    return (
-      <div className={`${base} bg-ink`}>
-        <div className="absolute left-[7%] top-[10%] h-[6%] w-[35%] rounded-sm bg-paper" />
-        <div className="absolute left-[7%] right-[7%] top-[26%] grid grid-cols-3 gap-[4%]">
+        <div className="grid grid-cols-3 gap-2 mt-3">
           {[
-            { val: "+42%", lbl: "YoY ARR" },
-            { val: "$18.4M", lbl: "Revenue" },
-            { val: "138%", lbl: "NDR" },
-          ].map((k) => (
-            <div
-              key={k.lbl}
-              className="rounded border border-paper/15 bg-paper/5 p-[6%] text-center"
-            >
-              <span className="font-mono text-[9px] font-bold text-warning">{k.val}</span>
-              <div className="mt-1 text-[6px] text-paper/60 uppercase">{k.lbl}</div>
-            </div>
-          ))}
-        </div>
-        <div className="absolute bottom-[14%] left-[7%] right-[7%] space-y-1">
-          <div className="h-[2px] w-[90%] rounded bg-paper/20" />
-          <div className="h-[2px] w-[75%] rounded bg-paper/15" />
-        </div>
-      </div>
-    );
-  }
-  if (slide === 2) {
-    return (
-      <div className={`${base} bg-ink`}>
-        <div className="absolute left-[7%] top-[10%] flex justify-between right-[7%] items-center">
-          <div className="h-[6%] w-[30%] rounded-sm bg-paper" />
-          <span className="font-mono text-[6px] text-warning">Q1-Q4 Actuals</span>
-        </div>
-        <div className="absolute bottom-[14%] left-[7%] right-[7%] h-[60%] flex items-end justify-between gap-[5%] border-b border-paper/20 pb-1">
-          {[30, 48, 65, 88, 70, 95].map((h, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-              <div
-                className={`w-full rounded-t-xs ${i >= 4 ? "bg-warning" : "bg-paper/40"}`}
-                style={{ height: `${h}%` }}
-              />
-              <span className="text-[5px] font-mono text-paper/40">M{i + 1}</span>
+            { val: "+148%", label: "YoY Growth" },
+            { val: "3.8x", label: "Capital Efficiency" },
+            { val: "94%", label: "Net Retention" },
+          ].map((m, i) => (
+            <div key={i} className="border border-zinc-300 bg-white p-2 rounded-xs flex flex-col justify-between">
+              <span className="font-sans font-black text-[13px] text-zinc-900">{m.val}</span>
+              <span className="font-sans text-[6.5px] text-zinc-500 uppercase mt-1">{m.label}</span>
+              <div className="h-1 w-full bg-zinc-100 rounded-full mt-1.5 overflow-hidden">
+                <div className="h-full bg-zinc-800" style={{ width: i === 0 ? "80%" : i === 1 ? "65%" : "90%" }} />
+              </div>
             </div>
           ))}
         </div>
@@ -195,75 +237,73 @@ function renderBusiness(base: string, slide: SlideType) {
     );
   }
   return (
-    <div className={`${base} bg-ink`}>
-      <div className="absolute left-[7%] top-[10%] h-[6%] w-[38%] rounded-sm bg-paper" />
-      <div className="absolute left-[7%] right-[7%] top-[24%] grid grid-cols-2 gap-[5%]">
-        <div className="rounded border border-warning/30 bg-warning/5 p-[5%] space-y-1">
-          <span className="text-[7px] font-bold text-warning uppercase">Key Decision</span>
-          <div className="h-[3px] w-[90%] rounded bg-paper/80" />
-          <div className="h-[2px] w-[70%] rounded bg-paper/40" />
-        </div>
-        <div className="rounded border border-paper/10 bg-paper/5 p-[5%] space-y-1">
-          <span className="text-[7px] font-bold text-paper/80 uppercase">Next Steps</span>
-          <div className="h-[3px] w-[85%] rounded bg-paper/60" />
-          <div className="h-[2px] w-[60%] rounded bg-paper/30" />
-        </div>
+    <div className={`${base} bg-[#18181B] text-white p-[6%] flex flex-col justify-between`}>
+      <span className="font-mono text-[7.5px] tracking-widest text-zinc-400">CONCLUSION</span>
+      <div className="max-w-[80%]">
+        <p className="font-serif italic text-[11px] sm:text-[13px] text-zinc-100 leading-snug">
+          &ldquo;Truth is ever to be found in simplicity, and not in the multiplicity and confusion of things.&rdquo;
+        </p>
+        <span className="text-[7.5px] font-sans text-zinc-400 block mt-1.5">— Isaac Newton</span>
       </div>
-      <div className="absolute bottom-[10%] right-[7%] text-[6px] font-mono text-paper/30">
-        Board Approval Required
+      <div className="border-t border-zinc-800 pt-1 flex justify-between font-mono text-[6.5px] text-zinc-500">
+        <span>Strategic Synthesis</span>
+        <span>Open for Questions</span>
       </div>
     </div>
   );
 }
 
-function renderTech(base: string, slide: SlideType) {
+/** 2. Minimalist Business Slides (Organic flowing line, editorial serif, pastel switcher dots) */
+function renderSlidesgoMinimalistBusiness(base: string, slide: SlideType) {
   if (slide === 0) {
     return (
-      <div className={`${base} bg-background`}>
-        <div className="absolute inset-0 grid-lines opacity-80" />
-        <div className="absolute -right-[10%] -top-[30%] h-[120%] w-[60%] rounded-full bg-primary/30 blur-2xl" />
-        <svg viewBox="0 0 100 56" className="absolute inset-0 h-full w-full">
-          {[
-            [60, 18],
-            [78, 30],
-            [66, 42],
-            [86, 14],
-            [90, 44],
-          ].map(([x, y], i) => (
-            <g key={i}>
-              <line
-                x1="72"
-                y1="28"
-                x2={x}
-                y2={y}
-                stroke="var(--cyan)"
-                strokeWidth="0.4"
-                opacity="0.7"
-              />
-              <circle cx={x} cy={y} r="1.6" fill="var(--cyan)" />
-            </g>
-          ))}
-          <circle cx="72" cy="28" r="3" fill="var(--primary)" />
+      <div className={`${base} bg-[#FAF8F5]`}>
+        {/* Organic curved contour lines */}
+        <svg viewBox="0 0 400 225" className="absolute inset-0 w-full h-full pointer-events-none opacity-85">
+          <path d="M-20,45 Q70,-10 150,45 T300,25 Q370,60 420,30" fill="none" stroke="#27272A" strokeWidth="1.2" />
+          <path d="M260,235 Q320,180 370,195 T430,165" fill="none" stroke="#27272A" strokeWidth="1.2" />
         </svg>
-        <div className="absolute left-[7%] top-[30%] h-[4%] w-[16%] rounded-sm bg-cyan" />
-        <div className="absolute left-[7%] top-[40%] h-[10%] w-[42%] rounded-sm bg-foreground" />
-        <div className="absolute left-[7%] top-[55%] h-[4%] w-[30%] rounded-sm bg-muted-foreground/60" />
+
+        {/* Centered Editorial Typography */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-[6%] text-center">
+          <h3 className="font-serif font-bold text-zinc-900 text-[13px] sm:text-[16px] tracking-tight leading-tight">
+            Minimalist<br />
+            <span className="font-serif italic font-normal text-zinc-800">Business Slides</span>
+          </h3>
+          <p className="text-[7px] sm:text-[8px] text-zinc-500 font-sans mt-1.5">
+            Here is where your presentation begins
+          </p>
+
+          {/* Slidesgo signature pastel color switchers */}
+          <div className="flex items-center justify-center gap-1.5 mt-3">
+            <span className="h-2 w-2 rounded-full border-2 border-blue-500 bg-white" />
+            <span className="h-2 w-2 rounded-full border border-zinc-300 bg-zinc-200" />
+            <span className="h-2 w-2 rounded-full border border-purple-200 bg-purple-100" />
+            <span className="h-2 w-2 rounded-full border border-emerald-200 bg-emerald-100" />
+            <span className="h-2 w-2 rounded-full border border-rose-200 bg-rose-100" />
+          </div>
+        </div>
       </div>
     );
   }
   if (slide === 1) {
     return (
-      <div className={`${base} bg-background`}>
-        <div className="absolute inset-0 grid-lines opacity-40" />
-        <div className="absolute left-[7%] top-[10%] h-[5%] w-[30%] rounded-sm bg-cyan" />
-        <div className="absolute left-[7%] right-[7%] top-[24%] bottom-[12%] flex items-center justify-between gap-[3%]">
-          {["Ingest API", "Worker Pool", "Vector DB"].map((node, i) => (
-            <div key={node} className="flex-1 flex flex-col items-center">
-              <div className="w-full rounded border border-cyan/40 bg-surface/80 p-[8%] text-center shadow-glow">
-                <span className="font-mono text-[7px] text-cyan">{node}</span>
-                <div className="mt-1 h-[2px] w-[50%] mx-auto rounded bg-primary/50" />
-              </div>
-              {i < 2 && <div className="mt-1 font-mono text-[8px] text-muted-foreground">→</div>}
+      <div className={`${base} bg-[#FAF8F5] p-[5%]`}>
+        <div className="border-b border-zinc-300/80 pb-1 flex justify-between items-baseline">
+          <h4 className="font-serif font-bold text-[10px] text-zinc-900">Agenda &amp; Structure</h4>
+          <span className="font-mono text-[7px] text-zinc-400">Minimalist Business</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          {[
+            { num: "01", t: "Corporate Vision", desc: "Foundational philosophy & core principles" },
+            { num: "02", t: "Operating Plan", desc: "Resource allocation & milestone delivery" },
+            { num: "03", t: "Market Dynamics", desc: "Competitive landscape & unit moats" },
+            { num: "04", t: "Forward Outlook", desc: "Projections & organizational rollout" },
+          ].map((item) => (
+            <div key={item.num} className="bg-white/80 border border-zinc-200 p-2 rounded-sm space-y-0.5">
+              <span className="font-mono text-[7.5px] font-bold text-blue-600">{item.num}</span>
+              <p className="font-serif font-semibold text-[8px] text-zinc-900">{item.t}</p>
+              <p className="font-sans text-[6px] text-zinc-500">{item.desc}</p>
             </div>
           ))}
         </div>
@@ -272,26 +312,21 @@ function renderTech(base: string, slide: SlideType) {
   }
   if (slide === 2) {
     return (
-      <div className={`${base} bg-background`}>
-        <div className="absolute inset-0 grid-lines opacity-40" />
-        <div className="absolute left-[7%] top-[10%] flex justify-between right-[7%]">
-          <div className="h-[5%] w-[36%] rounded-sm bg-cyan" />
-          <span className="font-mono text-[6px] text-success">p99 Latency: 14ms</span>
+      <div className={`${base} bg-[#FAF8F5] p-[5%]`}>
+        <div className="flex items-center justify-between border-b border-zinc-300/80 pb-1">
+          <h4 className="font-serif font-bold text-[10px] text-zinc-900">Key Performance Drivers</h4>
+          <span className="text-[6.5px] font-mono text-blue-600 font-semibold">+32% EFFICIENCY</span>
         </div>
-        <div className="absolute left-[7%] right-[7%] top-[26%] space-y-[4%]">
+        <div className="grid grid-cols-3 gap-2 mt-3">
           {[
-            { label: "DocuMind Engine", pct: 92, col: "bg-cyan" },
-            { label: "Legacy Parser", pct: 40, col: "bg-muted-foreground/40" },
-            { label: "Standard Cloud OCR", pct: 60, col: "bg-muted-foreground/50" },
-          ].map((b) => (
-            <div key={b.label}>
-              <div className="flex justify-between text-[6px] font-mono text-muted-foreground mb-0.5">
-                <span>{b.label}</span>
-                <span>{b.pct}%</span>
-              </div>
-              <div className="h-[4px] w-full rounded bg-surface overflow-hidden">
-                <div className={`h-full ${b.col}`} style={{ width: `${b.pct}%` }} />
-              </div>
+            { label: "Client Satisfaction", score: "98.4%", color: "#2563EB" },
+            { label: "Margin Expansion", score: "+14.2%", color: "#10B981" },
+            { label: "On-Time Velocity", score: "96.1%", color: "#8B5CF6" },
+          ].map((col, i) => (
+            <div key={i} className="bg-white border border-zinc-200 p-2 rounded-sm text-center">
+              <span className="font-serif font-bold text-[12px] text-zinc-900">{col.score}</span>
+              <p className="text-[6.5px] font-sans text-zinc-500 mt-0.5">{col.label}</p>
+              <div className="h-1 w-8 mx-auto mt-1 rounded-full" style={{ backgroundColor: col.color }} />
             </div>
           ))}
         </div>
@@ -299,370 +334,543 @@ function renderTech(base: string, slide: SlideType) {
     );
   }
   return (
-    <div className={`${base} bg-background`}>
-      <div className="absolute left-[7%] top-[10%] h-[5%] w-[30%] rounded-sm bg-cyan" />
-      <div className="absolute left-[7%] right-[7%] top-[24%] bottom-[12%] rounded border border-border bg-black/60 p-[4%] font-mono text-[6px] text-cyan/90 overflow-hidden space-y-1">
-        <p className="text-muted-foreground">// API Initialization</p>
-        <p className="text-primary font-bold">const doc = await documind.process(&#123;</p>
-        <p className="pl-2">mode: &quot;high_precision&quot;,</p>
-        <p className="pl-2">preserveLayout: true</p>
-        <p className="text-primary font-bold">&#125;);</p>
+    <div className={`${base} bg-[#FAF8F5] p-[6%] flex flex-col justify-between text-center`}>
+      <span className="font-mono text-[7px] text-zinc-400 tracking-widest uppercase">Takeaway Summary</span>
+      <div className="max-w-[75%] mx-auto">
+        <h4 className="font-serif text-[11px] sm:text-[13px] text-zinc-900 font-bold leading-snug">
+          &ldquo;Clarity precedes mastery. Eliminate the non-essential to reveal true value.&rdquo;
+        </h4>
+        <p className="text-[7.5px] font-sans text-zinc-500 mt-1">Ready for executive review</p>
+      </div>
+      <div className="flex items-center justify-center gap-1 text-[6.5px] font-mono text-zinc-400">
+        <span>DocuMind Studio</span>
+        <span>•</span>
+        <span>Minimalist Business Slides</span>
       </div>
     </div>
   );
 }
 
-function renderPitch(base: string, slide: SlideType) {
-  if (slide === 0) {
-    return (
-      <div className={`${base} bg-brand`}>
-        <div className="absolute left-[8%] top-[18%] font-display text-[clamp(10px,2.4vw,22px)] font-bold leading-none text-primary-foreground">
-          $4.2M
-        </div>
-        <div className="absolute left-[8%] top-[46%] h-[5%] w-[34%] rounded-sm bg-primary-foreground/70" />
-        <div className="absolute left-[8%] top-[56%] h-[4%] w-[24%] rounded-sm bg-primary-foreground/40" />
-        <div className="absolute bottom-0 right-[6%] h-[78%] w-[38%] rounded-t-lg bg-ink/80 p-[3%]">
-          <div className="h-[18%] w-[60%] rounded-sm bg-cyan/70" />
-          <div className="mt-[10%] h-[40%] rounded-sm bg-paper/10" />
-        </div>
-      </div>
-    );
-  }
-  if (slide === 1) {
-    return (
-      <div className={`${base} bg-brand text-primary-foreground`}>
-        <div className="absolute left-[8%] top-[12%] h-[6%] w-[36%] rounded-sm bg-primary-foreground" />
-        <div className="absolute left-[8%] right-[8%] top-[28%] grid grid-cols-2 gap-[6%]">
-          <div className="rounded-lg bg-black/30 p-[6%] backdrop-blur-sm">
-            <span className="text-[12px] font-bold font-display">$84B</span>
-            <p className="text-[6px] uppercase tracking-wider text-cyan">TAM Market</p>
-          </div>
-          <div className="rounded-lg bg-black/30 p-[6%] backdrop-blur-sm">
-            <span className="text-[12px] font-bold font-display">10x</span>
-            <p className="text-[6px] uppercase tracking-wider text-cyan">Productivity Lift</p>
-          </div>
-        </div>
-        <div className="absolute bottom-[10%] left-[8%] right-[8%] text-[6px] text-primary-foreground/70">
-          Targeting 45M knowledge workers worldwide.
-        </div>
-      </div>
-    );
-  }
-  if (slide === 2) {
-    return (
-      <div className={`${base} bg-brand text-primary-foreground`}>
-        <div className="absolute left-[8%] top-[12%] h-[6%] w-[30%] rounded-sm bg-primary-foreground" />
-        <div className="absolute left-[8%] right-[8%] bottom-[14%] h-[60%] flex items-end justify-between border-b border-white/20 pb-1">
-          <svg viewBox="0 0 100 40" className="w-full h-full">
-            <path d="M0,35 Q30,30 50,20 T100,5" fill="none" stroke="white" strokeWidth="2" />
-            <circle cx="100" cy="5" r="3" fill="var(--cyan)" />
-          </svg>
-        </div>
-        <div className="absolute left-[8%] top-[24%] text-[7px] font-bold text-cyan">
-          MRR Growth: 32% Month-over-Month
-        </div>
-      </div>
-    );
-  }
+/** 3. Minimalist Korean Aesthetic Pitch Deck (Soft fluid organic nude/blush clay blobs) */
+function renderSlidesgoKoreanAesthetic(base: string, slide: SlideType) {
   return (
-    <div className={`${base} bg-brand text-primary-foreground`}>
-      <div className="absolute left-[8%] top-[12%] h-[6%] w-[30%] rounded-sm bg-primary-foreground" />
-      <div className="absolute left-[8%] right-[8%] top-[26%] grid grid-cols-3 gap-[3%] text-center">
-        {[
-          { pct: "50%", lbl: "Product & AI" },
-          { pct: "30%", lbl: "GTM Growth" },
-          { pct: "20%", lbl: "Ops & Legal" },
-        ].map((item) => (
-          <div key={item.lbl} className="rounded bg-black/30 p-[5%]">
-            <span className="text-[10px] font-display font-bold">{item.pct}</span>
-            <p className="text-[5px] uppercase mt-0.5 text-primary-foreground/80">{item.lbl}</p>
-          </div>
+    <div className={`${base} bg-[#FBF8F5] relative`}>
+      {/* Soft Clay Blobs */}
+      <div className="absolute -top-8 -left-8 w-36 h-36 rounded-[45%_55%_65%_35%] bg-[#EFE6DC] opacity-80" />
+      <div className="absolute -bottom-8 -right-8 w-36 h-36 rounded-[60%_40%_35%_65%] bg-[#E8DDD3] opacity-75" />
+      <div className="absolute inset-0 flex flex-col items-center justify-center p-[6%] text-center z-10">
+        <span className="font-sans font-light tracking-[0.25em] text-zinc-700 text-[10px] sm:text-[11px] uppercase">
+          MINIMALIST KOREAN
+        </span>
+        <h3 className="font-sans font-bold tracking-[0.15em] text-zinc-900 text-[9px] sm:text-[10px] uppercase mt-0.5">
+          AESTHETIC PITCH DECK
+        </h3>
+        <div className="w-8 h-px bg-amber-700/40 my-2" />
+        <p className="text-[7px] text-zinc-500 font-sans">Tactile Simplicity &amp; Soft Earthen Tones</p>
+      </div>
+    </div>
+  );
+}
+
+/** 4. Minimal Gradient (Luminous ambient mesh blur with luxury italic serif) */
+function renderSlidesgoMinimalGradient(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-white relative`}>
+      <div className="absolute right-[8%] top-[15%] w-44 h-44 rounded-full bg-gradient-to-tr from-emerald-200/60 via-teal-100/50 to-yellow-100/50 blur-xl pointer-events-none" />
+      <div className="absolute inset-0 flex flex-col justify-center px-[8%] z-10">
+        <h3 className="font-serif text-zinc-950 text-[15px] sm:text-[18px] tracking-tight leading-tight">
+          <span className="uppercase tracking-widest font-normal text-[11px] block text-zinc-800">MINIMAL</span>
+          <span className="italic font-normal">GRADIENT</span>
+        </h3>
+        <p className="text-[7.5px] text-zinc-400 font-sans mt-1">Here is where your presentation begins</p>
+      </div>
+    </div>
+  );
+}
+
+/** 5. Lead Funnel (Deep bold typography with cyan ambient glow aura & arrow) */
+function renderSlidesgoLeadFunnel(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#FAFAFA] relative`}>
+      <div className="absolute right-[5%] top-[10%] w-40 h-40 rounded-full bg-cyan-200/50 blur-2xl pointer-events-none" />
+      <div className="absolute left-[7%] top-[14%] font-mono text-zinc-400 text-[11px]">→</div>
+      <div className="absolute inset-0 flex flex-col justify-center px-[8%] z-10">
+        <h3 className="font-sans font-black text-zinc-950 text-[18px] sm:text-[22px] tracking-tighter leading-tight">
+          Lead<br />Funnel
+        </h3>
+        <p className="text-[7.5px] text-zinc-500 font-sans mt-1">Here is where your presentation begins</p>
+        <div className="flex items-center gap-1.5 mt-3">
+          <span className="h-2 w-2 rounded-full border-2 border-blue-500 bg-white" />
+          <span className="h-2 w-2 rounded-full border border-pink-200 bg-pink-100" />
+          <span className="h-2 w-2 rounded-full border border-emerald-200 bg-emerald-100" />
+          <span className="h-2 w-2 rounded-full border border-purple-200 bg-purple-100" />
+          <span className="h-2 w-2 rounded-full border border-yellow-200 bg-yellow-100" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 6. Minimal Interior Design Guide (Ochre outline frame intersecting architectural card) */
+function renderSlidesgoInteriorDesign(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#FDFDFC] relative`}>
+      <div className="absolute right-[12%] top-[16%] bottom-[16%] w-[38%] border-2 border-amber-600/80 rounded-xs z-10" />
+      <div className="absolute right-[16%] top-[22%] bottom-[10%] w-[38%] bg-zinc-200 rounded-xs overflow-hidden flex items-center justify-center">
+        <div className="w-12 h-12 rounded-full bg-zinc-300 flex items-center justify-center font-mono text-[8px] text-zinc-500">
+          PHOTO
+        </div>
+      </div>
+      <div className="absolute left-[8%] top-[22%] w-[45%] z-20">
+        <h3 className="font-sans font-bold text-amber-700 text-[13px] sm:text-[15px] leading-tight">
+          Minimal<br />Interior<br />Design Guide
+        </h3>
+        <div className="h-0.5 w-6 bg-amber-600 mt-2" />
+        <p className="text-[6.5px] text-zinc-400 mt-1">Here is where your presentation begins</p>
+      </div>
+    </div>
+  );
+}
+
+/** 7. Minimalist Pitch Deck (Yellow with bold black line-art) */
+function renderSlidesgoMinimalistPitch(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#FACC15] relative p-[6%] flex items-center justify-between`}>
+      <div className="z-10 max-w-[55%]">
+        <div className="h-0.5 w-6 bg-black mb-2" />
+        <h3 className="font-sans font-black text-black text-[14px] sm:text-[17px] uppercase tracking-tight leading-tight">
+          MINIMALIST<br />PITCH DECK
+        </h3>
+        <p className="text-[7px] text-black/80 font-sans mt-1">Here is where your presentation begins</p>
+      </div>
+      {/* Minimal line-art monitor & desk */}
+      <div className="w-[38%] flex flex-col items-center justify-center">
+        <div className="w-16 h-10 border-2 border-black rounded-xs bg-white/40 flex items-center justify-center text-[6px] font-mono">
+          DECK
+        </div>
+        <div className="w-4 h-2 border-r-2 border-l-2 border-black" />
+        <div className="w-12 h-0.5 bg-black" />
+      </div>
+    </div>
+  );
+}
+
+/** 8. Work-Life Integration (Terracotta brick red with italic editorial serif) */
+function renderSlidesgoWorkLife(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#B94726] relative p-[6%] text-white flex items-center justify-between`}>
+      <div className="w-[32%] h-[75%] bg-white/15 border border-white/30 rounded-xs flex items-center justify-center text-[7px] font-mono">
+        TEAM
+      </div>
+      <div className="w-[62%] text-right">
+        <h3 className="font-serif text-[14px] sm:text-[18px] tracking-tight leading-tight">
+          WORK-<span className="italic font-serif">life</span><br />
+          INTEGRATION
+        </h3>
+        <p className="text-[7px] text-white/70 font-sans mt-1">Building Sustainable Career Ecologies</p>
+      </div>
+    </div>
+  );
+}
+
+/** 9. Minimalist Thesis Defense (Blush pink with coral dot matrix grid) */
+function renderSlidesgoThesisDefense(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#FCE7E7] relative p-[6%] flex flex-col justify-center`}>
+      {/* Dot matrix grid */}
+      <div className="absolute right-[8%] top-[18%] grid grid-cols-5 gap-1.5 opacity-60">
+        {Array.from({ length: 25 }).map((_, i) => (
+          <span key={i} className="h-1 w-1 rounded-full bg-rose-500" />
         ))}
       </div>
-      <div className="absolute bottom-[10%] left-[8%] text-[6px] text-cyan font-bold">
-        Round: $1.8M Seed • Seeking Lead Investor
+      <div className="z-10 max-w-[65%]">
+        <h3 className="font-sans font-extrabold text-rose-900 text-[14px] sm:text-[17px] tracking-tight leading-tight">
+          Minimalist<br />Thesis Defense.
+        </h3>
+        <p className="text-[7.5px] text-rose-700/80 font-sans mt-1">Here is where your presentation begins</p>
+        <div className="flex items-center gap-1.5 mt-3">
+          <span className="h-2 w-2 rounded-full border-2 border-blue-500 bg-white" />
+          <span className="h-2 w-2 rounded-full border border-teal-900 bg-teal-950" />
+          <span className="h-2 w-2 rounded-full border border-yellow-300 bg-yellow-200" />
+          <span className="h-2 w-2 rounded-full border border-cyan-300 bg-cyan-200" />
+          <span className="h-2 w-2 rounded-full border border-emerald-300 bg-emerald-200" />
+        </div>
       </div>
     </div>
   );
 }
 
-function renderResearch(base: string, slide: SlideType) {
+/** 10. Minimal Charm (Mint cyan split block with outline box) */
+function renderSlidesgoMinimalCharm(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-white relative flex`}>
+      <div className="w-[55%] h-full bg-white" />
+      <div className="w-[45%] h-full bg-[#5EEAD4]" />
+      <div className="absolute inset-0 flex flex-col items-center justify-center p-[6%] z-10">
+        <div className="border-2 border-black bg-white/70 px-4 py-2 text-center rounded-xs">
+          <span className="text-[6.5px] font-sans text-zinc-500 uppercase tracking-widest block">HERE IS WHERE YOUR</span>
+          <h3 className="font-sans font-bold text-black text-[12px] sm:text-[14px]">presentation begins</h3>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 11. Industrial Preliminary Project (Steel blue curve & dot matrix line) */
+function renderSlidesgoIndustrialProject(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#F8FAFC] relative flex flex-col justify-between p-[6%]`}>
+      <div className="flex items-center gap-1.5">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <span key={i} className="h-1 w-1 rounded-full bg-blue-600" />
+        ))}
+      </div>
+      <div className="text-center">
+        <h3 className="font-sans font-black text-slate-900 text-[13px] sm:text-[15px] uppercase tracking-tight">
+          INDUSTRIAL<br />PRELIMINARY PROJECT
+        </h3>
+        <p className="text-[7px] text-slate-500 font-sans mt-1">Here is where your presentation begins</p>
+      </div>
+      <div className="h-1.5 w-24 bg-blue-600 rounded-full mx-auto" />
+    </div>
+  );
+}
+
+/** 12. Engineering Project Proposal (Olive green with photographic card) */
+function renderSlidesgoEngineeringProposal(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#365314] relative p-[6%] flex items-center justify-between text-white`}>
+      <div className="w-[40%] h-[75%] bg-white/20 border border-white/30 rounded-xs flex items-center justify-center text-[7px] font-mono">
+        ROAD
+      </div>
+      <div className="w-[55%] text-right">
+        <h3 className="font-sans font-black text-[12px] sm:text-[15px] uppercase leading-tight tracking-tight">
+          ENGINEERING<br />PROJECT<br />PROPOSAL
+        </h3>
+        <p className="text-[7px] text-white/70 font-sans mt-1">Civil &amp; Sustainable Infrastructure</p>
+      </div>
+    </div>
+  );
+}
+
+/** 13. Oncology Breakthrough (Topographic contour wave lines) */
+function renderSlidesgoOncologyBreakthrough(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#F5F5F0] relative overflow-hidden`}>
+      {/* Topographic Lines */}
+      <svg viewBox="0 0 400 225" className="absolute inset-0 w-full h-full pointer-events-none opacity-40">
+        <path d="M-10,30 Q60,10 120,40 T260,20 Q340,50 410,20" fill="none" stroke="#0D9488" strokeWidth="1.5" />
+        <path d="M-10,50 Q70,30 130,60 T270,40 Q350,70 410,40" fill="none" stroke="#0D9488" strokeWidth="1.2" />
+        <path d="M-10,180 Q80,160 160,190 T300,170 Q370,200 410,180" fill="none" stroke="#0D9488" strokeWidth="1.5" />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-[6%] z-10">
+        <h3 className="font-sans font-bold text-slate-900 text-[14px] sm:text-[17px] tracking-tight">
+          Oncology<br />Breakthrough
+        </h3>
+        <p className="text-[7.5px] text-teal-800 font-sans mt-1">Here is where your presentation begins</p>
+      </div>
+    </div>
+  );
+}
+
+/** 14. Clean and Elegant Portfolio (Hairline dividers with diamond sparkle) */
+function renderSlidesgoCleanPortfolio(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-white relative p-[6%] flex flex-col items-center justify-center text-center`}>
+      <h3 className="font-serif italic font-normal text-zinc-900 text-[14px] sm:text-[18px]">
+        Clean and<br />
+        <span className="not-italic font-bold">Elegant Portfolio</span>
+      </h3>
+      <div className="flex items-center gap-2 w-32 my-2">
+        <div className="flex-1 h-px bg-zinc-300" />
+        <span className="text-[8px] text-zinc-400">✧</span>
+        <div className="flex-1 h-px bg-zinc-300" />
+      </div>
+      <p className="text-[7px] text-zinc-400 font-sans">Here is where your presentation begins</p>
+    </div>
+  );
+}
+
+/** 15. Minimalist Green Slides (Sage green split card) */
+function renderSlidesgoGreenSlides(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#F4F7F4] relative flex p-[6%]`}>
+      <div className="w-[45%] h-full bg-emerald-900/10 border border-emerald-900/20 rounded-xs flex items-center justify-center text-[7px] font-mono text-emerald-800">
+        NATURE
+      </div>
+      <div className="w-[55%] flex flex-col justify-center items-center text-center pl-3">
+        <h3 className="font-serif font-bold text-emerald-950 text-[13px] sm:text-[16px] leading-tight">
+          Minimalist<br />Green Slides
+        </h3>
+        <p className="text-[7px] text-emerald-800 font-sans mt-1">Sustainability &amp; Ecology</p>
+      </div>
+    </div>
+  );
+}
+
+/** 16. Argumentative Fallacy (Deep navy arch frame with quote mark) */
+function renderSlidesgoArgumentativeFallacy(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#0F172A] relative flex flex-col items-center justify-center text-center text-white p-[6%]`}>
+      <div className="absolute bottom-0 w-[70%] h-[75%] border-t-2 border-r-2 border-l-2 border-amber-400/40 rounded-t-full pointer-events-none" />
+      <span className="font-serif text-[18px] text-amber-400 leading-none mb-1">&ldquo;</span>
+      <h3 className="font-serif font-bold text-white text-[12px] sm:text-[14px] uppercase tracking-wider">
+        ARGUMENTATIVE<br />FALLACY
+      </h3>
+      <p className="text-[7px] text-slate-400 font-sans mt-1">Deductive Logic &amp; Philosophy</p>
+    </div>
+  );
+}
+
+/** 17. Minimalist HS Weekly Planner */
+function renderSlidesgoHsPlanner(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#FAFAFA] relative p-[5%] flex flex-col items-center justify-center`}>
+      <div className="w-[85%] h-[80%] border border-zinc-300 rounded-xs flex flex-col items-center justify-center p-2 text-center bg-white shadow-xs">
+        <span className="font-mono text-[6.5px] text-zinc-400 uppercase tracking-widest block mb-0.5">- MINIMALIST -</span>
+        <h3 className="font-sans font-black text-slate-800 text-[11px] sm:text-[13px] tracking-tight uppercase">
+          HIGH SCHOOL<br />WEEKLY PLANNER
+        </h3>
+        <p className="text-[6.5px] text-zinc-500 font-sans mt-0.5">Here is where your presentation begins</p>
+      </div>
+    </div>
+  );
+}
+
+/** 18. Elegant Bachelor Thesis */
+function renderSlidesgoElegantThesis(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#FAF9F6] relative p-[5%] flex flex-col items-center justify-center`}>
+      <div className="w-[88%] h-[84%] border-2 border-double border-slate-300 rounded-xs flex flex-col items-center justify-center p-2 text-center">
+        <span className="text-[8px] text-slate-400 mb-1">✦</span>
+        <h3 className="font-serif font-bold text-slate-900 text-[12px] sm:text-[15px] leading-tight">
+          Elegant<br />Bachelor Thesis
+        </h3>
+        <div className="h-px w-10 bg-slate-300 my-1.5" />
+        <p className="text-[6.5px] text-slate-500 font-serif italic">Senior Capstone Defense</p>
+      </div>
+    </div>
+  );
+}
+
+/** 19. Elegant and Clean Case Report */
+function renderSlidesgoCaseReport(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-[#FAF8F5] relative p-[6%] flex flex-col justify-center`}>
+      <span className="font-mono text-[7px] text-blue-700 tracking-wider font-bold uppercase mb-1">CASE BRIEF</span>
+      <h3 className="font-serif font-bold text-[#0F294A] text-[14px] sm:text-[17px] leading-tight">
+        Elegant and Clean<br />Case Report
+      </h3>
+      <div className="h-0.5 w-8 bg-blue-600 mt-2" />
+      <p className="text-[7px] text-slate-500 mt-1 font-sans">Diagnostic &amp; Turnaround Strategy</p>
+    </div>
+  );
+}
+
+/** 20. Formal and Clean Portfolio */
+function renderSlidesgoFormalPortfolio(base: string, slide: SlideType) {
+  return (
+    <div className={`${base} bg-white relative p-[6%] flex flex-col justify-between`}>
+      <div className="flex justify-between items-baseline border-b border-zinc-200 pb-1">
+        <span className="font-mono text-[6.5px] text-zinc-400">PORTFOLIO 2026</span>
+        <span className="font-mono text-[6.5px] text-zinc-400">16:9</span>
+      </div>
+      <div>
+        <h3 className="font-serif font-bold text-zinc-900 text-[13px] sm:text-[16px] tracking-widest uppercase">
+          FORMAL AND<br />CLEAN
+        </h3>
+        <p className="text-[7px] text-zinc-500 font-sans mt-0.5">Architecture &amp; Spatial Monograph</p>
+      </div>
+      <div className="flex gap-1 text-[6.5px] font-mono text-zinc-400">
+        <span>Structure</span>
+        <span>•</span>
+        <span>Materiality</span>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// 2. MODERN DYNAMIC TEMPLATE RENDERER (For all remaining 100+ catalog themes)
+// -----------------------------------------------------------------------------
+
+function renderModernDynamicTemplate(
+  base: string,
+  slide: SlideType,
+  t: ThemeThumbTemplate,
+) {
+  const bg = t.colors?.bg || "#FFFFFF";
+  const primary = t.colors?.primary || "#0F172A";
+  const accent = t.colors?.accent || "#2563EB";
+  const isDark = getLuminance(bg) < 0.35;
+  const textColor = isDark ? "#F8FAFC" : primary;
+  const subtitleColor = isDark ? "#94A3B8" : "#64748B";
+
   if (slide === 0) {
     return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-[6%] right-[6%] top-[10%] flex items-center justify-between">
-          <div className="h-[6px] w-[40%] rounded bg-ink" />
-          <div className="h-[4px] w-[12%] rounded bg-ink/30" />
+      <div className={base} style={{ backgroundColor: bg }}>
+        {/* Subtle geometric corner accent */}
+        <div
+          className="absolute -top-12 -right-12 w-28 h-28 rounded-full opacity-20 pointer-events-none"
+          style={{ backgroundColor: accent }}
+        />
+
+        {/* Top Badges */}
+        <div className="absolute top-[8%] left-[7%] right-[7%] flex items-center justify-between">
+          <span
+            className="px-1.5 py-0.5 rounded-xs font-mono text-[7px] font-bold uppercase tracking-wider"
+            style={{
+              backgroundColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
+              color: accent,
+            }}
+          >
+            {t.category || "PRESENTATION"}
+          </span>
+          <span className="font-mono text-[7px] text-zinc-400">16:9</span>
         </div>
-        <div className="absolute left-[6%] top-[26%] grid w-[88%] grid-cols-3 gap-[3%]">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="space-y-[6px]">
-              <div className="h-[3px] w-[60%] rounded bg-violet" />
-              {[100, 90, 95, 70].map((w) => (
-                <div key={w} className="h-[2px] rounded bg-ink/20" style={{ width: `${w}%` }} />
-              ))}
-            </div>
-          ))}
+
+        {/* Center Content */}
+        <div className="absolute inset-0 flex flex-col justify-center px-[8%] pt-3">
+          <div className="h-0.5 w-6 mb-2 rounded-full" style={{ backgroundColor: accent }} />
+          <h3
+            className="font-sans font-extrabold text-[12px] sm:text-[14px] leading-tight tracking-tight line-clamp-2"
+            style={{ color: textColor }}
+          >
+            {t.name}
+          </h3>
+          <p className="text-[7px] font-sans mt-1 line-clamp-1" style={{ color: subtitleColor }}>
+            {t.description || "Here is where your presentation begins"}
+          </p>
+
+          {/* Slidesgo signature palette switchers */}
+          <div className="flex items-center gap-1.5 mt-2.5">
+            <span className="h-2 w-2 rounded-full border border-zinc-400/30" style={{ backgroundColor: primary }} />
+            <span className="h-2 w-2 rounded-full border border-zinc-400/30" style={{ backgroundColor: accent }} />
+            <span className="h-2 w-2 rounded-full border border-zinc-400/30" style={{ backgroundColor: bg }} />
+            <span className="h-2 w-2 rounded-full bg-zinc-200" />
+          </div>
         </div>
-        <svg viewBox="0 0 100 30" className="absolute bottom-[8%] left-[6%] h-[34%] w-[88%]">
-          <polyline
-            points="0,26 15,20 30,22 45,12 60,14 75,6 100,4"
-            fill="none"
-            stroke="var(--violet)"
-            strokeWidth="1.2"
-          />
-          <line
-            x1="0"
-            y1="29"
-            x2="100"
-            y2="29"
-            stroke="var(--ink)"
-            strokeOpacity="0.3"
-            strokeWidth="0.5"
-          />
-        </svg>
       </div>
     );
   }
+
   if (slide === 1) {
     return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-[6%] top-[10%] h-[6px] w-[35%] rounded bg-ink" />
-        <div className="absolute left-[6%] right-[6%] top-[24%] grid grid-cols-2 gap-[5%]">
-          <div className="space-y-1 border border-ink/20 p-[4%] rounded">
-            <span className="font-mono text-[6px] font-bold text-violet">Cohort A (n=450)</span>
-            <div className="h-[3px] w-[80%] rounded bg-ink/50" />
-            <div className="h-[2px] w-[95%] rounded bg-ink/25" />
+      <div className={base} style={{ backgroundColor: bg }}>
+        <div className="p-[5%] flex flex-col justify-between h-full">
+          <div className="flex justify-between items-baseline border-b pb-1" style={{ borderColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)" }}>
+            <span className="font-sans font-bold text-[9px]" style={{ color: textColor }}>
+              Roadmap &amp; Agenda
+            </span>
+            <span className="font-mono text-[6.5px]" style={{ color: accent }}>01 / 04</span>
           </div>
-          <div className="space-y-1 border border-ink/20 p-[4%] rounded">
-            <span className="font-mono text-[6px] font-bold text-violet">Cohort B (Control)</span>
-            <div className="h-[3px] w-[75%] rounded bg-ink/50" />
-            <div className="h-[2px] w-[90%] rounded bg-ink/25" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (slide === 2) {
-    return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-[6%] top-[10%] flex justify-between right-[6%]">
-          <div className="h-[6px] w-[38%] rounded bg-ink" />
-          <span className="font-mono text-[6px] text-violet">p &lt; 0.001</span>
-        </div>
-        <div className="absolute left-[6%] right-[6%] bottom-[12%] h-[60%] border-l border-b border-ink/30 p-1 flex items-end justify-around">
-          {[25, 45, 60, 85].map((h, i) => (
-            <div key={i} className="flex flex-col items-center gap-0.5">
-              <div className="w-5 bg-violet/80 rounded-t-xs" style={{ height: `${h}%` }} />
-              <span className="text-[5px] font-mono text-ink/50">T{i}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className={`${base} bg-paper`}>
-      <div className="absolute left-[6%] top-[10%] h-[6px] w-[30%] rounded bg-ink" />
-      <div className="absolute left-[6%] right-[6%] top-[24%] space-y-1 text-[6px] text-ink/70">
-        <div className="rounded bg-violet/10 p-[3%] border-l border-violet">
-          <strong>Key Finding:</strong> Significant variance reduction observed under model
-          transformation.
-        </div>
-        <p className="font-mono text-[5px] text-ink/40 pt-1">DOI: 10.1038/s41586-026-0819</p>
-      </div>
-    </div>
-  );
-}
-
-function renderEducation(base: string, slide: SlideType) {
-  if (slide === 0) {
-    return (
-      <div className={`${base} bg-success/90`}>
-        <div className="absolute -bottom-[20%] -left-[8%] h-[70%] w-[40%] rounded-full bg-warning" />
-        <div className="absolute right-[6%] top-[12%] h-[76%] w-[52%] rounded-xl bg-paper p-[4%]">
-          <div className="h-[12%] w-[50%] rounded bg-ink" />
-          <div className="mt-[8%] space-y-[6%]">
-            {[1, 2, 3].map((n) => (
-              <div key={n} className="flex items-center gap-[6%]">
-                <div className="aspect-square w-[12%] rounded-full bg-success" />
-                <div className="h-[4px] flex-1 rounded bg-ink/25" />
+          <div className="space-y-1 my-auto">
+            {["Context & Strategy", "Operating Framework", "Traction Milestones", "Forward Roadmap"].map((item, i) => (
+              <div key={i} className="flex items-center gap-2 text-[7.5px]" style={{ color: textColor }}>
+                <span className="font-mono font-bold text-[7px]" style={{ color: accent }}>0{i + 1}</span>
+                <span className="font-medium truncate">{item}</span>
               </div>
             ))}
           </div>
         </div>
-        <div className="absolute left-[7%] top-[16%] h-[8%] w-[28%] rounded-sm bg-ink" />
       </div>
     );
   }
-  if (slide === 1) {
-    return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-[7%] top-[12%] h-[7px] w-[40%] rounded bg-success" />
-        <div className="absolute left-[7%] right-[7%] top-[28%] grid grid-cols-3 gap-[4%]">
-          {["1. Learn", "2. Practice", "3. Master"].map((step) => (
-            <div
-              key={step}
-              className="rounded-lg bg-success/15 p-[6%] text-center border border-success/30"
-            >
-              <span className="text-[7px] font-bold text-ink">{step}</span>
-              <div className="mt-1 h-[2px] w-[80%] mx-auto rounded bg-ink/30" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+
   if (slide === 2) {
     return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-[7%] top-[12%] h-[7px] w-[35%] rounded bg-success" />
-        <div className="absolute left-[7%] right-[7%] top-[26%] flex items-center justify-around">
-          <div className="w-[30%] aspect-square rounded-full border-4 border-success flex items-center justify-center font-display text-[10px] font-bold text-ink">
-            85%
+      <div className={base} style={{ backgroundColor: bg }}>
+        <div className="p-[5%] flex flex-col justify-between h-full">
+          <div className="flex justify-between items-baseline border-b pb-1" style={{ borderColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)" }}>
+            <span className="font-sans font-bold text-[9px]" style={{ color: textColor }}>
+              Performance Metrics
+            </span>
+            <span className="font-mono text-[6.5px]" style={{ color: accent }}>DATA</span>
           </div>
-          <div className="w-[50%] space-y-1">
-            <span className="text-[7px] font-bold text-ink">Comprehension Goal</span>
-            <div className="h-[3px] w-[90%] rounded bg-ink/30" />
-            <div className="h-[3px] w-[70%] rounded bg-ink/20" />
+          <div className="grid grid-cols-3 gap-1.5 my-auto">
+            {[
+              { v: "+142%", l: "Growth" },
+              { v: "3.8x", l: "Scale" },
+              { v: "98.4%", l: "Uptime" },
+            ].map((col, i) => (
+              <div
+                key={i}
+                className="p-1.5 rounded-xs text-center border"
+                style={{
+                  backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+                  borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+                }}
+              >
+                <span className="font-sans font-bold text-[10px] block" style={{ color: accent }}>
+                  {col.v}
+                </span>
+                <span className="text-[6px] font-sans uppercase" style={{ color: subtitleColor }}>
+                  {col.l}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
     );
   }
+
   return (
-    <div className={`${base} bg-paper`}>
-      <div className="absolute left-[7%] top-[12%] h-[7px] w-[30%] rounded bg-success" />
-      <div className="absolute left-[7%] right-[7%] top-[28%] space-y-2">
-        <div className="rounded border border-success/40 bg-success/10 p-[3%] text-[7px] text-ink">
-          💡 <strong>Review Check:</strong> Summarize the core mechanism in 2 sentences.
+    <div className={base} style={{ backgroundColor: bg }}>
+      <div className="p-[6%] flex flex-col justify-between h-full text-center">
+        <span className="font-mono text-[6.5px] tracking-widest uppercase" style={{ color: accent }}>
+          CONCLUSION
+        </span>
+        <div className="max-w-[80%] mx-auto my-auto">
+          <p className="font-serif italic text-[10px] sm:text-[12px] leading-snug" style={{ color: textColor }}>
+            &ldquo;Decisive insight leads to decisive action.&rdquo;
+          </p>
+          <span className="text-[6.5px] font-sans block mt-1" style={{ color: subtitleColor }}>
+            {t.name} Synthesis
+          </span>
+        </div>
+        <div className="text-[6px] font-mono" style={{ color: subtitleColor }}>
+          Created with DocuMind
         </div>
       </div>
     </div>
   );
 }
 
-function renderCreative(base: string, slide: SlideType) {
-  if (slide === 0) {
-    return (
-      <div className={`${base} bg-ink`}>
-        <div className="absolute left-0 top-0 h-full w-[46%] bg-violet" />
-        <div className="absolute left-[30%] top-[18%] aspect-square w-[34%] rounded-full bg-warning mix-blend-screen" />
-        <div className="absolute bottom-[14%] left-[6%] font-display text-[clamp(9px,2vw,18px)] font-bold italic text-paper">
-          Folio
-        </div>
-        <div className="absolute right-[6%] top-[20%] grid w-[30%] grid-cols-2 gap-[6%]">
-          <div className="col-span-2 aspect-[2/1] rounded-sm bg-paper/80" />
-          <div className="aspect-square rounded-sm bg-cyan/70" />
-          <div className="aspect-square rounded-sm bg-paper/30" />
-        </div>
-      </div>
-    );
-  }
-  if (slide === 1) {
-    return (
-      <div className={`${base} bg-ink`}>
-        <div className="absolute left-[6%] top-[10%] font-display text-[11px] font-bold text-paper">
-          Visual Identity
-        </div>
-        <div className="absolute left-[6%] right-[6%] top-[26%] grid grid-cols-3 gap-[3%]">
-          <div className="aspect-[3/4] rounded bg-violet" />
-          <div className="aspect-[3/4] rounded bg-warning" />
-          <div className="aspect-[3/4] rounded bg-cyan" />
-        </div>
-      </div>
-    );
-  }
-  if (slide === 2) {
-    return (
-      <div className={`${base} bg-ink`}>
-        <div className="absolute left-[6%] top-[10%] font-display text-[11px] font-bold text-paper">
-          Design System
-        </div>
-        <div className="absolute left-[6%] right-[6%] top-[26%] grid grid-cols-2 gap-[5%]">
-          <div className="rounded border border-paper/20 p-[4%] space-y-1">
-            <span className="font-mono text-[6px] text-cyan">Typography</span>
-            <div className="h-[6px] w-[70%] rounded bg-paper" />
-            <div className="h-[3px] w-[50%] rounded bg-paper/40" />
-          </div>
-          <div className="rounded border border-paper/20 p-[4%] space-y-1">
-            <span className="font-mono text-[6px] text-violet">Palette</span>
-            <div className="flex gap-1">
-              <div className="h-4 w-4 rounded-full bg-violet" />
-              <div className="h-4 w-4 rounded-full bg-warning" />
-              <div className="h-4 w-4 rounded-full bg-cyan" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className={`${base} bg-ink`}>
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-paper">
-        <p className="font-display text-[14px] font-bold italic">Thank You</p>
-        <p className="font-mono text-[6px] text-paper/60 mt-1">studio@documind.example</p>
-      </div>
-    </div>
-  );
+// -----------------------------------------------------------------------------
+// 3. UPGRADED FALLBACKS FOR EXISTING KINDS (Academic, Business, Tech, etc.)
+// -----------------------------------------------------------------------------
+
+function renderModernAcademic(base: string, slide: SlideType) {
+  return renderModernDynamicTemplate(base, slide, {
+    name: "Academic Research Presentation",
+    category: "Academic",
+    kind: "academic",
+    colors: { primary: "#0F294A", accent: "#2563EB", bg: "#FAF8F5" },
+    description: "Rigorous scholarly presentation deck for thesis defense and research symposia.",
+  });
 }
 
-function renderMinimal(base: string, slide: SlideType) {
-  if (slide === 0) {
-    return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-          <div className="mx-auto h-[7px] w-24 max-w-[60cqw] rounded bg-ink" />
-          <div className="mx-auto mt-2 h-[3px] w-12 rounded bg-ink/30" />
-        </div>
-        <div className="absolute bottom-[10%] left-[8%] h-px w-[84%] bg-ink/15" />
-        <div className="absolute bottom-[14%] right-[8%] h-[3px] w-[8%] rounded bg-ink/40" />
-      </div>
-    );
-  }
-  if (slide === 1) {
-    return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-[8%] top-[14%] h-[5px] w-[20%] rounded bg-ink" />
-        <div className="absolute left-[8%] right-[8%] top-[34%] space-y-[4%]">
-          <div className="h-[4px] w-[70%] rounded bg-ink" />
-          <div className="h-[3px] w-[85%] rounded bg-ink/40" />
-          <div className="h-[3px] w-[60%] rounded bg-ink/30" />
-        </div>
-        <div className="absolute bottom-[12%] left-[8%] font-mono text-[5px] text-ink/30">
-          01 / Focus
-        </div>
-      </div>
-    );
-  }
-  if (slide === 2) {
-    return (
-      <div className={`${base} bg-paper`}>
-        <div className="absolute left-[8%] top-[14%] h-[5px] w-[25%] rounded bg-ink" />
-        <div className="absolute left-[8%] right-[8%] top-[30%] grid grid-cols-3 gap-[4%] text-center">
-          {[
-            { n: "01", t: "Simplicity" },
-            { n: "02", t: "Precision" },
-            { n: "03", t: "Restraint" },
-          ].map((item) => (
-            <div key={item.n} className="border-t border-ink/20 pt-1">
-              <span className="font-mono text-[7px] text-ink/40">{item.n}</span>
-              <p className="text-[6px] font-bold text-ink mt-0.5">{item.t}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className={`${base} bg-paper`}>
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-        <div className="h-[4px] w-32 rounded bg-ink" />
-        <div className="mt-2 h-[2px] w-16 mx-auto rounded bg-ink/30" />
-      </div>
-      <div className="absolute bottom-[10%] right-[8%] font-mono text-[5px] text-ink/30">
-        End of Presentation
-      </div>
-    </div>
-  );
+function renderModernBusiness(base: string, slide: SlideType) {
+  return renderSlidesgoMinimalistBusiness(base, slide);
+}
+
+function renderModernTech(base: string, slide: SlideType) {
+  return renderSlidesgoIndustrialProject(base, slide);
+}
+
+function renderModernPitch(base: string, slide: SlideType) {
+  return renderSlidesgoMinimalistGrayscale(base, slide);
+}
+
+function renderModernResearch(base: string, slide: SlideType) {
+  return renderSlidesgoOncologyBreakthrough(base, slide);
+}
+
+function renderModernEducation(base: string, slide: SlideType) {
+  return renderSlidesgoThesisDefense(base, slide);
+}
+
+function renderModernCreative(base: string, slide: SlideType) {
+  return renderSlidesgoMinimalGradient(base, slide);
 }

@@ -236,6 +236,7 @@ export function Templates() {
                 className="relative overflow-hidden rounded-xl border border-border bg-surface-2 cursor-pointer aspect-video"
               >
                 <ThemeThumb
+                  template={t}
                   kind={t.kind}
                   slideIndex={0}
                   className="transition-transform duration-500 group-hover:scale-[1.02]"
@@ -392,6 +393,7 @@ export function Templates() {
               {/* Big Slide Stage */}
               <div className="relative overflow-hidden rounded-xl border border-border bg-surface-2 p-2 shadow-inner">
                 <ThemeThumb
+                  template={activeTemplate}
                   kind={activeTemplate.kind}
                   slideIndex={activeSlide}
                   className="rounded-lg max-h-[380px] w-full"
@@ -432,6 +434,7 @@ export function Templates() {
                       }`}
                     >
                       <ThemeThumb
+                        template={activeTemplate}
                         kind={activeTemplate.kind}
                         slideIndex={idx}
                         className="rounded-xs"

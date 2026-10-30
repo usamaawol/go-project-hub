@@ -467,7 +467,7 @@ function TemplatesCatalogPage() {
                         onClick={() => openPreview(template)}
                         className="relative aspect-video w-full overflow-hidden rounded-xl border border-border/80 cursor-pointer group-hover:scale-[1.02] transition-transform duration-200 bg-surface-2"
                       >
-                        <ThemeThumb kind={template.kind} slide={0} />
+                        <ThemeThumb template={template} kind={template.kind} slide={0} />
 
                         {/* Top Left Badges: Format & Aspect Ratio */}
                         <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
@@ -701,7 +701,7 @@ function TemplatesCatalogPage() {
             {/* Interactive Card Canvas with Gamma Stepper Controls */}
             <div className="mt-4 relative">
               <div className="aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface-2 shadow-inner">
-                <ThemeThumb kind={previewTemplate.kind} slide={previewSlideIdx} />
+                <ThemeThumb template={previewTemplate} kind={previewTemplate.kind} slide={previewSlideIdx} />
               </div>
 
               {/* Stepper Navigation Overlay (< and > buttons) */}
