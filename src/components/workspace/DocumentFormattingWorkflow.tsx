@@ -51,6 +51,7 @@ import { generateAssignmentCoverHtml } from "@/lib/assignment-document-renderer"
 import { DocumentWordToolbar } from "@/components/workspace/DocumentWordToolbar";
 import { DocumentRichBodyEditor } from "@/components/workspace/DocumentRichBodyEditor";
 import { AcademicIdentityHeader, generateAcademicIdentityHeaderHtml } from "@/components/workspace/AcademicIdentityHeader";
+import { UnifiedAssignmentWorkflow } from "./UnifiedAssignmentWorkflow";
 import {
   renderExecutiveDocx,
   renderExecutivePdf,
@@ -1396,6 +1397,17 @@ export function DocumentFormattingWorkflow({
   const [isCanvasEditorOpen, setIsCanvasEditorOpen] = useState<boolean>(false);
   const [existingCoverPrompt, setExistingCoverPrompt] = useState<ExistingCoverDetectionResult | null>(null);
 
+  // Initialize assignment mode from URL query parameters (?mode=assignment or ?type=assignment)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const modeParam = searchParams.get("mode") || searchParams.get("type");
+      if (modeParam === "assignment") {
+        setAssignmentMode(true);
+      }
+    }
+  }, []);
+
   // File handling
   const handleFileUpload = async (file: File) => {
     setUploadedFile(file);
@@ -1747,6 +1759,72 @@ export function DocumentFormattingWorkflow({
     navigator.clipboard.writeText(rawText);
     toast.success("Document text copied to clipboard!");
   };
+
+  if (assignmentMode) {
+    return (
+      <div className="w-full">
+        {/* Primary Mode Selector: Standard Document vs Academic Assignment Mode */}
+        <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2.5 rounded-2xl border border-border bg-card shadow-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setAssignmentMode(false);
+                setAssignmentMetadata((prev) => ({ ...prev, isAssignment: false }));
+                setConfig((prev) => ({
+                  ...prev,
+                  assignmentMetadata: undefined,
+                  hasCoverPage: false,
+                }));
+              }}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-muted-foreground hover:text-foreground hover:bg-surface-2"
+            >
+              <Layers className="h-4 w-4" />
+              <span>Standard Document</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="assignment-mode-button"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer bg-primary text-primary-foreground shadow-xs ring-1 ring-primary/40"
+            >
+              <GraduationCap className="h-4 w-4 text-amber-400" />
+              <span>Assignment Mode</span>
+              <span className="hidden sm:inline-block rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500">
+                Active
+              </span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs">
+            <GraduationCap className="h-4 w-4 shrink-0" />
+            <span className="font-semibold">
+              {assignmentMetadata?.assignmentType === "group" ? "Group Assignment" : "Individual Assignment"}
+            </span>
+            <span className="text-muted-foreground text-[11px] hidden md:inline">
+              · {(assignmentMetadata?.coverTemplateId || "classic-university").replace(/-/g, " ").toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        {/* 7-Stage Unified AI Assignment Creation Workflow */}
+        <UnifiedAssignmentWorkflow
+          mode="document"
+          onExitAssignmentMode={() => {
+            setAssignmentMode(false);
+            setAssignmentMetadata((prev) => ({ ...prev, isAssignment: false }));
+            setConfig((prev) => ({
+              ...prev,
+              assignmentMetadata: undefined,
+              hasCoverPage: false,
+            }));
+          }}
+          initialMetadata={assignmentMetadata}
+          initialContent={rawText}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">

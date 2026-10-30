@@ -78,6 +78,7 @@ import {
 import { AssignmentInformationForm } from "./AssignmentInformationForm";
 import { CoverTemplateGallery } from "./CoverTemplateGallery";
 import { AssignmentCoverRenderer } from "./AssignmentCoverRenderer";
+import { UnifiedAssignmentWorkflow } from "./UnifiedAssignmentWorkflow";
 import {
   calculateSourceCoverage,
   type SourceCoverageReport,
@@ -260,6 +261,17 @@ export function PresentationWorkflow({
   const [extractedSuggestions, setExtractedSuggestions] =
     useState<ExtractedAssignmentSuggestions | null>(null);
   const [outlineReviewOpen, setOutlineReviewOpen] = useState(false);
+
+  // Initialize assignment mode from URL query parameters (?mode=assignment or ?type=assignment)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const modeParam = searchParams.get("mode") || searchParams.get("type");
+      if (modeParam === "assignment") {
+        setAssignmentMode(true);
+      }
+    }
+  }, []);
 
   const handleApplySuggestions = (s: ExtractedAssignmentSuggestions) => {
     setAssignmentMetadata((prev) => ({
@@ -736,6 +748,66 @@ export function PresentationWorkflow({
       t.bestFor.toLowerCase().includes(q)
     );
   });
+
+  if (assignmentMode) {
+    return (
+      <div className="w-full">
+        {/* Primary Mode Selector: Standard Presentation vs Academic Assignment Mode */}
+        <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2.5 rounded-2xl border border-border bg-card shadow-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setAssignmentMode(false);
+                setAssignmentMetadata((prev) => ({ ...prev, isAssignment: false }));
+              }}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-muted-foreground hover:text-foreground hover:bg-surface-2"
+            >
+              <Layers className="h-4 w-4" />
+              <span>Standard Presentation</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="assignment-mode-button"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer bg-primary text-primary-foreground shadow-xs ring-2 ring-primary/30"
+            >
+              <GraduationCap className="h-4 w-4 text-amber-400" />
+              <span>Assignment Mode</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-600 dark:text-amber-400 font-extrabold">
+                Active
+              </span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-primary/5 rounded-xl border border-primary/20">
+            <span className="font-semibold text-primary">Mode:</span>
+            <span>
+              {assignmentMetadata.assignmentType === "group"
+                ? "Group Project"
+                : "Individual Submission"}
+            </span>
+            <span>•</span>
+            <span className="font-mono text-[11px] font-bold text-foreground">
+              {COVER_TEMPLATES.find((t) => t.id === assignmentMetadata.coverTemplateId)?.name ||
+                assignmentMetadata.coverTemplateId}
+            </span>
+          </div>
+        </div>
+
+        {/* 7-Stage Unified AI Assignment Creation Workflow */}
+        <UnifiedAssignmentWorkflow
+          mode="presentation"
+          onExitAssignmentMode={() => {
+            setAssignmentMode(false);
+            setAssignmentMetadata((prev) => ({ ...prev, isAssignment: false }));
+          }}
+          initialMetadata={assignmentMetadata}
+          initialContent={pastedText}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
