@@ -1326,14 +1326,6 @@ export async function renderExecutivePdf(
         font: fontRegular,
         color: rgb(0.45, 0.52, 0.62),
       });
-
-      page.drawText("DocuMind Document Studio", {
-        x: margin + contentWidth - 140,
-        y: pageHeight - 32,
-        size: 8,
-        font: fontRegular,
-        color: rgb(0.55, 0.62, 0.72),
-      });
     }
 
     // Running Footer on body pages
@@ -1344,13 +1336,15 @@ export async function renderExecutivePdf(
       color: rgb(0.88, 0.9, 0.94),
     });
 
-    page.drawText("DocuMind · Verified Document Export", {
-      x: margin,
-      y: 30,
-      size: 8,
-      font: fontRegular,
-      color: rgb(0.55, 0.62, 0.72),
-    });
+    if (options?.footerText) {
+      page.drawText(sanitizeLine(options.footerText.slice(0, 60), fontRegular), {
+        x: margin,
+        y: 30,
+        size: 8,
+        font: fontRegular,
+        color: rgb(0.55, 0.62, 0.72),
+      });
+    }
 
     const currentBodyNum = hasCoverPage ? p : p + 1;
     const pageLabel = `Page ${currentBodyNum} of ${bodyPageCount}`;
@@ -1574,20 +1568,23 @@ export async function renderExecutiveDocx(
     const coverChildren: (Paragraph | Table)[] = [];
 
     // Top University / Institution Name
-    coverChildren.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: (options?.institution || meta?.universityName || "DOCUMIND STUDIO").toUpperCase(),
-            bold: true,
-            size: 24, // 12pt
-            color: accent,
-          }),
-        ],
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 1440, after: 120 },
-      }),
-    );
+    const institutionName = options?.institution || meta?.universityName || "";
+    if (institutionName) {
+      coverChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: institutionName.toUpperCase(),
+              bold: true,
+              size: 24, // 12pt
+              color: accent,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 1440, after: 120 },
+        }),
+      );
+    }
 
     if (meta?.department || meta?.collegeOrFaculty) {
       coverChildren.push(
@@ -1884,7 +1881,7 @@ export async function renderExecutiveDocx(
               children: [
                 new Paragraph({
                   children: [
-                    new TextRun({ text: "DocuMind Document Studio · Page ", size: 18, color: "94A3B8" }),
+                    new TextRun({ text: "Page ", size: 18, color: "94A3B8" }),
                     PageNumber.CURRENT,
                     new TextRun({ text: " of ", size: 18, color: "94A3B8" }),
                     PageNumber.TOTAL_PAGES,
@@ -1932,7 +1929,7 @@ export async function renderExecutiveDocx(
               children: [
                 new Paragraph({
                   children: [
-                    new TextRun({ text: "DocuMind Document Studio · Page ", size: 18, color: "94A3B8" }),
+                    new TextRun({ text: "Page ", size: 18, color: "94A3B8" }),
                     PageNumber.CURRENT,
                     new TextRun({ text: " of ", size: 18, color: "94A3B8" }),
                     PageNumber.TOTAL_PAGES,

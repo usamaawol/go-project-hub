@@ -741,7 +741,7 @@ export async function testAdminGenerateImage(
       model: "contextual-svg-engine",
       durationMs: 35,
       imageUrl:
-        "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'><rect width='800' height='450' fill='%230f172a'/><text x='400' y='225' fill='%2338bdf8' font-size='22' text-anchor='middle' font-family='sans-serif'>DocuMind Presentation Visual Synthesizer</text></svg>",
+        "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'><rect width='800' height='450' fill='%230f172a'/><text x='400' y='225' fill='%2338bdf8' font-size='22' text-anchor='middle' font-family='sans-serif'>Presentation Visual Diagram</text></svg>",
     },
   };
 }

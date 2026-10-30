@@ -888,7 +888,7 @@ export function buildSlideDeckContent(
       slideNumber: 1,
       layout: "title",
       title: cleanTitle,
-      subtitle: `${purpose.toUpperCase()}  //  Synthesized with DocuMind`,
+      subtitle: `${purpose.toUpperCase()}  //  Executive Presentation`,
       categoryTag: purpose,
       notes: `Welcome the audience and introduce the core thesis of ${cleanTitle}.`,
     });

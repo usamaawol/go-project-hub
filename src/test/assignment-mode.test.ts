@@ -327,7 +327,7 @@ Instructor: Dr. Walter Lewin`;
       } else if (template.id === "modern-minimal") {
         expect(html).toContain("border-left: 6px solid");
       } else if (template.id === "structured-research") {
-        expect(html).toContain("DOCUMIND / SPEC-A4");
+        expect(html).toContain("DOSSIER / SPEC-A4");
       }
     }
 

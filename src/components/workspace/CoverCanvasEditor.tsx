@@ -761,7 +761,7 @@ export function CoverCanvasEditor({
           <div className="h-4 w-px bg-slate-800" />
 
           <div className="flex items-center gap-2">
-            <span className="font-serif font-bold text-sm text-white">DocuMind Canvas Studio</span>
+            <span className="font-serif font-bold text-sm text-white">Cover Page Studio</span>
             <span className="font-mono text-[10px] text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-2 py-0.5 rounded-full">
               {currentTemplate.name}
             </span>

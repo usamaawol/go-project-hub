@@ -73,8 +73,8 @@ export async function renderSlideDeckToPptx(
 ): Promise<PptxGenJS> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE"; // 13.333" x 7.5"
-  pptx.author = "DocuMind";
-  pptx.company = "DocuMind — The Intelligent Paper Studio";
+  pptx.author = "";
+  pptx.company = "";
   pptx.title = title;
 
   const fontTitle = tokens.fontTitle;
@@ -143,7 +143,7 @@ export async function renderSlideDeckToPptx(
 
       // Slide Footer (left & middle)
       slide.addText(
-        `DocuMind Studio  |  ${tokens.name}  |  Slide ${s.slideNumber} of ${slides.length}`,
+        `${tokens.name}  |  Slide ${s.slideNumber} of ${slides.length}`,
         {
           x: 1.0,
           y: 6.9,
@@ -155,19 +155,6 @@ export async function renderSlideDeckToPptx(
         },
       );
     }
-
-    // Watermark at the right corner at the bottom of each generated slide
-    slide.addText("Created with DocuMind", {
-      x: 8.8,
-      y: 6.9,
-      w: 3.533,
-      h: 0.3,
-      align: "right",
-      fontSize: sizes.caption,
-      bold: true,
-      color: tokens.textMutedHex,
-      fontFace: fontBody,
-    });
 
     // Render Layout Specific Content
     switch (s.layout) {
@@ -245,7 +232,7 @@ export async function renderSlideDeckToPptx(
 
         // Footer info
         slide.addText(
-          `Theme: ${tokens.name} (${tokens.category})  •  Typography: ${tokens.fontTitle} / ${tokens.fontBody}  •  Prepared with DocuMind`,
+          `${tokens.name}  •  ${tokens.category}`,
           {
             x: 1.0,
             y: 6.5,

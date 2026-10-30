@@ -1560,26 +1560,15 @@ export function PresentationPreviewPage() {
                     )}
                   </div>
 
-                  {/* Slide Footer with Watermark at Bottom Right Corner */}
+                  {/* Slide Footer */}
                   <div
                     className="flex items-center justify-between text-[10px] font-mono pt-2.5 border-t mt-auto shrink-0"
                     style={{ borderColor: tokens.dividerColor, color: tokens.textMuted }}
                   >
-                    <span>DocuMind Studio | {tokens.name}</span>
+                    <span>{tokens.name}</span>
                     <div className="flex items-center gap-2 sm:gap-3">
                       <span>
                         Slide {currentSlide.slideNumber} of {slides.length}
-                      </span>
-                      <span className="opacity-40">•</span>
-                      <span
-                        className="font-sans font-semibold text-[10px] sm:text-[11px] tracking-tight px-2 py-0.5 rounded border shadow-2xs"
-                        style={{
-                          borderColor: tokens.cardBorder,
-                          backgroundColor: tokens.cardBg,
-                          color: tokens.textMuted,
-                        }}
-                      >
-                        Created with DocuMind
                       </span>
                     </div>
                   </div>

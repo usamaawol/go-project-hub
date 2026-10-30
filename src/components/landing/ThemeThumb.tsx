@@ -343,7 +343,7 @@ function renderSlidesgoMinimalistBusiness(base: string, slide: SlideType) {
         <p className="text-[7.5px] font-sans text-zinc-500 mt-1">Ready for executive review</p>
       </div>
       <div className="flex items-center justify-center gap-1 text-[6.5px] font-mono text-zinc-400">
-        <span>DocuMind Studio</span>
+        <span>Executive Brief</span>
         <span>•</span>
         <span>Minimalist Business Slides</span>
       </div>
@@ -830,7 +830,7 @@ function renderModernDynamicTemplate(
           </span>
         </div>
         <div className="text-[6px] font-mono" style={{ color: subtitleColor }}>
-          Created with DocuMind
+          {t.category}
         </div>
       </div>
     </div>

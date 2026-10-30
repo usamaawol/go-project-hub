@@ -27,9 +27,7 @@ export async function compressPdfBuffer(
       pdfDoc.setSubject("");
       pdfDoc.setKeywords([]);
       pdfDoc.setProducer("");
-      pdfDoc.setCreator("DocuMind");
-    } else if (profile === "balanced") {
-      pdfDoc.setProducer("DocuMind Intelligent Paper Studio");
+      pdfDoc.setCreator("");
     }
 
     // Save with stream optimization

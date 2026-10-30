@@ -424,7 +424,7 @@ export function deriveDocumentMetadata(text: string): {
       docTitle: "DocuMind Promotional Video — Production Brief",
       docSubtitle: foundSubtitle || "Continuity Requirements, Visual Storyboard & Technical Specification",
       authorName: foundAuthor || "Production & Creative Team",
-      institution: foundInstitution || "DocuMind Studios",
+      institution: foundInstitution || "Media Production Studio",
       dateStr: foundDate || defaultMonthYear,
       recommendedArchetype: "creative",
     };
@@ -2937,7 +2937,7 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                       onChange={(e) =>
                         setConfig((prev) => ({ ...prev, headerText: e.target.value }))
                       }
-                      placeholder="e.g. DocuMind Technical Report Series"
+                      placeholder="e.g. Technical Report Series"
                       className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                     />
                   </div>
@@ -4186,7 +4186,7 @@ function A4PageCard({
       {/* Running Page Bottom Footer */}
       {!page.isCover && (
         <div className="pt-3 mt-auto border-t border-border/30 flex items-center justify-between text-[11px] font-mono text-muted-foreground shrink-0 select-none">
-          <span>DocuMind Studio · A4 Document</span>
+          <span>{config.footerText || ""}</span>
           <span>
             {config.pageNumberFormat === "page-x-of-y"
               ? `Page ${page.pageNumber} of ${page.totalPages}`
@@ -4695,7 +4695,7 @@ export function generateFormattedHtml(
           ${content}
         </div>
         ${!page.isCover ? `<div style="font-size: 9pt; font-family: monospace; color: #94a3b8; display: flex; justify-content: space-between; padding-top: 12px; margin-top: auto; border-top: 1px solid #e2e8f0;">
-          <span>DocuMind Studio · A4 Document</span>
+          <span>${escapeHtml(config.footerText || "")}</span>
           <span>Page ${page.pageNumber} of ${page.totalPages}</span>
         </div>` : ""}
       </div>`;

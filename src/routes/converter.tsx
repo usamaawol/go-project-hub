@@ -584,7 +584,7 @@ function EditorialDocumentViewer({
             <div className="mt-10 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-3">
               <span className="flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span>DocuMind Converted Document · 100% Genuine ISO A4 File</span>
+                <span>ISO Standard A4 Document</span>
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -1173,7 +1173,7 @@ function ConverterPage() {
                     <span className="inline-flex items-center gap-1 font-mono text-[11px] text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.2 rounded">
                       📄 ISO A4
                     </span>
-                    <span>Document converted & verified on DocuMind.</span>
+                    <span>Document converted & formatting preserved.</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     All original topics, layout, and content are 100% preserved.

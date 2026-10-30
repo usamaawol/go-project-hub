@@ -375,7 +375,7 @@ export function generateAssignmentCoverHtml(metadata?: AssignmentMetadata | null
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 24px;">
               <div>
-                <span style="font-size: 10pt; font-weight: bold; background: #0f172a; color: #ffffff; padding: 2px 8px; border-radius: 2px;">DOCUMIND / SPEC-A4</span>
+                <span style="font-size: 10pt; font-weight: bold; background: #0f172a; color: #ffffff; padding: 2px 8px; border-radius: 2px;">DOSSIER / SPEC-A4</span>
                 ${university ? `<span style="font-size: 10pt; font-weight: bold; margin-left: 10px; color: #0f172a;">${university}</span>` : ""}
               </div>
               ${logo ? `<img src="${logo}" alt="Emblem" style="max-height: 45px; max-width: 130px; object-fit: contain;" />` : ""}
