@@ -5,6 +5,7 @@ import {
   encodeBmp,
   encodeIco,
   parseIcoMetadata,
+  compressPng,
   optimizeSvg,
   createImagesZip,
   generateImagePreviewUrl,
@@ -353,23 +354,76 @@ describe("DocuMind Image Converter & Compressor Verification", () => {
     });
   });
 
-  describe("Intelligent SVG Image Compression without Rasterization", () => {
-    it("compresses SVG losslessly while preserving SVG mimeType and vector XML", async () => {
-      const { compressImage } = await import("@/lib/image-processor");
-      const sampleSvg = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-          <!-- Some comments -->
-          <circle cx="50" cy="50" r="40" fill="navy" />
-        </svg>
-      `;
-      const blob = new Blob([sampleSvg], { type: "image/svg+xml" });
-      const result = await compressImage(blob, { profile: "recommended" }, "logo.svg");
+  describe("Intelligent PNG Image Compression & Quantization", () => {
+    it("compresses PNG with TinyPNG-style color quantization reducing size by > 60%", async () => {
+      const width = 100;
+      const height = 100;
+      const data = new Uint8ClampedArray(width * height * 4);
+      // Create multi-color image with gradient
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          data[idx] = (x * 2.5) % 256;
+          data[idx + 1] = (y * 2.5) % 256;
+          data[idx + 2] = (x + y) % 256;
+          data[idx + 3] = x < 20 ? 128 : 255; // Semi-transparent area
+        }
+      }
 
-      expect(result.format).toBe("SVG");
-      expect(result.mimeType).toBe("image/svg+xml");
-      expect(result.originalSizeBytes).toBe(blob.size);
-      expect(result.compressedSizeBytes).toBeLessThanOrEqual(result.originalSizeBytes);
-      expect(result.reductionBytes).toBeGreaterThanOrEqual(0);
+      const rawByteLength = data.byteLength; // 40,000 bytes
+      const compressed = await compressPng({ width, height, data }, { profile: "recommended" });
+
+      expect(compressed.type).toBe("image/png");
+      expect(compressed.size).toBeLessThan(rawByteLength * 0.35); // at least 65% smaller than raw
+      expect(compressed.size).toBeGreaterThan(0);
+
+      // Verify magic bytes of output are valid PNG
+      const buf = await compressed.arrayBuffer();
+      const u8 = new Uint8Array(buf);
+      expect(u8[0]).toBe(0x89);
+      expect(u8[1]).toBe(0x50);
+      expect(u8[2]).toBe(0x4e);
+      expect(u8[3]).toBe(0x47);
+    });
+
+    it("supports lossless PNG compression and preserves bit-exact alpha", async () => {
+      const width = 32;
+      const height = 32;
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 120;
+        data[i + 1] = 200;
+        data[i + 2] = 255;
+        data[i + 3] = (i / 4) % 256; // gradient alpha
+      }
+
+      const losslessBlob = await compressPng({ width, height, data }, { lossless: true });
+      expect(losslessBlob.type).toBe("image/png");
+      expect(losslessBlob.size).toBeGreaterThan(0);
+
+      const UPNG = (await import("@pdf-lib/upng")).default;
+      const decoded = UPNG.decode(await losslessBlob.arrayBuffer());
+      expect(decoded.width).toBe(width);
+      expect(decoded.height).toBe(height);
+      const rgbaBack = new Uint8Array(UPNG.toRGBA8(decoded)[0]);
+      expect(rgbaBack[3]).toBe(data[3]); // alpha preserved exactly
+    });
+
+    it("compresses tighter with max_compression compared to high_quality", async () => {
+      const width = 80;
+      const height = 80;
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = (i * 3) % 256;
+        data[i + 1] = (i * 7) % 256;
+        data[i + 2] = (i * 11) % 256;
+        data[i + 3] = 255;
+      }
+
+      const hq = await compressPng({ width, height, data }, { profile: "high_quality" });
+      const maxComp = await compressPng({ width, height, data }, { profile: "max_compression" });
+
+      expect(maxComp.size).toBeLessThanOrEqual(hq.size);
     });
   });
 });

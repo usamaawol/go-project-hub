@@ -102,7 +102,9 @@ function formatBytes(bytes: number): string {
 export function ImageCompressorView() {
   const [items, setItems] = useState<ImageCompressorQueueItem[]>([]);
   const [profile, setProfile] = useState<ImageCompressionProfile>("recommended");
+  const [outputFormat, setOutputFormat] = useState<SupportedImageFormat | "original">("original");
   const [customQuality, setCustomQuality] = useState<number>(75);
+  const [lossless, setLossless] = useState<boolean>(false);
   const [resizePercent, setResizePercent] = useState<number>(100);
   const [maxWidth, setMaxWidth] = useState<string>("");
   const [maxHeight, setMaxHeight] = useState<string>("");
@@ -198,6 +200,8 @@ export function ImageCompressorView() {
           resizePercentage: resizePercent,
           maxWidth: maxW,
           maxHeight: maxH,
+          outputFormat: outputFormat !== "original" ? outputFormat : undefined,
+          lossless: profile === "custom" ? lossless : undefined,
         });
 
         const compressedUrl = URL.createObjectURL(res.blob);
@@ -399,6 +403,36 @@ export function ImageCompressorView() {
               ))}
             </div>
 
+            {/* Output Format Selector Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-border bg-surface-2/30">
+              <div className="space-y-0.5">
+                <span className="text-xs font-semibold text-foreground">Target Output Format:</span>
+                <p className="text-[11px] text-muted-foreground">Keep original format or compress directly into WebP / JPEG / PNG.</p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: "original", label: "Auto (Original)" },
+                  { id: "WEBP", label: "WebP (Ultra Shrink)" },
+                  { id: "JPG", label: "JPEG" },
+                  { id: "PNG", label: "PNG" },
+                  { id: "AVIF", label: "AVIF" },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setOutputFormat(opt.id as any)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                      outputFormat === opt.id
+                        ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                        : "bg-surface-2 hover:bg-surface-3 text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Custom controls if custom profile selected */}
             {profile === "custom" && (
               <div className="rounded-xl border border-border bg-surface-2/30 p-4 space-y-4 animate-in fade-in duration-200">
@@ -416,7 +450,8 @@ export function ImageCompressorView() {
                       step={5}
                       value={customQuality}
                       onChange={(e) => setCustomQuality(parseInt(e.target.value, 10))}
-                      className="w-full accent-primary cursor-pointer"
+                      disabled={lossless}
+                      className="w-full accent-primary cursor-pointer disabled:opacity-40"
                     />
                     <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
                       <span>10% (Lowest)</span>
@@ -448,30 +483,42 @@ export function ImageCompressorView() {
                   </div>
                 </div>
 
-                {/* Max dimension bounds */}
-                <div className="pt-2 border-t border-border/60 flex flex-wrap items-center gap-3 text-xs">
-                  <span className="text-muted-foreground font-medium">Max Bounds:</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground font-mono">Max W:</span>
+                {/* Lossless checkbox & Max dimension bounds */}
+                <div className="pt-2 border-t border-border/60 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-muted-foreground hover:text-foreground">
                     <input
-                      type="number"
-                      placeholder="e.g. 1920"
-                      value={maxWidth}
-                      onChange={(e) => setMaxWidth(e.target.value)}
-                      className="w-24 px-2 py-1 rounded-md border border-border bg-background text-foreground font-mono text-xs focus:border-primary outline-none"
+                      type="checkbox"
+                      checked={lossless}
+                      onChange={(e) => setLossless(e.target.checked)}
+                      className="rounded accent-primary cursor-pointer"
                     />
-                    <span className="text-muted-foreground">px</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground font-mono">Max H:</span>
-                    <input
-                      type="number"
-                      placeholder="e.g. 1080"
-                      value={maxHeight}
-                      onChange={(e) => setMaxHeight(e.target.value)}
-                      className="w-24 px-2 py-1 rounded-md border border-border bg-background text-foreground font-mono text-xs focus:border-primary outline-none"
-                    />
-                    <span className="text-muted-foreground">px</span>
+                    <span className="font-medium">Lossless Mode (Optimize compression without altering pixels)</span>
+                  </label>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-muted-foreground font-medium">Max Bounds:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground font-mono">Max W:</span>
+                      <input
+                        type="number"
+                        placeholder="e.g. 1920"
+                        value={maxWidth}
+                        onChange={(e) => setMaxWidth(e.target.value)}
+                        className="w-20 px-2 py-1 rounded-md border border-border bg-background text-foreground font-mono text-xs focus:border-primary outline-none"
+                      />
+                      <span className="text-muted-foreground">px</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground font-mono">Max H:</span>
+                      <input
+                        type="number"
+                        placeholder="e.g. 1080"
+                        value={maxHeight}
+                        onChange={(e) => setMaxHeight(e.target.value)}
+                        className="w-20 px-2 py-1 rounded-md border border-border bg-background text-foreground font-mono text-xs focus:border-primary outline-none"
+                      />
+                      <span className="text-muted-foreground">px</span>
+                    </div>
                   </div>
                 </div>
               </div>
