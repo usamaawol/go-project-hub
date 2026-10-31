@@ -19,6 +19,7 @@ import {
   Copy,
   Check,
   FileText,
+  Image as ImageIcon,
   RotateCcw,
   Eye,
   ExternalLink,
@@ -60,6 +61,7 @@ import {
 } from "@/lib/document-synthesizer";
 import { DocumentWordToolbar } from "@/components/workspace/DocumentWordToolbar";
 import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+import { ImageConverterView } from "@/components/converter/ImageConverterView";
 
 
 export const Route = createFileRoute("/converter")({
@@ -699,6 +701,7 @@ export const EditorialDocumentViewer = A4DocumentConverterEditor;
 
 function ConverterPage() {
   const [collapsed, setCollapsed] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<"document" | "image">("document");
 
   // Conversion State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -884,7 +887,7 @@ function ConverterPage() {
               </p>
             </div>
 
-            {selectedFile && (
+            {selectedFile && activeCategory === "document" && (
               <Button
                 variant="glass"
                 size="sm"
@@ -896,7 +899,39 @@ function ConverterPage() {
             )}
           </div>
 
-          {/* Educational Banner */}
+          {/* Category Tabs: Document Converter vs Image Converter */}
+          <div className="mb-6 flex border-b border-border">
+            <button
+              type="button"
+              onClick={() => setActiveCategory("document")}
+              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all ${
+                activeCategory === "document"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2/40"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              <span>Document Converter (PDF, Word, TXT)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory("image")}
+              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all ${
+                activeCategory === "image"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2/40"
+              }`}
+            >
+              <ImageIcon className="h-4 w-4" />
+              <span>Image Converter (PNG, JPG, WebP, AVIF, SVG, etc.)</span>
+            </button>
+          </div>
+
+          {activeCategory === "image" ? (
+            <ImageConverterView />
+          ) : (
+            <>
+              {/* Educational Banner */}
           <div className="mb-8 rounded-2xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 p-4 text-xs text-foreground/80 flex items-start gap-3">
             <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div className="space-y-1">
@@ -1296,6 +1331,8 @@ function ConverterPage() {
                 </Button>
               </div>
             </div>
+          )}
+            </>
           )}
         </main>
 

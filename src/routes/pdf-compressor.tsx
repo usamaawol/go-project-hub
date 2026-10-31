@@ -13,12 +13,15 @@ import {
   Eye,
   ExternalLink,
   RotateCcw,
+  FileText,
+  Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+import { ImageCompressorView } from "@/components/compressor/ImageCompressorView";
 
 
 export const Route = createFileRoute("/pdf-compressor")({
@@ -72,6 +75,7 @@ const PROFILES: CompressionProfile[] = [
 
 function PdfCompressorPage() {
   const [collapsed, setCollapsed] = useState(false);
+  const [compressorMode, setCompressorMode] = useState<"pdf" | "image">("pdf");
 
   // File state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -256,7 +260,7 @@ function PdfCompressorPage() {
               </p>
             </div>
 
-            {selectedFile && (
+            {selectedFile && compressorMode === "pdf" && (
               <Button
                 variant="glass"
                 size="sm"
@@ -268,7 +272,39 @@ function PdfCompressorPage() {
             )}
           </div>
 
-          {/* Educational Disclaimer */}
+          {/* Compressor Mode Switcher */}
+          <div className="mb-6 flex border-b border-border">
+            <button
+              type="button"
+              onClick={() => setCompressorMode("pdf")}
+              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all ${
+                compressorMode === "pdf"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2/40"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              <span>PDF Compressor</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCompressorMode("image")}
+              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all ${
+                compressorMode === "image"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-2/40"
+              }`}
+            >
+              <ImageIcon className="h-4 w-4" />
+              <span>Image Compressor (PNG, JPG, WebP, AVIF, SVG, etc.)</span>
+            </button>
+          </div>
+
+          {compressorMode === "image" ? (
+            <ImageCompressorView />
+          ) : (
+            <>
+              {/* Educational Disclaimer */}
           <div className="mb-8 rounded-2xl border border-border bg-surface-2/40 p-4 text-xs text-foreground/80 flex items-start gap-3">
             <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
             <div className="space-y-1">
@@ -509,6 +545,8 @@ function PdfCompressorPage() {
                 </div>
               </div>
             </div>
+          )}
+            </>
           )}
         </main>
 
