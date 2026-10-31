@@ -23,6 +23,7 @@ import {
   detectImageFormat,
   compressImage,
   createImagesZip,
+  generateImagePreviewUrl,
   FORMAT_EXT_MAP,
   type SupportedImageFormat,
   type ImageCompressionProfile,
@@ -35,11 +36,13 @@ export interface ImageCompressorQueueItem {
   originalFormat: SupportedImageFormat;
   originalSizeBytes: number;
   originalUrl: string;
+  originalPreviewUrl?: string;
   originalWidth?: number;
   originalHeight?: number;
   status: "pending" | "processing" | "success" | "error";
   compressedBlob?: Blob;
   compressedUrl?: string;
+  compressedPreviewUrl?: string;
   compressedFormat?: SupportedImageFormat;
   compressedSizeBytes?: number;
   compressedWidth?: number;
@@ -117,6 +120,13 @@ export function ImageCompressorView() {
       const id = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const originalUrl = URL.createObjectURL(file);
       const originalFormat = await detectImageFormat(file, file.name);
+      let originalPreviewUrl: string | undefined = undefined;
+
+      try {
+        originalPreviewUrl = await generateImagePreviewUrl(file, originalFormat);
+      } catch (err) {
+        console.warn("Could not generate preview for item:", err);
+      }
 
       newItems.push({
         id,
@@ -125,6 +135,7 @@ export function ImageCompressorView() {
         originalFormat,
         originalSizeBytes: file.size,
         originalUrl,
+        originalPreviewUrl,
         status: "pending",
       });
     }
@@ -137,7 +148,13 @@ export function ImageCompressorView() {
     setItems((prev) => {
       const target = prev.find((i) => i.id === id);
       if (target?.originalUrl) URL.revokeObjectURL(target.originalUrl);
+      if (target?.originalPreviewUrl && target.originalPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.originalPreviewUrl);
+      }
       if (target?.compressedUrl) URL.revokeObjectURL(target.compressedUrl);
+      if (target?.compressedPreviewUrl && target.compressedPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.compressedPreviewUrl);
+      }
       return prev.filter((i) => i.id !== id);
     });
   };
@@ -145,7 +162,13 @@ export function ImageCompressorView() {
   const handleClearAll = () => {
     for (const item of items) {
       if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+      if (item.originalPreviewUrl && item.originalPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(item.originalPreviewUrl);
+      }
       if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
+      if (item.compressedPreviewUrl && item.compressedPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(item.compressedPreviewUrl);
+      }
     }
     setItems([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -178,9 +201,17 @@ export function ImageCompressorView() {
         });
 
         const compressedUrl = URL.createObjectURL(res.blob);
+        let compressedPreviewUrl = res.previewDataUrl;
+        if (!compressedPreviewUrl && (res.format === "ICO" || res.format === "TIFF" || res.format === "HEIC")) {
+          try {
+            compressedPreviewUrl = await generateImagePreviewUrl(res.blob, res.format);
+          } catch {}
+        }
+
         item.status = "success";
         item.compressedBlob = res.blob;
         item.compressedUrl = compressedUrl;
+        item.compressedPreviewUrl = compressedPreviewUrl;
         item.compressedFormat = res.format;
         item.compressedSizeBytes = res.compressedSizeBytes;
         item.compressedWidth = res.width;
@@ -596,7 +627,7 @@ export function ImageCompressorView() {
                       </span>
                       <div className="h-20 w-full flex items-center justify-center overflow-hidden rounded-lg bg-black/5 dark:bg-white/5">
                         <img
-                          src={item.originalUrl}
+                          src={item.originalPreviewUrl || item.originalUrl}
                           alt="Original"
                           className="max-h-full max-w-full object-contain"
                         />
@@ -612,9 +643,9 @@ export function ImageCompressorView() {
                         {isDone ? `Compressed (${formatBytes(item.compressedSizeBytes || 0)})` : "Compressed"}
                       </span>
                       <div className="h-20 w-full flex items-center justify-center overflow-hidden rounded-lg bg-black/5 dark:bg-white/5">
-                        {isDone && item.compressedUrl ? (
+                        {isDone && (item.compressedPreviewUrl || item.compressedUrl) ? (
                           <img
-                            src={item.compressedUrl}
+                            src={item.compressedPreviewUrl || item.compressedUrl}
                             alt="Compressed"
                             className="max-h-full max-w-full object-contain"
                           />

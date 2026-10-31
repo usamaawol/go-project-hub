@@ -4,8 +4,10 @@ import {
   formatSupportsTransparency,
   encodeBmp,
   encodeIco,
+  parseIcoMetadata,
   optimizeSvg,
   createImagesZip,
+  generateImagePreviewUrl,
   FORMAT_EXT_MAP,
   FORMAT_MIME_MAP,
   type SupportedImageFormat,
@@ -194,6 +196,84 @@ describe("DocuMind Image Converter & Compressor Verification", () => {
       // Header: 6 bytes + 1 * 16 bytes directory + payload size
       const expectedSize = 6 + 16 + pngPayload1.length;
       expect(icoBlob.size).toBe(expectedSize);
+
+      const buffer = await icoBlob.arrayBuffer();
+      const meta = parseIcoMetadata(buffer);
+      expect(meta.count).toBe(1);
+      expect(meta.bestWidth).toBe(16);
+      expect(meta.bestHeight).toBe(16);
+      expect(meta.isPng).toBe(true);
+    });
+
+    it("clamps oversized dimensions to ICO 256px specification limit and encodes 0 byte for 256", async () => {
+      const pngPayload = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x0a, 0x0b]);
+
+      // When input is 1920x1080 (e.g. screenshot), ICO entry must clamp to <= 256x256
+      const icoBlob = await encodeIco({
+        width: 1920,
+        height: 1080,
+        pngBytes: pngPayload,
+      });
+
+      const buffer = await icoBlob.arrayBuffer();
+      const view = new DataView(buffer);
+
+      // In ICO directory entry (offset 6 and 7): 0 denotes 256 pixels
+      expect(view.getUint8(6)).toBe(0); // width clamped to 256 -> stored as 0
+      expect(view.getUint8(7)).toBe(0); // height clamped to 256 -> stored as 0
+
+      const meta = parseIcoMetadata(buffer);
+      expect(meta.bestWidth).toBe(256);
+      expect(meta.bestHeight).toBe(256);
+      expect(meta.isPng).toBe(true);
+    });
+
+    it("parses classic Windows DIB icon metadata correctly", async () => {
+      // Construct a valid classic 16x16 32-bit DIB ICO container
+      const dibHeaderSize = 40;
+      const xorSize = 16 * 16 * 4; // 1024 bytes
+      const andStride = Math.floor((16 + 31) / 32) * 4; // 4 bytes per row
+      const andSize = andStride * 16; // 64 bytes
+      const dibPayloadSize = dibHeaderSize + xorSize + andSize;
+
+      const totalSize = 6 + 16 + dibPayloadSize;
+      const buffer = new ArrayBuffer(totalSize);
+      const view = new DataView(buffer);
+
+      // ICONDIR
+      view.setUint16(0, 0, true);
+      view.setUint16(2, 1, true); // type = ICO
+      view.setUint16(4, 1, true); // 1 image
+
+      // ICONDIRENTRY
+      view.setUint8(6, 16); // width
+      view.setUint8(7, 16); // height
+      view.setUint16(10, 1, true); // planes
+      view.setUint16(12, 32, true); // bpp
+      view.setUint32(14, dibPayloadSize, true);
+      view.setUint32(18, 22, true); // offset = 6 + 16
+
+      // BITMAPINFOHEADER at offset 22
+      const dibOffset = 22;
+      view.setUint32(dibOffset, 40, true); // biSize
+      view.setInt32(dibOffset + 4, 16, true); // biWidth
+      view.setInt32(dibOffset + 8, 32, true); // biHeight (32 = 2 * 16 for XOR + AND)
+      view.setUint16(dibOffset + 12, 1, true); // biPlanes
+      view.setUint16(dibOffset + 14, 32, true); // biBitCount
+
+      const meta = parseIcoMetadata(buffer);
+      expect(meta.count).toBe(1);
+      expect(meta.bestWidth).toBe(16);
+      expect(meta.bestHeight).toBe(16);
+      expect(meta.bestBpp).toBe(32);
+      expect(meta.isPng).toBe(false); // correctly identifies as DIB, not PNG
+    });
+
+    it("generates fallback preview URLs for standard web formats", async () => {
+      const pngBlob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00])], { type: "image/png" });
+      const previewUrl = await generateImagePreviewUrl(pngBlob, "PNG");
+      expect(typeof previewUrl).toBe("string");
+      expect(previewUrl.startsWith("blob:")).toBe(true);
     });
   });
 

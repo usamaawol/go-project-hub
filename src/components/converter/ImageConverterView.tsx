@@ -24,6 +24,7 @@ import {
   convertImage,
   createImagesZip,
   formatSupportsTransparency,
+  generateImagePreviewUrl,
   FORMAT_EXT_MAP,
   type SupportedImageFormat,
 } from "@/lib/image-processor";
@@ -35,12 +36,14 @@ export interface ImageFileQueueItem {
   originalFormat: SupportedImageFormat;
   originalSizeBytes: number;
   originalUrl: string;
+  originalPreviewUrl?: string;
   width?: number;
   height?: number;
   hasAlpha?: boolean;
   status: "pending" | "processing" | "success" | "error";
   convertedBlob?: Blob;
   convertedUrl?: string;
+  convertedPreviewUrl?: string;
   convertedFormat?: SupportedImageFormat;
   convertedSizeBytes?: number;
   convertedWidth?: number;
@@ -92,6 +95,13 @@ export function ImageConverterView() {
       const id = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const originalUrl = URL.createObjectURL(file);
       const originalFormat = await detectImageFormat(file, file.name);
+      let originalPreviewUrl: string | undefined = undefined;
+
+      try {
+        originalPreviewUrl = await generateImagePreviewUrl(file, originalFormat);
+      } catch (err) {
+        console.warn("Could not generate preview for item:", err);
+      }
 
       newItems.push({
         id,
@@ -100,6 +110,7 @@ export function ImageConverterView() {
         originalFormat,
         originalSizeBytes: file.size,
         originalUrl,
+        originalPreviewUrl,
         status: "pending",
       });
     }
@@ -112,7 +123,13 @@ export function ImageConverterView() {
     setItems((prev) => {
       const target = prev.find((i) => i.id === id);
       if (target?.originalUrl) URL.revokeObjectURL(target.originalUrl);
+      if (target?.originalPreviewUrl && target.originalPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.originalPreviewUrl);
+      }
       if (target?.convertedUrl) URL.revokeObjectURL(target.convertedUrl);
+      if (target?.convertedPreviewUrl && target.convertedPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.convertedPreviewUrl);
+      }
       return prev.filter((i) => i.id !== id);
     });
   };
@@ -120,7 +137,13 @@ export function ImageConverterView() {
   const handleClearAll = () => {
     for (const item of items) {
       if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+      if (item.originalPreviewUrl && item.originalPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(item.originalPreviewUrl);
+      }
       if (item.convertedUrl) URL.revokeObjectURL(item.convertedUrl);
+      if (item.convertedPreviewUrl && item.convertedPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(item.convertedPreviewUrl);
+      }
     }
     setItems([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -154,9 +177,17 @@ export function ImageConverterView() {
         });
 
         const convertedUrl = URL.createObjectURL(res.blob);
+        let convertedPreviewUrl = res.previewDataUrl;
+        if (!convertedPreviewUrl && (res.format === "ICO" || res.format === "TIFF" || res.format === "HEIC")) {
+          try {
+            convertedPreviewUrl = await generateImagePreviewUrl(res.blob, res.format);
+          } catch {}
+        }
+
         item.status = "success";
         item.convertedBlob = res.blob;
         item.convertedUrl = convertedUrl;
+        item.convertedPreviewUrl = convertedPreviewUrl;
         item.convertedFormat = res.format;
         item.convertedSizeBytes = res.blob.size;
         item.convertedWidth = res.width;
@@ -598,7 +629,7 @@ export function ImageConverterView() {
                       </span>
                       <div className="h-20 w-full flex items-center justify-center overflow-hidden rounded-lg bg-black/5 dark:bg-white/5">
                         <img
-                          src={item.originalUrl}
+                          src={item.originalPreviewUrl || item.originalUrl}
                           alt="Original"
                           className="max-h-full max-w-full object-contain"
                         />
@@ -614,9 +645,9 @@ export function ImageConverterView() {
                         {isDone ? `Converted (${item.convertedFormat})` : "Target Preview"}
                       </span>
                       <div className="h-20 w-full flex items-center justify-center overflow-hidden rounded-lg bg-black/5 dark:bg-white/5">
-                        {isDone && item.convertedUrl ? (
+                        {isDone && (item.convertedPreviewUrl || item.convertedUrl) ? (
                           <img
-                            src={item.convertedUrl}
+                            src={item.convertedPreviewUrl || item.convertedUrl}
                             alt="Converted"
                             className="max-h-full max-w-full object-contain"
                           />

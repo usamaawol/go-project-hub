@@ -300,7 +300,33 @@ export async function decodeToCanvas(
     }
   }
 
-  // 3. Standard image decoding via HTMLImageElement & Object URL
+  // 3. ICO handling via pure-JS container & DIB/PNG decoder
+  // Browsers (especially Chromium on Linux) do not decode ICO blob URLs via HTMLImageElement
+  if (format === "ICO") {
+    try {
+      return await decodeIcoToCanvas(file);
+    } catch (icoErr) {
+      console.warn("decodeIcoToCanvas fallback to HTMLImageElement:", icoErr);
+    }
+  }
+
+  // 4. Standard image decoding via HTMLImageElement & Object URL
+  return decodeImageBlob(sourceBlob, format);
+}
+
+/**
+ * Decodes an image blob into a canvas using an HTMLImageElement and Object URL.
+ */
+function decodeImageBlob(
+  blob: Blob,
+  formatLabel?: string,
+): Promise<{
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  hasAlpha: boolean;
+}> {
   return new Promise<{
     canvas: HTMLCanvasElement;
     ctx: CanvasRenderingContext2D;
@@ -308,7 +334,7 @@ export async function decodeToCanvas(
     height: number;
     hasAlpha: boolean;
   }>((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(sourceBlob);
+    const objectUrl = URL.createObjectURL(blob);
     const img = new Image();
     img.crossOrigin = "anonymous";
 
@@ -348,11 +374,368 @@ export async function decodeToCanvas(
 
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      reject(new Error(`Failed to decode image data for format ${format}. The file may be corrupted.`));
+      reject(new Error(`Failed to decode image data for format ${formatLabel || "unknown"}. The file may be corrupted.`));
     };
 
     img.src = objectUrl;
   });
+}
+
+export interface IcoMetadata {
+  count: number;
+  bestWidth: number;
+  bestHeight: number;
+  bestBpp: number;
+  isPng: boolean;
+  byteLength: number;
+}
+
+/**
+ * Inspects an ICO file buffer and extracts header and best image metadata.
+ */
+export function parseIcoMetadata(buffer: ArrayBuffer): IcoMetadata {
+  if (buffer.byteLength < 6) {
+    throw new Error("Invalid ICO file: file too small.");
+  }
+  const view = new DataView(buffer);
+  const reserved = view.getUint16(0, true);
+  const type = view.getUint16(2, true);
+  const count = view.getUint16(4, true);
+
+  if (reserved !== 0 || (type !== 1 && type !== 2) || count < 1) {
+    throw new Error("Invalid ICO header: expected reserved 0 and type 1 or 2.");
+  }
+
+  let bestW = 0;
+  let bestH = 0;
+  let bestBpp = 0;
+  let bestOffset = 0;
+
+  for (let i = 0; i < count; i++) {
+    const entryOffset = 6 + i * 16;
+    if (entryOffset + 16 > buffer.byteLength) break;
+    const wByte = view.getUint8(entryOffset);
+    const hByte = view.getUint8(entryOffset + 1);
+    const planes = view.getUint16(entryOffset + 4, true);
+    const bpp = view.getUint16(entryOffset + 6, true) || (planes * 32);
+    const imageOffset = view.getUint32(entryOffset + 12, true);
+
+    const w = wByte === 0 ? 256 : wByte;
+    const h = hByte === 0 ? 256 : hByte;
+
+    if (w * h >= bestW * bestH) {
+      bestW = w;
+      bestH = h;
+      bestBpp = bpp;
+      bestOffset = imageOffset;
+    }
+  }
+
+  let isPng = false;
+  if (bestOffset + 8 <= buffer.byteLength) {
+    const u8 = new Uint8Array(buffer, bestOffset, 8);
+    if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) {
+      isPng = true;
+    }
+  }
+
+  return {
+    count,
+    bestWidth: bestW,
+    bestHeight: bestH,
+    bestBpp: bestBpp,
+    isPng,
+    byteLength: buffer.byteLength,
+  };
+}
+
+/**
+ * Decodes a Windows ICO file buffer into a canvas.
+ * Supports modern PNG-compressed ICO entries and classic Windows DIB entries (32-bit, 24-bit, 8/4/1-bit).
+ */
+export async function decodeIcoToCanvas(
+  fileOrBlob: File | Blob
+): Promise<{
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  hasAlpha: boolean;
+}> {
+  const buffer = await fileOrBlob.arrayBuffer();
+  if (buffer.byteLength < 6) {
+    throw new Error("Invalid ICO file: file too small.");
+  }
+
+  const view = new DataView(buffer);
+  const reserved = view.getUint16(0, true);
+  const type = view.getUint16(2, true);
+  const count = view.getUint16(4, true);
+
+  if (reserved !== 0 || (type !== 1 && type !== 2) || count < 1) {
+    throw new Error("Invalid ICO header: expected reserved 0 and type 1 or 2.");
+  }
+
+  interface IcoEntry {
+    width: number;
+    height: number;
+    bpp: number;
+    bytesInRes: number;
+    imageOffset: number;
+  }
+
+  const entries: IcoEntry[] = [];
+  for (let i = 0; i < count; i++) {
+    const entryOffset = 6 + i * 16;
+    if (entryOffset + 16 > buffer.byteLength) break;
+
+    const wByte = view.getUint8(entryOffset);
+    const hByte = view.getUint8(entryOffset + 1);
+    const planes = view.getUint16(entryOffset + 4, true);
+    const bpp = view.getUint16(entryOffset + 6, true);
+    const bytesInRes = view.getUint32(entryOffset + 8, true);
+    const imageOffset = view.getUint32(entryOffset + 12, true);
+
+    entries.push({
+      width: wByte === 0 ? 256 : wByte,
+      height: hByte === 0 ? 256 : hByte,
+      bpp: bpp || (planes * 32),
+      bytesInRes,
+      imageOffset,
+    });
+  }
+
+  if (entries.length === 0) {
+    throw new Error("No valid icon directory entries found in ICO.");
+  }
+
+  // Pick the highest-resolution entry
+  entries.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+  const best = entries[0]!;
+
+  if (best.imageOffset >= buffer.byteLength) {
+    throw new Error("Icon image offset exceeds file size.");
+  }
+
+  const slice = buffer.slice(best.imageOffset, Math.min(buffer.byteLength, best.imageOffset + best.bytesInRes));
+  const sliceBytes = new Uint8Array(slice);
+
+  // Check if image slice is a PNG (starts with \x89PNG\r\n\x1a\n)
+  if (
+    sliceBytes.length >= 8 &&
+    sliceBytes[0] === 0x89 &&
+    sliceBytes[1] === 0x50 &&
+    sliceBytes[2] === 0x4e &&
+    sliceBytes[3] === 0x47
+  ) {
+    const pngBlob = new Blob([slice], { type: "image/png" });
+    return decodeImageBlob(pngBlob, "PNG (ICO)");
+  }
+
+  // Windows DIB entry
+  return decodeDibToCanvas(sliceBytes, best.width, best.height);
+}
+
+/**
+ * Decodes raw DIB (Device Independent Bitmap) bytes from an ICO entry into a Canvas.
+ */
+function decodeDibToCanvas(
+  bytes: Uint8Array,
+  fallbackWidth: number,
+  fallbackHeight: number
+): {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  hasAlpha: boolean;
+} {
+  if (bytes.length < 40) {
+    throw new Error("Invalid DIB header in ICO file: header size less than 40 bytes.");
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerSize = view.getUint32(0, true);
+  const dibWidth = view.getInt32(4, true);
+  const dibHeight = view.getInt32(8, true);
+  const bpp = view.getUint16(14, true);
+  const colorsUsed = view.getUint32(32, true);
+
+  // In ICO files, dibHeight is the sum of XOR mask height + AND mask height, so actual icon height is dibHeight / 2
+  const isTopDown = dibHeight < 0;
+  const absHeight = Math.abs(dibHeight);
+  const width = dibWidth > 0 ? dibWidth : fallbackWidth;
+  const height = dibHeight !== 0 ? Math.floor(absHeight / 2) : fallbackHeight;
+
+  if (width <= 0 || height <= 0) {
+    throw new Error("Invalid dimensions in ICO DIB header.");
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Could not initialize canvas 2D context.");
+
+  const imgData = ctx.createImageData(width, height);
+  const out = imgData.data;
+
+  // Palette handling for <= 8 bpp
+  const paletteOffset = headerSize;
+  let numColors = 0;
+  if (bpp <= 8) {
+    numColors = colorsUsed > 0 ? colorsUsed : (1 << bpp);
+  }
+
+  const xorOffset = headerSize + numColors * 4;
+  let hasAlpha = false;
+
+  if (bpp === 32) {
+    const rowStride = width * 4;
+    const andStride = Math.floor((width + 31) / 32) * 4;
+    const andOffset = xorOffset + height * rowStride;
+
+    // First pass: detect if 32-bit XOR bitmap has explicit alpha
+    let anyExplicitAlpha = false;
+    for (let y = 0; y < height; y++) {
+      const srcRow = isTopDown ? xorOffset + y * rowStride : xorOffset + (height - 1 - y) * rowStride;
+      if (srcRow + rowStride > bytes.length) break;
+      for (let x = 0; x < width; x++) {
+        if (bytes[srcRow + x * 4 + 3]! > 0) {
+          anyExplicitAlpha = true;
+          break;
+        }
+      }
+      if (anyExplicitAlpha) break;
+    }
+
+    // Render 32bpp pixels
+    for (let y = 0; y < height; y++) {
+      const srcRow = isTopDown ? xorOffset + y * rowStride : xorOffset + (height - 1 - y) * rowStride;
+      const andRow = isTopDown ? andOffset + y * andStride : andOffset + (height - 1 - y) * andStride;
+
+      for (let x = 0; x < width; x++) {
+        const outIdx = (y * width + x) * 4;
+        if (srcRow + x * 4 + 3 < bytes.length) {
+          const b = bytes[srcRow + x * 4]!;
+          const g = bytes[srcRow + x * 4 + 1]!;
+          const r = bytes[srcRow + x * 4 + 2]!;
+          let a = bytes[srcRow + x * 4 + 3]!;
+
+          // If no explicit alpha was provided, use 1-bit AND mask for transparency
+          if (!anyExplicitAlpha && andRow < bytes.length) {
+            const byteIdx = andRow + Math.floor(x / 8);
+            if (byteIdx < bytes.length) {
+              const bit = (bytes[byteIdx]! >> (7 - (x % 8))) & 1;
+              a = bit === 1 ? 0 : 255;
+            } else {
+              a = 255;
+            }
+          }
+
+          if (a < 255) hasAlpha = true;
+
+          out[outIdx] = r;
+          out[outIdx + 1] = g;
+          out[outIdx + 2] = b;
+          out[outIdx + 3] = a;
+        }
+      }
+    }
+  } else if (bpp === 24) {
+    const xorStride = Math.floor((24 * width + 31) / 32) * 4;
+    const andStride = Math.floor((width + 31) / 32) * 4;
+    const andOffset = xorOffset + height * xorStride;
+
+    for (let y = 0; y < height; y++) {
+      const srcRow = isTopDown ? xorOffset + y * xorStride : xorOffset + (height - 1 - y) * xorStride;
+      const andRow = isTopDown ? andOffset + y * andStride : andOffset + (height - 1 - y) * andStride;
+
+      for (let x = 0; x < width; x++) {
+        const outIdx = (y * width + x) * 4;
+        const b = srcRow + x * 3 < bytes.length ? bytes[srcRow + x * 3]! : 0;
+        const g = srcRow + x * 3 + 1 < bytes.length ? bytes[srcRow + x * 3 + 1]! : 0;
+        const r = srcRow + x * 3 + 2 < bytes.length ? bytes[srcRow + x * 3 + 2]! : 0;
+
+        let a = 255;
+        if (andRow < bytes.length) {
+          const byteIdx = andRow + Math.floor(x / 8);
+          if (byteIdx < bytes.length) {
+            const bit = (bytes[byteIdx]! >> (7 - (x % 8))) & 1;
+            a = bit === 1 ? 0 : 255;
+          }
+        }
+
+        if (a < 255) hasAlpha = true;
+
+        out[outIdx] = r;
+        out[outIdx + 1] = g;
+        out[outIdx + 2] = b;
+        out[outIdx + 3] = a;
+      }
+    }
+  } else if (bpp === 8 || bpp === 4 || bpp === 1) {
+    const xorStride = Math.floor((bpp * width + 31) / 32) * 4;
+    const andStride = Math.floor((width + 31) / 32) * 4;
+    const andOffset = xorOffset + height * xorStride;
+
+    for (let y = 0; y < height; y++) {
+      const srcRow = isTopDown ? xorOffset + y * xorStride : xorOffset + (height - 1 - y) * xorStride;
+      const andRow = isTopDown ? andOffset + y * andStride : andOffset + (height - 1 - y) * andStride;
+
+      for (let x = 0; x < width; x++) {
+        const outIdx = (y * width + x) * 4;
+        let colorIdx = 0;
+
+        if (bpp === 8) {
+          const bytePos = srcRow + x;
+          if (bytePos < bytes.length) colorIdx = bytes[bytePos]!;
+        } else if (bpp === 4) {
+          const bytePos = srcRow + Math.floor(x / 2);
+          if (bytePos < bytes.length) {
+            const byteVal = bytes[bytePos]!;
+            colorIdx = (x % 2 === 0) ? (byteVal >> 4) & 0x0f : byteVal & 0x0f;
+          }
+        } else if (bpp === 1) {
+          const bytePos = srcRow + Math.floor(x / 8);
+          if (bytePos < bytes.length) {
+            colorIdx = (bytes[bytePos]! >> (7 - (x % 8))) & 0x01;
+          }
+        }
+
+        const palPos = paletteOffset + colorIdx * 4;
+        const b = palPos < bytes.length ? bytes[palPos]! : 0;
+        const g = palPos + 1 < bytes.length ? bytes[palPos + 1]! : 0;
+        const r = palPos + 2 < bytes.length ? bytes[palPos + 2]! : 0;
+
+        let a = 255;
+        if (andRow < bytes.length) {
+          const byteIdx = andRow + Math.floor(x / 8);
+          if (byteIdx < bytes.length) {
+            const bit = (bytes[byteIdx]! >> (7 - (x % 8))) & 1;
+            a = bit === 1 ? 0 : 255;
+          }
+        }
+
+        if (a < 255) hasAlpha = true;
+
+        out[outIdx] = r;
+        out[outIdx + 1] = g;
+        out[outIdx + 2] = b;
+        out[outIdx + 3] = a;
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+
+  return {
+    canvas,
+    ctx,
+    width,
+    height,
+    hasAlpha,
+  };
 }
 
 export interface BmpSourceData {
@@ -448,6 +831,8 @@ export function encodeBmp(
 
 /**
  * Encodes canvas into Windows Icon format (.ico) with embedded PNG.
+ * Windows ICO standard requires icon dimensions <= 256x256.
+ * If dimensions exceed 256, it is scaled down proportionally with high-quality smoothing.
  */
 export async function encodeIco(
   canvasOrData: HTMLCanvasElement | IcoSourceData
@@ -457,17 +842,40 @@ export async function encodeIco(
   let pngBytes: Uint8Array;
 
   if ("pngBytes" in canvasOrData) {
-    width = canvasOrData.width > 256 ? 256 : canvasOrData.width;
-    height = canvasOrData.height > 256 ? 256 : canvasOrData.height;
+    width = Math.min(256, Math.max(1, canvasOrData.width));
+    height = Math.min(256, Math.max(1, canvasOrData.height));
     pngBytes = canvasOrData.pngBytes;
   } else {
+    let srcCanvas = canvasOrData;
+    // Scale down if dimensions exceed ICO 256px limit
+    if (canvasOrData.width > 256 || canvasOrData.height > 256) {
+      const scale = 256 / Math.max(canvasOrData.width, canvasOrData.height);
+      const targetW = Math.max(1, Math.round(canvasOrData.width * scale));
+      const targetH = Math.max(1, Math.round(canvasOrData.height * scale));
+
+      const scaledCanvas = document.createElement("canvas");
+      scaledCanvas.width = targetW;
+      scaledCanvas.height = targetH;
+      const scaledCtx = scaledCanvas.getContext("2d");
+      if (scaledCtx) {
+        scaledCtx.imageSmoothingEnabled = true;
+        scaledCtx.imageSmoothingQuality = "high";
+        scaledCtx.drawImage(canvasOrData, 0, 0, targetW, targetH);
+        srcCanvas = scaledCanvas;
+      }
+    }
+
+    width = srcCanvas.width;
+    height = srcCanvas.height;
+
     // Convert canvas to PNG blob
     const pngBlob = await new Promise<Blob>((resolve, reject) => {
-      canvasOrData.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))), "image/png");
+      srcCanvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("PNG encoding failed for ICO"))),
+        "image/png"
+      );
     });
     pngBytes = new Uint8Array(await pngBlob.arrayBuffer());
-    width = canvasOrData.width > 256 ? 256 : canvasOrData.width;
-    height = canvasOrData.height > 256 ? 256 : canvasOrData.height;
   }
 
   const headerSize = 6;
@@ -483,14 +891,15 @@ export async function encodeIco(
   view.setUint16(4, 1, true); // count of images
 
   // ICONDIRENTRY (16 bytes)
-  view.setUint8(6, width === 256 ? 0 : width);
-  view.setUint8(7, height === 256 ? 0 : height);
+  // In ICO header: 0 denotes 256 pixels
+  view.setUint8(6, width >= 256 ? 0 : width);
+  view.setUint8(7, height >= 256 ? 0 : height);
   view.setUint8(8, 0); // color count
   view.setUint8(9, 0); // reserved
   view.setUint16(10, 1, true); // color planes
   view.setUint16(12, 32, true); // bits per pixel
   view.setUint32(14, pngBytes.length, true); // size of image data
-  view.setUint32(18, headerSize + entrySize, true); // offset of image data
+  view.setUint32(18, headerSize + entrySize, true); // offset of image data (22)
 
   // Copy PNG bytes
   const uint8 = new Uint8Array(buffer);
@@ -666,6 +1075,13 @@ export async function convertImage(
     });
   }
 
+  let previewDataUrl: string | undefined = undefined;
+  try {
+    previewDataUrl = renderCanvas.toDataURL("image/png");
+  } catch (err) {
+    console.warn("Could not generate preview data URL:", err);
+  }
+
   return {
     blob: outputBlob,
     format: targetFormat,
@@ -673,6 +1089,7 @@ export async function convertImage(
     width: targetWidth,
     height: targetHeight,
     warning,
+    previewDataUrl,
   };
 }
 
@@ -694,6 +1111,7 @@ export async function compressImage(
   reductionBytes: number;
   reductionPercent: number;
   warning?: string;
+  previewDataUrl?: string;
 }> {
   const originalSizeBytes = file.size;
   const format = await detectImageFormat(file, filename);
@@ -832,6 +1250,13 @@ export async function compressImage(
     Math.round(((originalSizeBytes - compressedSizeBytes) / originalSizeBytes) * 100),
   );
 
+  let previewDataUrl: string | undefined = undefined;
+  try {
+    previewDataUrl = canvas.toDataURL("image/png");
+  } catch (err) {
+    console.warn("Could not generate preview data URL:", err);
+  }
+
   return {
     blob: finalBlob,
     format: targetFormat,
@@ -843,7 +1268,32 @@ export async function compressImage(
     reductionBytes,
     reductionPercent,
     warning,
+    previewDataUrl,
   };
+}
+
+/**
+ * Generates a displayable preview Data URL or Object URL for any image format.
+ * Formats like ICO, TIFF, and HEIC cannot be rendered by native <img> tags in standard browsers,
+ * so this decodes them to canvas and exports a PNG Data URL for seamless visual preview.
+ */
+export async function generateImagePreviewUrl(
+  fileOrBlob: File | Blob,
+  format?: SupportedImageFormat,
+): Promise<string> {
+  const resolvedFormat = format || (await detectImageFormat(fileOrBlob));
+
+  if (resolvedFormat === "ICO" || resolvedFormat === "TIFF" || resolvedFormat === "HEIC") {
+    try {
+      const decoded = await decodeToCanvas(fileOrBlob, resolvedFormat);
+      return decoded.canvas.toDataURL("image/png");
+    } catch (e) {
+      console.warn(`Could not generate canvas preview for ${resolvedFormat}:`, e);
+      return URL.createObjectURL(fileOrBlob);
+    }
+  }
+
+  return URL.createObjectURL(fileOrBlob);
 }
 
 /**
