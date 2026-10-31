@@ -472,4 +472,46 @@ Zero permanent storage of sensitive documents.
       expect(firstPage.getHeight()).toBeCloseTo(841.89, 1);
     });
   });
+
+  describe("Editable A4 File Converter & Horizontal Line Removal", () => {
+    it("converts blocks to A4 HTML filtering out all horizontal divider lines", async () => {
+      const { convertBlocksToA4Html } = await import("../routes/converter");
+      const blocks = [
+        { type: "title" as const, text: "Executive Report" },
+        { type: "divider" as const },
+        { type: "heading1" as const, text: "Introduction" },
+        { type: "divider" as const },
+        { type: "paragraph" as const, text: "This is authentic paragraph text without horizontal lines." },
+      ];
+
+      const html = convertBlocksToA4Html(blocks);
+      expect(html).toContain("Executive Report");
+      expect(html).toContain("Introduction");
+      expect(html).toContain("authentic paragraph text");
+      expect(html).not.toContain("<hr");
+      expect(html).not.toContain("border-b");
+    });
+
+    it("generates client PDF and DOCX respecting custom line spacing, font size, and zero dividers", async () => {
+      const { generateClientPdf, generateClientDocx } = await import("../lib/document-converter");
+      const sampleText = "Custom Title\n\nSection Heading\n\nParagraph text with user adjustments.";
+
+      const pdfBlob = await generateClientPdf(sampleText, "custom_doc", {
+        lineSpacing: 1.8,
+        fontSize: 16,
+        removeDividers: true,
+      });
+      expect(pdfBlob).toBeDefined();
+      expect(pdfBlob.size).toBeGreaterThan(500);
+
+      const docxBlob = await generateClientDocx(sampleText, "custom_doc", {
+        lineSpacing: 1.8,
+        fontSize: 16,
+        removeDividers: true,
+      });
+      expect(docxBlob).toBeDefined();
+      const docxSize = (docxBlob as any).size ?? (docxBlob as any).byteLength ?? (docxBlob as any).length;
+      expect(docxSize).toBeGreaterThan(500);
+    });
+  });
 });

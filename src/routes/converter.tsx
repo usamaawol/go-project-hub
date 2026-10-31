@@ -1,4 +1,11 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRightLeft,
@@ -29,13 +36,29 @@ import {
   MapPin,
   Globe,
   Share2,
+  Minus,
+  Plus,
+  Bold,
+  Italic,
+  Underline,
+  Edit3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
-import { convertDocument, type ConversionTarget } from "@/lib/document-converter";
-import { parsePlainTextToBlocks, type DocSynthesizerBlock } from "@/lib/document-synthesizer";
+import {
+  convertDocument,
+  generateClientDocx,
+  generateClientPdf,
+  type ConversionTarget,
+} from "@/lib/document-converter";
+import {
+  parsePlainTextToBlocks,
+  parseHtmlToBlocks,
+  type DocSynthesizerBlock,
+} from "@/lib/document-synthesizer";
+import { DocumentWordToolbar } from "@/components/workspace/DocumentWordToolbar";
 import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
 
 
@@ -113,504 +136,460 @@ function renderTextWithLinks(text: string) {
   return parts.length > 0 ? parts : text;
 }
 
-interface EditorialDocumentViewerProps {
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
+  if (!blocks || blocks.length === 0) {
+    return "<p>Start reviewing and editing your converted document...</p>";
+  }
+
+  return blocks
+    .filter((b) => b.type !== "divider") // Strictly remove all horizontal lines!
+    .map((b) => {
+      if (b.type === "title") {
+        return `<h1 style="font-size: 1.85em; font-weight: 800; margin-bottom: 0.6em; line-height: 1.25; color: inherit;">${escapeHtml(b.text || "")}</h1>`;
+      }
+      if (b.type === "subtitle") {
+        return `<p style="font-size: 1.1em; font-weight: 500; opacity: 0.85; margin-bottom: 0.8em; color: inherit;">${escapeHtml(b.text || "")}</p>`;
+      }
+      if (b.type === "heading1") {
+        return `<h2 style="font-size: 1.4em; font-weight: 700; margin-top: 1.2em; margin-bottom: 0.45em; line-height: 1.3; color: inherit;">${escapeHtml(b.text || "")}</h2>`;
+      }
+      if (b.type === "heading2") {
+        return `<h3 style="font-size: 1.2em; font-weight: 700; margin-top: 1em; margin-bottom: 0.35em; line-height: 1.35; color: inherit;">${escapeHtml(b.text || "")}</h3>`;
+      }
+      if (b.type === "heading3") {
+        return `<h4 style="font-size: 1.05em; font-weight: 600; margin-top: 0.8em; margin-bottom: 0.3em; line-height: 1.4; color: inherit;">${escapeHtml(b.text || "")}</h4>`;
+      }
+      if (b.type === "list" && b.items) {
+        return `<ul style="margin: 0.6em 0; padding-left: 1.6em; list-style-type: disc;">\n${b.items
+          .map((item) => `  <li style="margin-bottom: 0.35em;">${escapeHtml(item)}</li>`)
+          .join("\n")}\n</ul>`;
+      }
+      if (b.type === "table" && b.table) {
+        const tbl = b.table;
+        let html = '<table style="width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9em;">\n';
+        if (tbl.headers && tbl.headers.length > 0) {
+          html += '<thead><tr style="background-color: rgba(241, 245, 249, 0.7); font-weight: 600;">\n';
+          for (const h of tbl.headers) {
+            html += `  <th style="padding: 8px 10px; border: 1px solid #cbd5e1; text-align: left;">${escapeHtml(h)}</th>\n`;
+          }
+          html += '</tr></thead>\n';
+        }
+        html += '<tbody>\n';
+        for (let rIdx = 0; rIdx < tbl.rows.length; rIdx++) {
+          const row = tbl.rows[rIdx]!;
+          const bg = rIdx % 2 === 1 ? ' style="background-color: rgba(248, 250, 252, 0.5);"' : '';
+          html += `<tr${bg}>\n`;
+          for (const c of row) {
+            html += `  <td style="padding: 8px 10px; border: 1px solid #cbd5e1;">${escapeHtml(c)}</td>\n`;
+          }
+          html += '</tr>\n';
+        }
+        html += '</tbody></table>';
+        return html;
+      }
+      if (b.runs && b.runs.length > 0) {
+        const runsHtml = b.runs
+          .map((r) => {
+            let t = escapeHtml(r.text);
+            if (r.bold) t = `<strong>${t}</strong>`;
+            if (r.italics) t = `<em>${t}</em>`;
+            if (r.underline) t = `<u>${t}</u>`;
+            if (r.strike) t = `<s>${t}</s>`;
+            return t;
+          })
+          .join("");
+        return `<p style="margin-bottom: 0.75em;">${runsHtml}</p>`;
+      }
+      return `<p style="margin-bottom: 0.75em;">${escapeHtml(b.text || "")}</p>`;
+    })
+    .join("\n");
+}
+
+export interface A4DocumentConverterEditorHandle {
+  triggerDownload: (format?: string) => Promise<void>;
+  getEditedHtml: () => string;
+}
+
+export interface A4DocumentConverterEditorProps {
   text: string;
   filename: string;
   fileExt: string;
   targetFormat: string;
+  rawBlobUrl?: string;
   onDownload?: () => void;
+  onEditedHtmlChange?: (html: string) => void;
 }
 
-function EditorialDocumentViewer({
-  text,
-  filename,
-  fileExt,
-  targetFormat,
-  onDownload,
-}: EditorialDocumentViewerProps) {
-  const [lineSpacing, setLineSpacing] = useState<"compact" | "balanced" | "relaxed">("balanced");
-  const [fontFamily, setFontFamily] = useState<"sans" | "serif" | "mono">("sans");
-  const [accentTheme, setAccentTheme] = useState<"blue" | "emerald" | "slate" | "amber">("blue");
-  const [isWide, setIsWide] = useState(false);
-  const [copied, setCopied] = useState(false);
+export const A4DocumentConverterEditor = forwardRef<
+  A4DocumentConverterEditorHandle,
+  A4DocumentConverterEditorProps
+>(function A4DocumentConverterEditor(
+  {
+    text,
+    filename,
+    fileExt,
+    targetFormat,
+    rawBlobUrl,
+    onDownload,
+    onEditedHtmlChange,
+  },
+  ref,
+) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [currentLineSpacing, setCurrentLineSpacing] = useState<string>("1.5");
+  const [baseFontSize, setBaseFontSize] = useState<number>(14);
+  const [fontFamily, setFontFamily] = useState<string>("sans");
+  const [isWide, setIsWide] = useState<boolean>(false);
+  const [copied, setCopied] = useState<boolean>(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
 
+  // Parse authentic blocks from original extracted text
   const blocks = useMemo(() => parsePlainTextToBlocks(text), [text]);
 
-  const rawTitle = useMemo(() => {
-    const titleBlock = blocks.find((b) => b.type === "title");
-    if (titleBlock?.text) return titleBlock.text;
-    const base = filename.replace(/\.(docx|doc|pdf|txt)$/i, "");
-    return base.replace(/[_-]+/g, " ");
-  }, [blocks, filename]);
+  // Convert blocks to authentic semantic HTML with ZERO horizontal lines and ZERO fake avatars
+  const initialHtml = useMemo(() => convertBlocksToA4Html(blocks), [blocks]);
+  const [editedHtml, setEditedHtml] = useState<string>(initialHtml);
 
-  const initials = useMemo(() => {
-    if (!rawTitle) return "DM";
-    const cleaned = rawTitle.replace(/optimized|professional|resume|cv/gi, "").trim();
-    const target = cleaned.length >= 2 ? cleaned : rawTitle;
-    const parts = target.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
+  // Sync initial HTML when text changes
+  useEffect(() => {
+    setEditedHtml(initialHtml);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = initialHtml;
     }
-    return target.slice(0, 2).toUpperCase();
-  }, [rawTitle]);
+  }, [initialHtml]);
 
-  const { headerMetaBlocks, bodyBlocks } = useMemo(() => {
-    if (blocks.length === 0) return { headerMetaBlocks: [], bodyBlocks: [] };
+  const handleAdjustFontSize = (delta: number) => {
+    setBaseFontSize((prev) => Math.max(10, Math.min(28, prev + delta)));
+  };
 
-    const firstIsTitle = blocks[0].type === "title";
-    if (!firstIsTitle) {
-      return { headerMetaBlocks: [], bodyBlocks: blocks };
-    }
-
-    const metas: DocSynthesizerBlock[] = [];
-    const remaining: DocSynthesizerBlock[] = [];
-    let inHeader = true;
-
-    for (let i = 1; i < blocks.length; i++) {
-      const b = blocks[i];
-      if (
-        inHeader &&
-        b.type === "paragraph" &&
-        b.text &&
-        (b.text.includes("@") ||
-          b.text.includes("http") ||
-          /\+\d{2,}/.test(b.text) ||
-          b.text.includes("📍") ||
-          b.text.includes("📞") ||
-          b.text.includes("✉️") ||
-          b.text.includes("🔗") ||
-          (b.text.includes("|") && b.text.length < 150))
-      ) {
-        metas.push(b);
-      } else {
-        inHeader = false;
-        remaining.push(b);
-      }
-    }
-
-    return { headerMetaBlocks: metas, bodyBlocks: remaining };
-  }, [blocks]);
+  const fontFamilyMap: Record<string, string> = {
+    sans: "Inter, sans-serif",
+    serif: "Georgia, serif",
+    times: "'Times New Roman', serif",
+    mono: "monospace",
+  };
 
   const handleCopyFormattedA4 = () => {
-    const formatted = blocks
-      .map((b) => {
-        if (b.type === "title") return `# ${b.text}\n`;
-        if (b.type === "heading1") return `\n## ${b.text}\n`;
-        if (b.type === "heading2") return `\n### ${b.text}\n`;
-        if (b.type === "heading3") return `\n#### ${b.text}\n`;
-        if (b.type === "list" && b.items) return b.items.map((i) => `• ${i}`).join("\n");
-        if (b.type === "table" && b.table) {
-          const h = b.table.headers
-            ? `| ${b.table.headers.join(" | ")} |\n| ${b.table.headers.map(() => "---").join(" | ")} |\n`
-            : "";
-          const r = b.table.rows.map((row) => `| ${row.join(" | ")} |`).join("\n");
-          return `${h}${r}\n`;
-        }
-        return b.text || "";
-      })
-      .join("\n")
-      .trim();
-
-    navigator.clipboard.writeText(formatted || text);
+    const rawFormatted = editorRef.current?.innerText || text;
+    navigator.clipboard.writeText(rawFormatted);
     setCopied(true);
-    toast.success("Copied A4 structured text to clipboard!", {
-      description: "Clean format with preserved headers, hierarchy, and bullet lists.",
-    });
+    toast.success("Copied formatted A4 text to clipboard!");
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleCopyPlainText = () => {
-    navigator.clipboard.writeText(text);
+    const plain = (editorRef.current?.innerText || text).replace(/\n\s*\n/g, "\n\n");
+    navigator.clipboard.writeText(plain);
     setCopied(true);
-    toast.success("Copied clean plain text to clipboard!", {
-      description: "Unformatted plain text ready to paste anywhere.",
-    });
+    toast.success("Copied plain text to clipboard!");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const themeClasses = {
-    blue: {
-      accentBorder: "border-blue-600 dark:border-blue-500",
-      accentBg: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
-      avatarBg: "from-blue-600 via-indigo-600 to-violet-600 text-white",
-      badge: "border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40",
-      accentBar: "bg-blue-600",
-    },
-    emerald: {
-      accentBorder: "border-emerald-600 dark:border-emerald-500",
-      accentBg: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
-      avatarBg: "from-emerald-600 via-teal-600 to-cyan-600 text-white",
-      badge: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40",
-      accentBar: "bg-emerald-600",
-    },
-    slate: {
-      accentBorder: "border-slate-600 dark:border-slate-400",
-      accentBg: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20",
-      avatarBg: "from-slate-700 via-slate-800 to-zinc-900 text-white",
-      badge: "border-slate-500/30 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-900",
-      accentBar: "bg-slate-700",
-    },
-    amber: {
-      accentBorder: "border-amber-600 dark:border-amber-500",
-      accentBg: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
-      avatarBg: "from-amber-600 via-orange-600 to-rose-600 text-white",
-      badge: "border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40",
-      accentBar: "bg-amber-600",
-    },
-  }[accentTheme];
+  const handleResetToOriginal = () => {
+    setEditedHtml(initialHtml);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = initialHtml;
+    }
+    toast.info("Reset document to original converted content.");
+  };
 
-  const fontClass = {
-    sans: "font-sans",
-    serif: "font-serif",
-    mono: "font-mono text-[11.5px]",
-  }[fontFamily];
+  const handleDownloadDocument = async (format: string) => {
+    setDownloadingFormat(format);
+    try {
+      const htmlToExport = editorRef.current?.innerHTML || editedHtml;
+      const baseName = filename.replace(/\.(docx|doc|pdf|txt)$/i, "");
+      const outputFilename = `${baseName}.${format.toLowerCase()}`;
 
-  const spacingStyles = {
-    compact: {
-      lineHeight: "leading-snug",
-      pMargin: "mb-2",
-      fontSize: "text-[12px]",
-      gap: "gap-1.5",
-    },
-    balanced: {
-      lineHeight: "leading-relaxed",
-      pMargin: "mb-3.5",
-      fontSize: "text-[12.5px]",
-      gap: "gap-2",
-    },
-    relaxed: {
-      lineHeight: "leading-loose",
-      pMargin: "mb-5",
-      fontSize: "text-[13px]",
-      gap: "gap-2.5",
-    },
-  }[lineSpacing];
+      const numLineSpacing = parseFloat(currentLineSpacing) || 1.35;
+      const ptFontSize = Math.round(baseFontSize * 0.75); // Convert px to pt
+
+      let blob: Blob;
+      if (format === "PDF") {
+        blob = await generateClientPdf(htmlToExport, baseName, {
+          lineSpacing: numLineSpacing,
+          fontSize: ptFontSize,
+          removeDividers: true,
+        });
+      } else if (format === "DOCX" || format === "DOC") {
+        blob = await generateClientDocx(htmlToExport, baseName, {
+          lineSpacing: numLineSpacing,
+          fontSize: ptFontSize,
+          removeDividers: true,
+        });
+      } else {
+        // TXT
+        const plainText = editorRef.current?.innerText || text;
+        blob = new Blob([plainText], { type: "text/plain;charset=utf-8" });
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = outputFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+
+      eraseWorkspaceJobsOnDownload();
+      toast.success(`Downloaded ${outputFilename}!`, {
+        description: "Your edits, custom font size, line spacing, and styles are 100% preserved.",
+      });
+    } catch (err) {
+      console.error("Export error:", err);
+      toast.error("Download failed", {
+        description: err instanceof Error ? err.message : "Error generating document.",
+      });
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    triggerDownload: (fmt) => handleDownloadDocument(fmt || targetFormat),
+    getEditedHtml: () => editorRef.current?.innerHTML || editedHtml,
+  }));
+
+  const wordCount = useMemo(() => {
+    const raw = editorRef.current?.innerText || text;
+    return raw.trim() ? raw.trim().split(/\s+/).length : 0;
+  }, [editedHtml, text]);
 
   return (
     <div className="space-y-4">
-      {/* Modern Interactive Polish & Spacing Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-surface-2/70 border border-border">
-        {/* Line Spacing Controls (Solving "the size between the line") */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1 mr-1">
-            <AlignJustify className="h-3.5 w-3.5 text-primary" /> Spacing:
-          </span>
-          {(["compact", "balanced", "relaxed"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setLineSpacing(mode)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all cursor-pointer capitalize ${
-                lineSpacing === mode
-                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                  : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
-              }`}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
+      {/* 1. Complete Word Processing Formatting Toolbar */}
+      <DocumentWordToolbar
+        editorRef={editorRef}
+        currentLineSpacing={currentLineSpacing}
+        onLineSpacingChange={(sp) => setCurrentLineSpacing(sp)}
+      />
 
-        {/* Font Family Controls */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1 mr-1">
-            <Type className="h-3.5 w-3.5 text-primary" /> Font:
-          </span>
-          {(["sans", "serif", "mono"] as const).map((font) => (
+      {/* 2. Secondary Quick Controls Bar: Text Size, Line Gap, Font Family, Width & Quick Downloads */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-xl bg-surface-2/60 border border-border text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Base Font Size Adjustment */}
+          <div className="flex items-center gap-1 bg-background px-2 py-1 rounded-lg border border-border/80">
+            <span className="text-[11px] font-mono text-muted-foreground mr-1 uppercase font-semibold">
+              Size:
+            </span>
             <button
-              key={font}
               type="button"
-              onClick={() => setFontFamily(font)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all cursor-pointer capitalize ${
-                fontFamily === font
-                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                  : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
-              }`}
+              onClick={() => handleAdjustFontSize(-1)}
+              className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2 cursor-pointer"
+              title="Decrease text size"
             >
-              {font === "sans" ? "Modern" : font === "serif" ? "Editorial" : "Mono"}
+              <Minus className="h-3 w-3" />
             </button>
-          ))}
-        </div>
+            <span className="font-mono text-[11px] font-bold px-1 min-w-[32px] text-center">
+              {baseFontSize}px
+            </span>
+            <button
+              type="button"
+              onClick={() => handleAdjustFontSize(1)}
+              className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2 cursor-pointer"
+              title="Increase text size"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
 
-        {/* Theme Accent Dots */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1">
-            <Palette className="h-3.5 w-3.5 text-primary" /> Accent:
-          </span>
-          {(["blue", "emerald", "slate", "amber"] as const).map((th) => {
-            const dotColor = {
-              blue: "bg-blue-600",
-              emerald: "bg-emerald-600",
-              slate: "bg-slate-700",
-              amber: "bg-amber-600",
-            }[th];
-            return (
+          {/* Quick Line Spacing Pills */}
+          <div className="flex items-center gap-1 bg-background px-2 py-1 rounded-lg border border-border/80">
+            <span className="text-[11px] font-mono text-muted-foreground mr-1 uppercase font-semibold">
+              Gap:
+            </span>
+            {[
+              { label: "1.0", value: "1.0" },
+              { label: "1.15", value: "1.15" },
+              { label: "1.3", value: "1.3" },
+              { label: "1.5", value: "1.5" },
+              { label: "1.8", value: "1.8" },
+              { label: "2.0", value: "2.0" },
+            ].map((sp) => (
               <button
-                key={th}
+                key={sp.value}
                 type="button"
-                onClick={() => setAccentTheme(th)}
-                className={`h-5 w-5 rounded-full ${dotColor} transition-all cursor-pointer ring-offset-2 hover:scale-110 ${
-                  accentTheme === th
-                    ? "ring-2 ring-primary ring-offset-background scale-110"
-                    : "opacity-70 hover:opacity-100"
+                onClick={() => setCurrentLineSpacing(sp.value)}
+                className={`px-1.5 py-0.5 rounded text-[11px] font-mono transition-all cursor-pointer ${
+                  currentLineSpacing === sp.value
+                    ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
-                title={`Accent: ${th}`}
-              />
-            );
-          })}
-        </div>
+                title={`Line gap: ${sp.value}`}
+              >
+                {sp.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-          <span className="hidden sm:inline-flex items-center gap-1 bg-background px-2 py-1 rounded text-[11px] font-mono text-muted-foreground border border-border/60">
-            📄 ISO A4
-          </span>
+          {/* Font Family Selector */}
+          <select
+            value={fontFamily}
+            onChange={(e) => setFontFamily(e.target.value)}
+            className="h-7 text-xs px-2 rounded-lg border border-border bg-background text-foreground font-semibold outline-none focus:border-primary cursor-pointer"
+          >
+            <option value="sans">Modern Sans (Inter)</option>
+            <option value="serif">Editorial Serif (Georgia)</option>
+            <option value="times">Academic (Times New Roman)</option>
+            <option value="mono">Tech Monospace</option>
+          </select>
+
+          {/* Expand / A4 Width Toggle */}
           <button
             type="button"
             onClick={() => setIsWide(!isWide)}
-            className="p-1.5 text-xs text-muted-foreground hover:text-foreground bg-background border border-border/70 rounded-md transition-all cursor-pointer"
-            title={isWide ? "A4 sheet width" : "Expand width"}
+            className="h-7 px-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground bg-background border border-border rounded-lg transition-all cursor-pointer"
+            title={isWide ? "Switch to standard A4 width (794px)" : "Expand canvas width"}
           >
             {isWide ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">{isWide ? "A4 Width" : "Widescreen"}</span>
+          </button>
+        </div>
+
+        {/* Quick Format Downloads */}
+        <div className="flex items-center gap-1.5 ml-auto">
+          <button
+            type="button"
+            onClick={() => handleDownloadDocument("DOCX")}
+            disabled={downloadingFormat !== null}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            title="Download edited document as Microsoft Word (.docx)"
+          >
+            <Download className="h-3 w-3" /> DOCX
           </button>
           <button
             type="button"
-            onClick={handleCopyFormattedA4}
-            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md border border-primary/25 transition-all cursor-pointer shadow-xs"
-            title="Copy clean structured A4 text with headers and bullets"
+            onClick={() => handleDownloadDocument("PDF")}
+            disabled={downloadingFormat !== null}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md bg-red-600 hover:bg-red-700 text-white transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            title="Download edited document as Adobe PDF (.pdf)"
           >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-500" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-            <span>{copied ? "Copied A4 Text!" : "Copy A4 Text"}</span>
+            <Download className="h-3 w-3" /> PDF
           </button>
-          {onDownload && (
-            <button
-              type="button"
-              onClick={onDownload}
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-all cursor-pointer shadow-xs"
-              title={`Download converted ${targetFormat}`}
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Download {targetFormat}</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => handleDownloadDocument("TXT")}
+            disabled={downloadingFormat !== null}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md bg-surface-2 hover:bg-surface-3 text-foreground border border-border transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            title="Download edited document as Plain Text (.txt)"
+          >
+            <Download className="h-3 w-3" /> TXT
+          </button>
         </div>
       </div>
 
-      {/* Realistic Executive A4 Sheet Preview */}
-      <div className="rounded-2xl border border-border bg-surface-2/40 p-4 sm:p-8 overflow-hidden flex flex-col items-center">
+      {/* Realistic Executive A4 Sheet Container (Standard ISO A4: 210 × 297 mm, aspect ratio 1:1.414, ZERO horizontal lines) */}
+      <div className="rounded-2xl border border-border bg-surface-2/40 p-4 sm:p-8 overflow-x-auto flex flex-col items-center">
         <div
           className={`w-full transition-all duration-300 ${
             isWide ? "max-w-4xl" : "max-w-[794px]"
-          } bg-card rounded-2xl border border-border/80 shadow-paper p-8 sm:p-14 ${fontClass} ${
-            spacingStyles.fontSize
-          } text-foreground select-text min-h-[1050px] flex flex-col justify-between`}
+          } min-h-[1123px] bg-white dark:bg-card text-slate-900 dark:text-foreground rounded-2xl border border-border/80 shadow-paper p-8 sm:p-14 flex flex-col justify-between`}
         >
           <div>
-            {/* Running Sheet Header */}
-            <div className="flex flex-wrap items-center justify-between border-b border-border/60 pb-3 mb-6 text-[10px] font-mono text-muted-foreground uppercase tracking-widest gap-2">
+            {/* Running Sheet Header (Clean, ZERO horizontal border-b lines) */}
+            <div className="flex flex-wrap items-center justify-between pb-4 mb-6 text-[10px] font-mono text-muted-foreground uppercase tracking-widest gap-2">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">
                   📄 Standard A4 (210 × 297 mm)
                 </span>
-                <span>
+                <span className="font-semibold text-foreground">
                   {targetFormat === "PDF"
                     ? "Adobe PDF Document"
                     : `Microsoft Word (.${targetFormat.toLowerCase()})`}
                 </span>
                 <span>· Converted from {fileExt}</span>
               </div>
-              <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                <CheckCircle2 className="h-3 w-3" /> Structure & Content 100% Preserved
-              </span>
-            </div>
-
-          {/* Executive Profile / Document Title Header Card */}
-          {rawTitle && (
-            <div className="mb-6 pb-6 border-b border-border/70">
-              <div className="flex items-start gap-4">
-                {/* Monogram Avatar Circle */}
-                <div
-                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${themeClasses.avatarBg} font-serif text-lg font-bold shadow-md ring-2 ring-white/20`}
-                >
-                  {initials}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="font-serif text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-                      {rawTitle}
-                    </h1>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border ${themeClasses.badge}`}
-                    >
-                      <Sparkles className="h-3 w-3" /> Executive Layout
-                    </span>
-                  </div>
-
-                  {/* Subtitle / Roles / Contact details from header meta blocks */}
-                  {headerMetaBlocks.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      {headerMetaBlocks.map((mb, idx) => {
-                        const mText = mb.text || "";
-                        const isRoleLine = mText.includes("|") && !mText.includes("@");
-                        if (isRoleLine) {
-                          return (
-                            <div
-                              key={idx}
-                              className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-primary"
-                            >
-                              {mText.split("|").map((role, rIdx) => (
-                                <span key={rIdx} className="inline-flex items-center gap-1.5">
-                                  {rIdx > 0 && (
-                                    <span className="text-muted-foreground/40 font-normal">·</span>
-                                  )}
-                                  <span>{role.trim()}</span>
-                                </span>
-                              ))}
-                            </div>
-                          );
-                        }
-
-                        // Compact Contact bar item
-                        return (
-                          <div
-                            key={idx}
-                            className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-                          >
-                            <span className="inline-flex items-center gap-1.5 bg-surface-2 px-2.5 py-1 rounded-md border border-border/70 text-foreground text-[11px] font-medium shadow-xs">
-                              {renderTextWithLinks(mText)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+              <div className="flex items-center gap-3">
+                {rawBlobUrl && targetFormat === "PDF" && (
+                  <a
+                    href={rawBlobUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline flex items-center gap-1 font-mono text-[10px] lowercase normal-case"
+                    title="Open original compiled PDF file in new browser tab"
+                  >
+                    <ExternalLink className="h-3 w-3" /> View raw PDF
+                  </a>
+                )}
+                <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <CheckCircle2 className="h-3 w-3" /> 100% Content Preserved & Editable
+                </span>
               </div>
             </div>
-          )}
 
-          {/* Body Content Blocks */}
-          <div className="space-y-1">
-            {bodyBlocks.map((block, bIdx) => {
-              if (block.type === "heading1" || block.type === "heading2") {
-                return (
-                  <div
-                    key={bIdx}
-                    className="pt-5 pb-1 mt-5 mb-2.5 border-b border-border/60 flex items-center gap-2.5"
-                  >
-                    <span className={`h-4 w-1 rounded-full ${themeClasses.accentBar}`} />
-                    <h2 className="font-serif font-bold text-sm sm:text-base tracking-wider uppercase text-foreground">
-                      {block.text}
-                    </h2>
-                  </div>
-                );
-              }
-
-              if (block.type === "heading3") {
-                return (
-                  <div key={bIdx} className="pt-3 pb-0.5 mt-3 mb-1.5 flex items-center gap-2">
-                    <span
-                      className={`h-3 w-1 rounded-full ${themeClasses.accentBar} opacity-70`}
-                    />
-                    <h3 className="font-sans font-bold text-xs sm:text-sm tracking-wide text-foreground">
-                      {block.text}
-                    </h3>
-                  </div>
-                );
-              }
-
-              if (block.type === "list" && block.items) {
-                return (
-                  <ul key={bIdx} className="space-y-1.5 my-2.5 pl-4 list-disc marker:text-primary">
-                    {block.items.map((item, iIdx) => (
-                      <li key={iIdx} className={`${spacingStyles.lineHeight} pl-1`}>
-                        {renderTextWithLinks(item)}
-                      </li>
-                    ))}
-                  </ul>
-                );
-              }
-
-              if (block.type === "table" && block.table) {
-                const tbl = block.table;
-                return (
-                  <div key={bIdx} className="my-4 overflow-x-auto rounded-lg border border-border">
-                    <table className="w-full text-left text-xs border-collapse">
-                      {tbl.headers && tbl.headers.length > 0 && (
-                        <thead className="bg-surface-2 border-b border-border font-semibold text-foreground">
-                          <tr>
-                            {tbl.headers.map((h, hIdx) => (
-                              <th key={hIdx} className="p-2.5 font-mono text-[11px]">
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                      )}
-                      <tbody>
-                        {tbl.rows.map((row, rIdx) => (
-                          <tr key={rIdx} className={rIdx % 2 === 1 ? "bg-surface-2/40" : ""}>
-                            {row.map((c, cIdx) => (
-                              <td key={cIdx} className="p-2.5 border-t border-border/50">
-                                {renderTextWithLinks(c)}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              }
-
-              // Paragraph
-              return (
-                <p
-                  key={bIdx}
-                  className={`${spacingStyles.lineHeight} ${spacingStyles.pMargin} text-foreground whitespace-pre-wrap`}
-                >
-                  {renderTextWithLinks(block.text || "")}
-                </p>
-              );
-            })}
+            {/* Direct In-Place Interactive A4 Document Editor */}
+            <div
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={(e) => {
+                const html = e.currentTarget.innerHTML;
+                setEditedHtml(html);
+                onEditedHtmlChange?.(html);
+              }}
+              className="w-full focus:outline-none select-text cursor-text"
+              style={{
+                fontFamily: fontFamilyMap[fontFamily] || "Inter, sans-serif",
+                fontSize: `${baseFontSize}px`,
+                lineHeight: currentLineSpacing,
+              }}
+              dangerouslySetInnerHTML={{ __html: initialHtml }}
+            />
           </div>
 
-            {/* Running Sheet Footer */}
-            <div className="mt-10 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-3">
-              <span className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span>ISO Standard A4 Document</span>
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCopyFormattedA4}
-                  className="px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded-md border border-primary/20 transition-all cursor-pointer inline-flex items-center gap-1 font-sans"
-                >
-                  <Copy className="h-3 w-3" /> Copy A4 Text
-                </button>
-                {onDownload && (
-                  <button
-                    type="button"
-                    onClick={onDownload}
-                    className="px-3 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-all cursor-pointer shadow-xs inline-flex items-center gap-1 font-sans"
-                  >
-                    <Download className="h-3.5 w-3.5" /> Download {targetFormat}
-                  </button>
+          {/* Running Sheet Footer (Clean, ZERO horizontal border-t lines) */}
+          <div className="mt-12 pt-4 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-muted-foreground gap-3">
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span>ISO Standard A4 Document · {wordCount} words</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetToOriginal}
+                className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground bg-surface-2 hover:bg-surface-3 rounded-md border border-border transition-all cursor-pointer font-sans"
+              >
+                Reset Original
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyFormattedA4}
+                className="px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded-md border border-primary/20 transition-all cursor-pointer inline-flex items-center gap-1 font-sans"
+              >
+                <Copy className="h-3 w-3" /> Copy Text
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadDocument(targetFormat)}
+                disabled={downloadingFormat !== null}
+                className="px-3.5 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5 font-sans disabled:opacity-50"
+              >
+                {downloadingFormat === targetFormat ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
                 )}
-              </div>
+                Download {targetFormat}
+              </button>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
+});
+
+// Backward compatibility alias for any existing reference
+export const EditorialDocumentViewer = A4DocumentConverterEditor;
 
 function ConverterPage() {
   const [collapsed, setCollapsed] = useState(false);
@@ -635,6 +614,7 @@ function ConverterPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const convertedResultRef = useRef<HTMLDivElement>(null);
+  const a4EditorRef = useRef<A4DocumentConverterEditorHandle>(null);
 
   // Revoke blob URL on unmount or reset
   useEffect(() => {
@@ -743,16 +723,20 @@ function ConverterPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!convertedResult) return;
-    const a = document.createElement("a");
-    a.href = convertedResult.blobUrl;
-    a.download = convertedResult.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    eraseWorkspaceJobsOnDownload();
-    toast.success(`Downloaded ${convertedResult.filename}! (Temporary data erased)`);
+    if (a4EditorRef.current) {
+      await a4EditorRef.current.triggerDownload(convertedResult.targetFormat);
+    } else {
+      const a = document.createElement("a");
+      a.href = convertedResult.blobUrl;
+      a.download = convertedResult.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      eraseWorkspaceJobsOnDownload();
+      toast.success(`Downloaded ${convertedResult.filename}! (Temporary data erased)`);
+    }
   };
 
   const availableTargets = (["DOCX", "DOC", "PDF", "TXT"] as const).filter(
@@ -1062,68 +1046,18 @@ function ConverterPage() {
                 )}
               </div>
 
-              {/* View 1: Document View */}
+              {/* View 1: Authentic Editable A4 Document View (Direct Editing, No Horizontal Lines) */}
               {viewMode === "document" && (
-                <div className="space-y-2">
-                  {/* If PDF target: Render genuine in-browser PDF viewer + interactive editorial sheet */}
-                  {convertedResult.targetFormat === "PDF" && (
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground flex items-center gap-1.5">
-                          <Eye className="h-3.5 w-3.5 text-primary" /> Live PDF Verification & Editorial View
-                        </span>
-                        <a
-                          href={convertedResult.blobUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary hover:underline flex items-center gap-1 font-mono text-[11px]"
-                        >
-                          <ExternalLink className="h-3 w-3" /> Open in Fullscreen / New Tab
-                        </a>
-                      </div>
-
-                      <div className="rounded-xl border border-border overflow-hidden bg-slate-900/5 shadow-inner">
-                        <iframe
-                          src={convertedResult.blobUrl}
-                          title="Converted PDF Document"
-                          className="w-full h-[500px] border-none bg-white dark:bg-slate-950"
-                        />
-                      </div>
-
-                      <div className="pt-2">
-                        <EditorialDocumentViewer
-                          text={convertedResult.previewText || ""}
-                          filename={convertedResult.filename}
-                          fileExt={fileExt}
-                          targetFormat="PDF"
-                          onDownload={handleDownload}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* If DOCX or DOC target: Render authentic Word document layout preview */}
-                  {(convertedResult.targetFormat === "DOCX" ||
-                    convertedResult.targetFormat === "DOC") && (
-                    <EditorialDocumentViewer
-                      text={convertedResult.previewText || ""}
-                      filename={convertedResult.filename}
-                      fileExt={fileExt}
-                      targetFormat={convertedResult.targetFormat}
-                      onDownload={handleDownload}
-                    />
-                  )}
-
-                  {/* If TXT target: Plaintext format */}
-                  {convertedResult.targetFormat === "TXT" && (
-                    <EditorialDocumentViewer
-                      text={convertedResult.previewText || ""}
-                      filename={convertedResult.filename}
-                      fileExt={fileExt}
-                      targetFormat="TXT"
-                      onDownload={handleDownload}
-                    />
-                  )}
+                <div className="space-y-4">
+                  <A4DocumentConverterEditor
+                    ref={a4EditorRef}
+                    text={convertedResult.previewText || ""}
+                    filename={convertedResult.filename}
+                    fileExt={fileExt}
+                    targetFormat={convertedResult.targetFormat}
+                    rawBlobUrl={convertedResult.blobUrl}
+                    onDownload={handleDownload}
+                  />
                 </div>
               )}
 

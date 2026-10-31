@@ -4,6 +4,7 @@ import {
   parsePlainTextToBlocks,
   renderExecutivePdf,
   renderExecutiveDocx,
+  type SynthesizerExportOptions,
 } from "./document-synthesizer";
 
 export type ConversionTarget = "PDF" | "DOCX" | "DOC" | "TXT";
@@ -34,18 +35,26 @@ function base64ToUint8Array(base64: string): Uint8Array {
  * Generates an executive Microsoft Word (.docx/.doc) file preserving all original content,
  * headings, tables, bullet points, and structure with publication-grade layout.
  */
-export async function generateClientDocx(text: string, title?: string): Promise<Blob> {
+export async function generateClientDocx(
+  text: string,
+  title?: string,
+  options?: SynthesizerExportOptions,
+): Promise<Blob> {
   const blocks = parsePlainTextToBlocks(text);
-  return await renderExecutiveDocx(blocks, title);
+  return await renderExecutiveDocx(blocks, title, { removeDividers: true, ...options });
 }
 
 /**
  * Generates an executive Adobe PDF (.pdf) file in the browser using `pdf-lib`,
  * preserving all original content, headings, tables, bullet points, and structure with publication-grade layout.
  */
-export async function generateClientPdf(text: string, title?: string): Promise<Blob> {
+export async function generateClientPdf(
+  text: string,
+  title?: string,
+  options?: SynthesizerExportOptions,
+): Promise<Blob> {
   const blocks = parsePlainTextToBlocks(text);
-  const pdfBytes = await renderExecutivePdf(blocks, title);
+  const pdfBytes = await renderExecutivePdf(blocks, title, { removeDividers: true, ...options });
   return new Blob([pdfBytes as any], { type: "application/pdf" });
 }
 
@@ -139,6 +148,7 @@ export async function convertDocument(
       text,
     },
     targetFormat,
+    { removeDividers: true },
   );
 
   let resultBlob: Blob;

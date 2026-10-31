@@ -59,6 +59,9 @@ export interface SynthesizerExportOptions {
   secondaryColor?: string;
   identityPlacement?: "cover-only" | "first-body-page-only" | "both";
   bodyHtml?: string;
+  removeDividers?: boolean;
+  lineSpacing?: number;
+  fontSize?: number;
 }
 
 export interface DocSynthesizerBlock {
@@ -416,7 +419,7 @@ export function parseHtmlToBlocks(html: string): DocSynthesizerBlock[] {
     .replace(/<img[^>]*>/gi, "");
 
   const blockRegex =
-    /<(h[1-6]|table|ul|ol|p|hr|blockquote)(?:[^>]*)>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
+    /<(h[1-6]|table|ul|ol|p|div|hr|blockquote)(?:[^>]*)>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
   let match: RegExpExecArray | null;
 
   while ((match = blockRegex.exec(cleanedHtml)) !== null) {
@@ -476,7 +479,7 @@ export function parseHtmlToBlocks(html: string): DocSynthesizerBlock[] {
           table: { headers: headers.length > 0 ? headers : undefined, rows },
         });
       }
-    } else if (tag === "p" || tag === "blockquote") {
+    } else if (tag === "p" || tag === "div" || tag === "blockquote") {
       const text = stripTags(content);
       if (!text) continue;
 
@@ -491,6 +494,13 @@ export function parseHtmlToBlocks(html: string): DocSynthesizerBlock[] {
         const runs = parseInlineHtmlToRuns(content);
         blocks.push({ type: "paragraph", text, runs });
       }
+    }
+  }
+
+  if (blocks.length === 0) {
+    const rawFallback = stripTags(cleanedHtml);
+    if (rawFallback) {
+      return parsePlainTextToBlocks(rawFallback);
     }
   }
 
@@ -797,6 +807,8 @@ export async function renderExecutivePdf(
   const pdfDoc = await PDFDocument.create();
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+  const fontBoldItalic = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique);
 
   // Standard ISO A4 dimensions (210mm x 297mm at 72 dpi)
   const pageWidth = 595.28;
@@ -1011,14 +1023,18 @@ export async function renderExecutivePdf(
         y -= 24;
       }
 
-      // Elegant blue accent bar
-      currentPage.drawLine({
-        start: { x: margin, y: y + 8 },
-        end: { x: margin + 80, y: y + 8 },
-        thickness: 3,
-        color: rgb(0.15, 0.39, 0.92),
-      });
-      y -= 12;
+      // Elegant blue accent bar (skip if removeDividers requested)
+      if (!options?.removeDividers) {
+        currentPage.drawLine({
+          start: { x: margin, y: y + 8 },
+          end: { x: margin + 80, y: y + 8 },
+          thickness: 3,
+          color: rgb(0.15, 0.39, 0.92),
+        });
+        y -= 12;
+      } else {
+        y -= 6;
+      }
     } else if (block.type === "subtitle") {
       const text = sanitizeLine(block.text || "", fontBold);
       const wrapped = wrapPdfText(text, fontBold, 10, contentWidth);
@@ -1071,14 +1087,18 @@ export async function renderExecutivePdf(
         y -= 17;
       }
 
-      // Subtle horizontal rule below section card
-      currentPage.drawLine({
-        start: { x: margin, y: y + 2 },
-        end: { x: margin + contentWidth, y: y + 2 },
-        thickness: 0.5,
-        color: rgb(0.85, 0.88, 0.94),
-      });
-      y -= 8;
+      // Subtle horizontal rule below section card (skip if removeDividers requested)
+      if (!options?.removeDividers) {
+        currentPage.drawLine({
+          start: { x: margin, y: y + 2 },
+          end: { x: margin + contentWidth, y: y + 2 },
+          thickness: 0.5,
+          color: rgb(0.85, 0.88, 0.94),
+        });
+        y -= 8;
+      } else {
+        y -= 4;
+      }
     } else if (block.type === "heading2") {
       const text = sanitizeLine(block.text || "", fontBold);
       const wrapped = wrapPdfText(text, fontBold, 11.5, contentWidth - 14);
@@ -1132,22 +1152,50 @@ export async function renderExecutivePdf(
         text.includes("✉️") ||
         (text.includes("|") && text.length < 120);
 
-      const fontSize = isMeta ? 8.5 : 9.5;
-      const lineH = isMeta ? 11.5 : 13.5;
+      const fontSize = options?.fontSize || (isMeta ? 8.5 : 9.5);
+      const lineMultiplier = options?.lineSpacing || 1.35;
+      const lineH = Math.round(fontSize * lineMultiplier) + 1;
       const afterSpacing = isMeta ? 2.5 : 5.5;
       const color = isMeta ? rgb(0.28, 0.35, 0.45) : rgb(0.12, 0.16, 0.23);
-      const wrapped = wrapPdfText(text, fontRegular, fontSize, contentWidth);
 
-      for (const line of wrapped) {
-        if (y < bottomMargin) addNewPage();
-        currentPage.drawText(line, {
-          x: margin,
-          y,
-          size: fontSize,
-          font: fontRegular,
-          color,
-        });
-        y -= lineH;
+      if (block.runs && block.runs.length > 0) {
+        for (const run of block.runs) {
+          const runFont =
+            run.bold && run.italics
+              ? fontBoldItalic
+              : run.bold
+                ? fontBold
+                : run.italics
+                  ? fontItalic
+                  : fontRegular;
+          const runText = sanitizeLine(run.text || "", runFont);
+          if (!runText) continue;
+          const wrapped = wrapPdfText(runText, runFont, fontSize, contentWidth);
+          for (const line of wrapped) {
+            if (y < bottomMargin) addNewPage();
+            currentPage.drawText(line, {
+              x: margin,
+              y,
+              size: fontSize,
+              font: runFont,
+              color,
+            });
+            y -= lineH;
+          }
+        }
+      } else {
+        const wrapped = wrapPdfText(text, fontRegular, fontSize, contentWidth);
+        for (const line of wrapped) {
+          if (y < bottomMargin) addNewPage();
+          currentPage.drawText(line, {
+            x: margin,
+            y,
+            size: fontSize,
+            font: fontRegular,
+            color,
+          });
+          y -= lineH;
+        }
       }
       y -= afterSpacing;
     } else if (block.type === "list" && block.items) {
@@ -1456,6 +1504,10 @@ export async function renderExecutiveDocx(
         }),
       );
     } else if (block.type === "paragraph") {
+      const lineMultiplier = options?.lineSpacing || 1.15;
+      const lineSpacingTwips = Math.round(lineMultiplier * 240);
+      const baseFontSizeHalfPoints = options?.fontSize ? Math.round(options.fontSize * 2) : 21;
+
       if (block.runs && block.runs.length > 0) {
         children.push(
           new Paragraph({
@@ -1468,10 +1520,10 @@ export async function renderExecutiveDocx(
                   underline: r.underline ? {} : undefined,
                   strike: r.strike,
                   color: r.color ? r.color.replace("#", "") : "0F172A",
-                  size: 21,
+                  size: baseFontSizeHalfPoints,
                 }),
             ),
-            spacing: { after: 120, line: 276 },
+            spacing: { after: 120, line: lineSpacingTwips },
           }),
         );
       } else {
@@ -1490,13 +1542,13 @@ export async function renderExecutiveDocx(
             children: [
               new TextRun({
                 text: pText,
-                size: isMetaLine ? 19 : 21,
+                size: isMetaLine ? 19 : baseFontSizeHalfPoints,
                 color: isMetaLine ? "475569" : "0f172a",
               }),
             ],
             spacing: isMetaLine
               ? { after: 40, line: 240 }
-              : { after: 120, line: 276 },
+              : { after: 120, line: lineSpacingTwips },
           }),
         );
       }
