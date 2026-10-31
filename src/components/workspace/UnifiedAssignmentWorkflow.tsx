@@ -103,6 +103,10 @@ import {
   BarChart3,
   MessageSquare,
   Minus,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  ClipboardPaste,
 } from "lucide-react";
 
 export interface UnifiedAssignmentWorkflowProps {
@@ -362,6 +366,88 @@ export function UnifiedAssignmentWorkflow({
     updateCurrentSlide({ bullets });
   };
 
+  const handleAddContentToCurrentSlide = () => {
+    if (currentSlideIdx === 0) {
+      updateMetaField(
+        "coverCustomNotes",
+        metadata.coverCustomNotes || "Academic Project Submission • Verified & Reviewed",
+      );
+      toast.success("Added custom note to Cover Slide!");
+      return;
+    }
+
+    if (!presentationSession) return;
+    const cur = presentationSession.slides[currentSlideIdx];
+    if (!cur) return;
+
+    if (cur.layout === "three-card") {
+      const cards = [
+        ...(cur.cards || (cur.bullets || []).slice(0, 3).map((b, i) => ({
+          tag: `PILLAR 0${i + 1}`,
+          title: b.split(/[:.-]/)[0]?.slice(0, 28) || `Pillar 0${i + 1}`,
+          description: b.slice(0, 110) || "Primary operational pillar.",
+        }))),
+      ];
+      const newIdx = cards.length + 1;
+      cards.push({
+        tag: `PILLAR 0${newIdx}`,
+        title: `Pillar 0${newIdx}: Analysis`,
+        description: "Deconstruct and evaluate the primary operational dimension.",
+      });
+      updateCurrentSlide({ cards });
+      toast.success("Added new card to slide!");
+    } else if (cur.layout === "timeline") {
+      const timeline = [
+        ...(cur.timeline || (cur.bullets || []).slice(0, 4).map((b, i) => ({
+          phase: `Phase 0${i + 1}`,
+          title: b.split(/[:.-]/)[0]?.slice(0, 30) || `Milestone 0${i + 1}`,
+          description: b.slice(0, 80) || "Roadmap phase execution.",
+        }))),
+      ];
+      const newIdx = timeline.length + 1;
+      timeline.push({
+        phase: `Phase 0${newIdx}`,
+        title: `Milestone 0${newIdx}: Validation`,
+        description: "Target milestone and evaluation threshold.",
+      });
+      updateCurrentSlide({ timeline });
+      toast.success("Added milestone to roadmap!");
+    } else if (cur.layout === "process") {
+      const steps = [
+        ...(cur.processSteps || (cur.bullets || []).slice(0, 4).map((b, i) => ({
+          stepNumber: i + 1,
+          title: b.split(/[:.-]/)[0]?.slice(0, 30) || `Step 0${i + 1}`,
+          description: b.slice(0, 80) || "Sequential procedure execution.",
+        }))),
+      ];
+      const newIdx = steps.length + 1;
+      steps.push({
+        stepNumber: newIdx,
+        title: `Step 0${newIdx}: Execution`,
+        description: "Execute operational procedure and verify criteria.",
+      });
+      updateCurrentSlide({ processSteps: steps });
+      toast.success("Added step to procedure!");
+    } else if (cur.layout === "metrics") {
+      const metrics = [
+        ...(cur.metrics || [
+          { value: "100%", label: "Accuracy", description: "Verified data" },
+          { value: "4.5x", label: "Efficiency", description: "Speed improvement" },
+          { value: "Zero", label: "Anomalies", description: "Error free" },
+        ]),
+      ];
+      metrics.push({
+        value: "99.9%",
+        label: "Reliability",
+        description: "Consistent academic verification standard",
+      });
+      updateCurrentSlide({ metrics });
+      toast.success("Added metric to slide!");
+    } else {
+      handleAddBullet();
+    }
+  };
+
   const handleUpdateBullet = (bIdx: number, val: string) => {
     if (!presentationSession || currentSlideIdx <= 0) return;
     const cur = presentationSession.slides[currentSlideIdx];
@@ -380,7 +466,14 @@ export function UnifiedAssignmentWorkflow({
   };
 
   const handleAdjustFontSize = (delta: number) => {
-    if (!presentationSession || currentSlideIdx <= 0) return;
+    if (currentSlideIdx === 0) {
+      const currentSize = metadata.coverTitleFontSize || 32;
+      const nextSize = Math.max(18, Math.min(56, currentSize + delta));
+      updateMetaField("coverTitleFontSize", nextSize);
+      toast.success(`Cover title font size: ${nextSize}pt`);
+      return;
+    }
+    if (!presentationSession) return;
     const cur = presentationSession.slides[currentSlideIdx];
     if (!cur) return;
     const currentSize = cur.titleFontSize || 26;
@@ -389,7 +482,13 @@ export function UnifiedAssignmentWorkflow({
   };
 
   const handleToggleBold = () => {
-    if (!presentationSession || currentSlideIdx <= 0) return;
+    if (currentSlideIdx === 0) {
+      const currentBold = metadata.coverTitleBold !== undefined ? metadata.coverTitleBold : true;
+      updateMetaField("coverTitleBold", !currentBold);
+      toast.success(currentBold ? "Cover title normal" : "Cover title bold");
+      return;
+    }
+    if (!presentationSession) return;
     const cur = presentationSession.slides[currentSlideIdx];
     if (!cur) return;
     const currentBold = cur.isTitleBold !== undefined ? cur.isTitleBold : true;
@@ -1743,30 +1842,80 @@ export function UnifiedAssignmentWorkflow({
             </p>
           </div>
 
-          {/* Tabs: Upload File vs Paste Text */}
-          <div className="flex items-center gap-2 border-b border-border pb-2">
-            <button
-              type="button"
-              onClick={() => setContentTab("upload")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                contentTab === "upload"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "bg-surface-2 text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Upload Document Files (.pdf, .docx, .txt)
-            </button>
-            <button
-              type="button"
-              onClick={() => setContentTab("paste")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                contentTab === "paste"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "bg-surface-2 text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Paste Unformatted Text Draft
-            </button>
+          {/* Prominent Selection: Paste Text Draft vs Upload Files */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+              Choose how you want to provide your assignment content:
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Option A: Paste Text Directly */}
+              <button
+                type="button"
+                onClick={() => setContentTab("paste")}
+                className={`p-4 rounded-xl border text-left transition-all flex items-start gap-3.5 ${
+                  contentTab === "paste"
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/30 shadow-xs"
+                    : "border-border bg-card hover:bg-surface-2 hover:border-primary/40"
+                }`}
+              >
+                <div
+                  className={`p-2.5 rounded-lg shrink-0 ${
+                    contentTab === "paste"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-foreground">Option A: Paste Text Draft</span>
+                    {contentTab === "paste" && (
+                      <span className="text-[10px] font-mono font-bold text-primary bg-primary/15 px-2 py-0.5 rounded-full">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Type or paste lecture notes, essay drafts, assignment questions, or literature reviews. No file needed!
+                  </p>
+                </div>
+              </button>
+
+              {/* Option B: Import Document Files */}
+              <button
+                type="button"
+                onClick={() => setContentTab("upload")}
+                className={`p-4 rounded-xl border text-left transition-all flex items-start gap-3.5 ${
+                  contentTab === "upload"
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/30 shadow-xs"
+                    : "border-border bg-card hover:bg-surface-2 hover:border-primary/40"
+                }`}
+              >
+                <div
+                  className={`p-2.5 rounded-lg shrink-0 ${
+                    contentTab === "upload"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  <Upload className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-foreground">Option B: Import Files</span>
+                    {contentTab === "upload" && (
+                      <span className="text-[10px] font-mono font-bold text-primary bg-primary/15 px-2 py-0.5 rounded-full">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Upload Microsoft Word (.docx), Adobe PDF (.pdf), or Plain Text (.txt) files with client-side extraction.
+                  </p>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Extracted Suggestions Alert (if detected) */}
@@ -1883,9 +2032,42 @@ export function UnifiedAssignmentWorkflow({
           ) : (
             /* Paste Text Mode */
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground block">
-                Paste your assignment content, lecture notes, or rough draft:
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground">
+                  Paste your assignment content, lecture notes, or rough draft:
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const clipText = await navigator.clipboard.readText();
+                        if (clipText?.trim()) {
+                          setRawContent((prev) => (prev ? `${prev}\n\n${clipText}` : clipText));
+                          toast.success("Pasted content from clipboard!");
+                        } else {
+                          toast.error("Clipboard is empty.");
+                        }
+                      } catch {
+                        toast.error("Unable to access clipboard. Please paste with Ctrl+V / Cmd+V.");
+                      }
+                    }}
+                    className="text-xs text-primary hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <ClipboardPaste className="h-3.5 w-3.5" />
+                    <span>Paste Clipboard</span>
+                  </button>
+                  {rawContent && (
+                    <button
+                      type="button"
+                      onClick={() => setRawContent("")}
+                      className="text-xs text-muted-foreground hover:text-destructive font-semibold"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
               <textarea
                 rows={12}
                 placeholder="Paste your assignment questions, solutions, literature review, or essay text here..."
@@ -2234,11 +2416,11 @@ export function UnifiedAssignmentWorkflow({
                   {/* Slide Editor Top Toolbar */}
                   <div className="p-3 rounded-2xl border border-border bg-card shadow-xs flex flex-wrap items-center justify-between gap-3">
                     {currentSlideIdx === 0 ? (
-                      /* Slide 1 Cover Page Actions */
+                      /* Slide 1 Cover Page Actions & Typography Bar */
                       <div className="flex flex-wrap items-center gap-2.5 w-full justify-between">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[11px] font-mono font-bold uppercase text-muted-foreground flex items-center gap-1.5 mr-1">
-                            <Layers className="h-3.5 w-3.5 text-primary" /> Cover Template:
+                            <Layers className="h-3.5 w-3.5 text-primary" /> Template:
                           </span>
                           <select
                             value={metadata.coverTemplateId}
@@ -2253,25 +2435,142 @@ export function UnifiedAssignmentWorkflow({
                               }));
                               toast.success(`Applied ${tpl?.name || newTplId} template!`);
                             }}
-                            className="h-8 text-xs px-2.5 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[220px]"
+                            className="h-8 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[170px]"
                           >
                             {COVER_TEMPLATES.map((t) => (
                               <option key={t.id} value={t.id}>
-                                {t.name} ({t.category})
+                                {t.name}
                               </option>
                             ))}
                           </select>
 
-                          {/* Quick Edit Academic Info */}
+                          {/* Cover Font Family Selector */}
+                          <select
+                            value={metadata.coverFontFamily || "Inter, sans-serif"}
+                            onChange={(e) => {
+                              updateMetaField("coverFontFamily", e.target.value);
+                              toast.success("Updated cover font family!");
+                            }}
+                            className="h-8 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[150px]"
+                          >
+                            <option value="Inter, sans-serif">Inter (Modern)</option>
+                            <option value="'Playfair Display', serif">Playfair (Editorial)</option>
+                            <option value="Georgia, serif">Georgia (Academic)</option>
+                            <option value="Montserrat, sans-serif">Montserrat (Geometric)</option>
+                            <option value="Roboto, sans-serif">Roboto (Clean)</option>
+                            <option value="Merriweather, serif">Merriweather (Heritage)</option>
+                          </select>
+
+                          {/* Alignment Selector */}
+                          <div className="flex items-center gap-0.5 bg-surface-2/60 p-0.5 rounded-lg border border-border">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("coverTitleAlignment", "left");
+                                toast.success("Aligned title left");
+                              }}
+                              className={`p-1.5 rounded text-xs transition-all ${
+                                (metadata.coverTitleAlignment || "left") === "left"
+                                  ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Align Left"
+                            >
+                              <AlignLeft className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("coverTitleAlignment", "center");
+                                toast.success("Aligned title center");
+                              }}
+                              className={`p-1.5 rounded text-xs transition-all ${
+                                metadata.coverTitleAlignment === "center"
+                                  ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Align Center"
+                            >
+                              <AlignCenter className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("coverTitleAlignment", "right");
+                                toast.success("Aligned title right");
+                              }}
+                              className={`p-1.5 rounded text-xs transition-all ${
+                                metadata.coverTitleAlignment === "right"
+                                  ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Align Right"
+                            >
+                              <AlignRight className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Title Position Selector */}
+                          <select
+                            value={metadata.coverTitlePosition || "middle"}
+                            onChange={(e) => {
+                              updateMetaField("coverTitlePosition", e.target.value as "top" | "middle" | "lower");
+                              toast.success(`Title positioned ${e.target.value}`);
+                            }}
+                            className="h-8 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[125px]"
+                          >
+                            <option value="top">Pos: Top</option>
+                            <option value="middle">Pos: Centered</option>
+                            <option value="lower">Pos: Lower</option>
+                          </select>
+
+                          {/* Bold Toggle for Title */}
+                          <button
+                            type="button"
+                            onClick={handleToggleBold}
+                            className={`p-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              metadata.coverTitleBold !== false
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:bg-surface-2"
+                            }`}
+                            title="Toggle Title Bold (B)"
+                          >
+                            <Bold className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Title Font Size A- / A+ Controls */}
+                          <div className="flex items-center gap-1 bg-surface-2/60 p-0.5 rounded-lg border border-border">
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustFontSize(-2)}
+                              className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                              title="Decrease title size"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="font-mono text-[11px] font-bold px-1.5 text-foreground min-w-[42px] text-center">
+                              {metadata.coverTitleFontSize || 32} pt
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustFontSize(2)}
+                              className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                              title="Increase title size"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+
+                          {/* Add Custom Note */}
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setIsEditCoverModalOpen(true)}
-                            className="h-8 text-xs gap-1.5"
+                            onClick={handleAddContentToCurrentSlide}
+                            className="h-8 text-xs gap-1"
                           >
-                            <Edit3 className="h-3.5 w-3.5 text-primary" />
-                            <span>Edit Academic Info</span>
+                            <Plus className="h-3.5 w-3.5 text-primary" />
+                            <span>Add Note</span>
                           </Button>
 
                           {/* Launch Canva Canvas Cover Editor */}
@@ -2283,7 +2582,7 @@ export function UnifiedAssignmentWorkflow({
                             className="h-8 text-xs gap-1.5 hover:text-primary"
                           >
                             <Sliders className="h-3.5 w-3.5 text-primary" />
-                            <span>Canva Cover Editor</span>
+                            <span>Canva Editor</span>
                           </Button>
                         </div>
 
@@ -2406,28 +2705,32 @@ export function UnifiedAssignmentWorkflow({
                               className="h-7 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary"
                             >
                               <option value="content">Executive Cards (Content)</option>
-                              <option value="agenda">Agenda 2-Col Grid</option>
+                              <option value="three-card">Three Pillar Cards</option>
                               <option value="two-column">Two-Column Comparison</option>
+                              <option value="agenda">Agenda 2-Col Grid</option>
+                              <option value="timeline">Roadmap / Timeline</option>
+                              <option value="process">Step-by-Step Process</option>
+                              <option value="text-visual">Visual & Key Points</option>
+                              <option value="metrics">Telemetry & Stats</option>
                               <option value="quote">Quote / Key Takeaway</option>
                               <option value="conclusion">Synthesis Checklist</option>
-                              <option value="metrics">Telemetry & Stats</option>
                             </select>
                           </div>
                         </div>
 
                         {/* Right Group: Slide Management Actions */}
                         <div className="flex items-center gap-1.5">
-                          {/* Add Bullet */}
+                          {/* Add Content on Any Slide */}
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={handleAddBullet}
-                            className="h-7 text-xs gap-1 px-2.5"
-                            title="Add bullet point to slide"
+                            onClick={handleAddContentToCurrentSlide}
+                            className="h-7 text-xs gap-1 px-2.5 font-semibold text-primary border-primary/40 hover:bg-primary/10"
+                            title="Add content item (card, step, milestone, or point) to this slide"
                           >
                             <Plus className="h-3 w-3" />
-                            <span>Add Point</span>
+                            <span>Add Content</span>
                           </Button>
 
                           {/* Move Up */}
@@ -2963,12 +3266,347 @@ export function UnifiedAssignmentWorkflow({
                                 </div>
                               )}
 
-                              {/* 6. DEFAULT / CONTENT LAYOUT (Executive Bullet Cards) */}
+                              {/* 6. THREE-CARD LAYOUT (Pillar Foundations) */}
+                              {curSlide.layout === "three-card" && (() => {
+                                const cards =
+                                  curSlide.cards && curSlide.cards.length > 0
+                                    ? curSlide.cards
+                                    : (curSlide.bullets || []).slice(0, 3).map((b, i) => ({
+                                        tag: `PILLAR 0${i + 1}`,
+                                        title: b.split(/[:.-]/)[0]?.slice(0, 28) || `Pillar 0${i + 1}`,
+                                        description: b.slice(0, 110) || "Primary operational pillar.",
+                                      }));
+
+                                return (
+                                  <div className="space-y-3 my-auto">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                      {cards.map((card, cIdx) => (
+                                        <div
+                                          key={cIdx}
+                                          className="group/card rounded-xl border p-3.5 flex flex-col justify-between space-y-2 relative shadow-xs"
+                                          style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
+                                        >
+                                          <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                              <input
+                                                type="text"
+                                                value={card.tag || `PILLAR 0${cIdx + 1}`}
+                                                onChange={(e) => {
+                                                  const updated = [...cards];
+                                                  updated[cIdx] = { ...updated[cIdx]!, tag: e.target.value };
+                                                  updateCurrentSlide({ cards: updated });
+                                                }}
+                                                style={{ color: tokens.accent }}
+                                                className="bg-transparent font-mono text-[9px] font-bold tracking-widest uppercase outline-none border-b border-transparent hover:border-primary/40"
+                                              />
+                                              {cards.length > 1 && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const updated = cards.filter((_, idx) => idx !== cIdx);
+                                                    updateCurrentSlide({ cards: updated });
+                                                  }}
+                                                  className="opacity-0 group-hover/card:opacity-100 p-1 text-muted-foreground hover:text-red-500 transition-opacity"
+                                                  title="Delete card"
+                                                >
+                                                  <X className="h-3 w-3" />
+                                                </button>
+                                              )}
+                                            </div>
+                                            <input
+                                              type="text"
+                                              value={card.title}
+                                              onChange={(e) => {
+                                                const updated = [...cards];
+                                                updated[cIdx] = { ...updated[cIdx]!, title: e.target.value };
+                                                updateCurrentSlide({ cards: updated });
+                                              }}
+                                              style={{ color: tokens.cardText }}
+                                              className="w-full font-bold text-xs sm:text-sm bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                              placeholder="Card Title"
+                                            />
+                                            <textarea
+                                              rows={3}
+                                              value={card.description}
+                                              onChange={(e) => {
+                                                const updated = [...cards];
+                                                updated[cIdx] = { ...updated[cIdx]!, description: e.target.value };
+                                                updateCurrentSlide({ cards: updated });
+                                              }}
+                                              style={{ color: tokens.cardMuted }}
+                                              className="w-full text-xs bg-transparent outline-none resize-none leading-relaxed border-b border-transparent hover:border-border/60"
+                                              placeholder="Card description..."
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={handleAddContentToCurrentSlide}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg border border-dashed border-border hover:border-primary text-muted-foreground hover:text-primary transition-colors"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      <span>Add Pillar Card</span>
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* 7. TIMELINE LAYOUT (Roadmap Phases) */}
+                              {curSlide.layout === "timeline" && (() => {
+                                const timeline =
+                                  curSlide.timeline && curSlide.timeline.length > 0
+                                    ? curSlide.timeline
+                                    : (curSlide.bullets || []).slice(0, 4).map((b, i) => ({
+                                        phase: `Phase 0${i + 1}`,
+                                        title: b.split(/[:.-]/)[0]?.slice(0, 30) || `Milestone 0${i + 1}`,
+                                        description: b.slice(0, 80) || "Roadmap phase execution.",
+                                      }));
+
+                                return (
+                                  <div className="space-y-3 my-auto">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                      {timeline.map((item, tIdx) => (
+                                        <div
+                                          key={tIdx}
+                                          className="group/tl rounded-xl border p-3 flex flex-col justify-between space-y-1.5 relative shadow-xs"
+                                          style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
+                                        >
+                                          <div className="flex items-center justify-between">
+                                            <input
+                                              type="text"
+                                              value={item.phase}
+                                              onChange={(e) => {
+                                                const updated = [...timeline];
+                                                updated[tIdx] = { ...updated[tIdx]!, phase: e.target.value };
+                                                updateCurrentSlide({ timeline: updated });
+                                              }}
+                                              style={{ color: tokens.accent }}
+                                              className="bg-transparent font-mono text-[9px] font-bold tracking-widest uppercase outline-none"
+                                            />
+                                            {timeline.length > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const updated = timeline.filter((_, idx) => idx !== tIdx);
+                                                  updateCurrentSlide({ timeline: updated });
+                                                }}
+                                                className="opacity-0 group-hover/tl:opacity-100 p-0.5 text-muted-foreground hover:text-red-500"
+                                              >
+                                                <X className="h-3 w-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                          <input
+                                            type="text"
+                                            value={item.title}
+                                            onChange={(e) => {
+                                              const updated = [...timeline];
+                                              updated[tIdx] = { ...updated[tIdx]!, title: e.target.value };
+                                              updateCurrentSlide({ timeline: updated });
+                                            }}
+                                            style={{ color: tokens.cardText }}
+                                            className="w-full font-bold text-xs bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                          />
+                                          <textarea
+                                            rows={2}
+                                            value={item.description}
+                                            onChange={(e) => {
+                                              const updated = [...timeline];
+                                              updated[tIdx] = { ...updated[tIdx]!, description: e.target.value };
+                                              updateCurrentSlide({ timeline: updated });
+                                            }}
+                                            style={{ color: tokens.cardMuted }}
+                                            className="w-full text-[11px] bg-transparent outline-none resize-none leading-relaxed"
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={handleAddContentToCurrentSlide}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg border border-dashed border-border hover:border-primary text-muted-foreground hover:text-primary transition-colors"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      <span>Add Milestone</span>
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* 8. PROCESS LAYOUT (Step-by-Step Procedure) */}
+                              {curSlide.layout === "process" && (() => {
+                                const steps =
+                                  curSlide.processSteps && curSlide.processSteps.length > 0
+                                    ? curSlide.processSteps
+                                    : (curSlide.bullets || []).slice(0, 4).map((b, i) => ({
+                                        stepNumber: i + 1,
+                                        title: b.split(/[:.-]/)[0]?.slice(0, 30) || `Step 0${i + 1}`,
+                                        description: b.slice(0, 80) || "Sequential procedure execution.",
+                                      }));
+
+                                return (
+                                  <div className="space-y-3 my-auto">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                      {steps.map((st, sIdx) => (
+                                        <div
+                                          key={sIdx}
+                                          className="group/proc rounded-xl border p-3 flex flex-col justify-between space-y-1.5 relative shadow-xs"
+                                          style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
+                                        >
+                                          <div className="flex items-center justify-between">
+                                            <span
+                                              className="h-5 w-5 rounded-full flex items-center justify-center font-mono text-[9px] font-bold text-white"
+                                              style={{ backgroundColor: tokens.accent }}
+                                            >
+                                              0{st.stepNumber}
+                                            </span>
+                                            {steps.length > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const updated = steps.filter((_, idx) => idx !== sIdx);
+                                                  updateCurrentSlide({ processSteps: updated });
+                                                }}
+                                                className="opacity-0 group-hover/proc:opacity-100 p-0.5 text-muted-foreground hover:text-red-500"
+                                              >
+                                                <X className="h-3 w-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                          <input
+                                            type="text"
+                                            value={st.title}
+                                            onChange={(e) => {
+                                              const updated = [...steps];
+                                              updated[sIdx] = { ...updated[sIdx]!, title: e.target.value };
+                                              updateCurrentSlide({ processSteps: updated });
+                                            }}
+                                            style={{ color: tokens.cardText }}
+                                            className="w-full font-bold text-xs bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                          />
+                                          <textarea
+                                            rows={2}
+                                            value={st.description}
+                                            onChange={(e) => {
+                                              const updated = [...steps];
+                                              updated[sIdx] = { ...updated[sIdx]!, description: e.target.value };
+                                              updateCurrentSlide({ processSteps: updated });
+                                            }}
+                                            style={{ color: tokens.cardMuted }}
+                                            className="w-full text-[11px] bg-transparent outline-none resize-none leading-relaxed"
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={handleAddContentToCurrentSlide}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg border border-dashed border-border hover:border-primary text-muted-foreground hover:text-primary transition-colors"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      <span>Add Step</span>
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* 9. TEXT-VISUAL LAYOUT (Topology & Takeaways) */}
+                              {curSlide.layout === "text-visual" && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-auto">
+                                  <div
+                                    className="rounded-xl border p-4 space-y-2.5 shadow-2xs"
+                                    style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
+                                  >
+                                    <div className="font-bold text-xs sm:text-sm pb-1 border-b" style={{ color: tokens.accent, borderColor: tokens.dividerColor }}>
+                                      Key Analytical Points
+                                    </div>
+                                    {(curSlide.bullets || []).map((b, bIdx) => (
+                                      <div key={bIdx} className="group/tv flex items-start gap-2 text-xs">
+                                        <span className="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: tokens.accent }} />
+                                        <input
+                                          type="text"
+                                          value={b}
+                                          onChange={(e) => handleUpdateBullet(bIdx, e.target.value)}
+                                          className="flex-1 bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                          style={{ color: tokens.cardText }}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveBullet(bIdx)}
+                                          className="opacity-0 group-hover/tv:opacity-100 p-0.5 text-muted-foreground hover:text-red-500"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={handleAddBullet}
+                                      className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 pt-1"
+                                    >
+                                      <Plus className="h-3 w-3" /> Add Point
+                                    </button>
+                                  </div>
+
+                                  <div
+                                    className="rounded-xl border p-4 flex flex-col justify-between space-y-2 shadow-2xs"
+                                    style={{ backgroundColor: tokens.cardBg, borderColor: tokens.accent }}
+                                  >
+                                    <div className="text-[10px] font-mono font-bold tracking-wider uppercase" style={{ color: tokens.accent }}>
+                                      VISUAL CONCEPT & TOPOLOGY
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={curSlide.visual?.concept || curSlide.title}
+                                      onChange={(e) =>
+                                        updateCurrentSlide({
+                                          visual: {
+                                            type: curSlide.visual?.type || "diagram",
+                                            concept: e.target.value,
+                                            caption: curSlide.visual?.caption || "Architecture & System Flow",
+                                          },
+                                        })
+                                      }
+                                      className="w-full font-bold text-xs sm:text-sm bg-transparent outline-none border-b pb-1"
+                                      style={{ color: tokens.cardText, borderColor: tokens.dividerColor }}
+                                      placeholder="Concept Title"
+                                    />
+                                    <div className="flex-1 min-h-[90px] rounded-lg border border-dashed border-border flex items-center justify-center p-3 text-center">
+                                      <span className="text-xs font-mono text-muted-foreground">
+                                        {curSlide.visual?.caption || `Visual representation for ${curSlide.title}`}
+                                      </span>
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={curSlide.visual?.caption || ""}
+                                      onChange={(e) =>
+                                        updateCurrentSlide({
+                                          visual: {
+                                            type: curSlide.visual?.type || "diagram",
+                                            concept: curSlide.visual?.concept || curSlide.title,
+                                            caption: e.target.value,
+                                          },
+                                        })
+                                      }
+                                      className="text-[11px] text-muted-foreground bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                      placeholder="Visual caption..."
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 10. DEFAULT / CONTENT LAYOUT (Executive Bullet Cards) */}
                               {curSlide.layout !== "agenda" &&
                                 curSlide.layout !== "two-column" &&
                                 curSlide.layout !== "quote" &&
                                 curSlide.layout !== "conclusion" &&
-                                curSlide.layout !== "metrics" && (
+                                curSlide.layout !== "metrics" &&
+                                curSlide.layout !== "three-card" &&
+                                curSlide.layout !== "timeline" &&
+                                curSlide.layout !== "process" &&
+                                curSlide.layout !== "text-visual" && (
                                   <div
                                     className="rounded-2xl border p-5 sm:p-6 my-auto space-y-3 relative overflow-hidden shadow-xs"
                                     style={{
@@ -3025,6 +3663,164 @@ export function UnifiedAssignmentWorkflow({
                           </div>
                         )}
                       </div>
+
+                      {/* Slide 1 Cover Page Direct Text & Information Editor */}
+                      {currentSlideIdx === 0 && (
+                        <div className="p-4 sm:p-5 rounded-2xl border border-border bg-card shadow-paper space-y-4">
+                          <div className="flex items-center justify-between border-b border-border pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <Edit3 className="h-4 w-4 text-primary" />
+                              <h4 className="text-xs font-bold text-foreground">
+                                Slide 1 (Cover Page) Direct Text & Information Editor
+                              </h4>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground">
+                              All changes update the cover canvas in real time
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {/* Assignment Title */}
+                            <div className="sm:col-span-2 space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Assignment Title
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.assignmentTitle || ""}
+                                onChange={(e) => updateMetaField("assignmentTitle", e.target.value)}
+                                placeholder="e.g. Distributed Consensus Systems"
+                                className="w-full text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Course Name */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Course Name
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.courseName || ""}
+                                onChange={(e) => updateMetaField("courseName", e.target.value)}
+                                placeholder="e.g. Computer Science 401"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Course Code */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Course Code
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.courseCode || ""}
+                                onChange={(e) => updateMetaField("courseCode", e.target.value)}
+                                placeholder="e.g. CS-401"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Student Name */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Student Name
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.studentName || ""}
+                                onChange={(e) => updateMetaField("studentName", e.target.value)}
+                                placeholder="Full Name"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Student ID */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Student ID
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.studentId || ""}
+                                onChange={(e) => updateMetaField("studentId", e.target.value)}
+                                placeholder="ID Number"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Instructor */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Instructor Name (Submitted to)
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.instructorName || ""}
+                                onChange={(e) => updateMetaField("instructorName", e.target.value)}
+                                placeholder="Instructor Name"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* University Name */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                University / Institution
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.universityName || ""}
+                                onChange={(e) => updateMetaField("universityName", e.target.value)}
+                                placeholder="e.g. Haramaya University"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Department / College */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Department / College
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.department || ""}
+                                onChange={(e) => updateMetaField("department", e.target.value)}
+                                placeholder="Department"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Submission Date */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Submission Date
+                              </label>
+                              <input
+                                type="date"
+                                value={metadata.submissionDate || ""}
+                                onChange={(e) => updateMetaField("submissionDate", e.target.value)}
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Custom Cover Note / Subtitle */}
+                            <div className="sm:col-span-2 lg:col-span-3 space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Custom Note / Credential Badge / Subtitle on Cover
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.coverCustomNotes || ""}
+                                onChange={(e) => updateMetaField("coverCustomNotes", e.target.value)}
+                                placeholder="Add custom notes, project version, or additional credentials visible on the cover page..."
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Presenter Notes Expandable Drawer */}
                       {showNotesDrawer && currentSlideIdx > 0 && (

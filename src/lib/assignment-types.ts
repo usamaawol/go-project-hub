@@ -89,6 +89,14 @@ export interface AssignmentMetadata {
   coverTemplateId: string;
   accentColor?: string;
 
+  // Typography & Placement Customization for Cover Page
+  coverFontFamily?: string;
+  coverTitleAlignment?: "left" | "center" | "right";
+  coverTitlePosition?: "top" | "middle" | "lower";
+  coverTitleFontSize?: number;
+  coverTitleBold?: boolean;
+  coverCustomNotes?: string;
+
   // Native Canva-like Canvas Editor Data
   customCoverElements?: CanvasCoverElement[];
   pageFormat?: "A4" | "Letter";

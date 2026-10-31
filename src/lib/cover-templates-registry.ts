@@ -156,6 +156,134 @@ function postProcessCoverElements(
     }
   }
 
+  // 5. Top-Right Brand / University Pill Badge Dynamic Sizing & Positioning (Prevents Text Clipping)
+  const brandPillIdx = processed.findIndex(
+    (e) =>
+      (e.type === "badge" || e.shapeType === "badge-pill") &&
+      (e.id?.includes("brand") || (e.x > pageW / 2 && e.y < 120)),
+  );
+  const brandTextIdx = processed.findIndex(
+    (e) =>
+      e.type === "text" &&
+      (e.id?.includes("brand-text") || (e.x > pageW / 2 && e.y < 120 && e.id?.includes("brand"))),
+  );
+
+  if (brandTextIdx >= 0) {
+    const brandText = processed[brandTextIdx]!;
+    const brandStr = (brandText.text || meta.universityName || meta.courseName || "").trim();
+    if (brandStr) {
+      brandText.text = brandStr;
+      const charCount = brandStr.length;
+      const dynamicFontSize = charCount > 28 ? 10 : charCount > 20 ? 11 : 12;
+      brandText.fontSize = dynamicFontSize;
+      const textW = Math.max(140, Math.min(380, Math.ceil(charCount * (dynamicFontSize * 0.72) + 28)));
+      const pillW = textW + 32;
+      const rightMargin = is169 ? 60 : 45;
+
+      if (brandPillIdx >= 0) {
+        const brandPill = processed[brandPillIdx]!;
+        brandPill.width = pillW;
+        brandPill.x = pageW - pillW - rightMargin;
+        brandPill.height = Math.max(brandPill.height, is169 ? 38 : 36);
+        brandText.x = brandPill.x + 16;
+        brandText.y = brandPill.y + Math.max(0, (brandPill.height - 28) / 2);
+      } else {
+        brandText.x = pageW - textW - rightMargin;
+      }
+
+      brandText.width = textW;
+      brandText.height = Math.max(brandText.height, 28);
+      brandText.textAlign = "center";
+    }
+  }
+
+  // 6. User Custom Cover Font Family
+  if (meta.coverFontFamily) {
+    for (const el of processed) {
+      if (el.type === "text" || el.type === "badge") {
+        if (!el.fontFamily?.includes("monospace")) {
+          el.fontFamily = meta.coverFontFamily;
+        }
+      }
+    }
+  }
+
+  // 7. User Custom Cover Title Alignment & Positioning
+  const titleEl = processed.find(
+    (e) =>
+      e.isMetadataField === "assignmentTitle" ||
+      e.id?.includes("title-main") ||
+      e.id === "canva-title" ||
+      (e.type === "text" && e.id?.includes("title") && !e.id?.includes("sub")),
+  );
+
+  if (titleEl) {
+    if (meta.coverTitleAlignment) {
+      titleEl.textAlign = meta.coverTitleAlignment;
+      const subtitleEl = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
+      if (subtitleEl) {
+        subtitleEl.textAlign = meta.coverTitleAlignment;
+      }
+    }
+
+    if (meta.coverTitleFontSize && meta.coverTitleFontSize > 16) {
+      titleEl.fontSize = meta.coverTitleFontSize;
+    }
+
+    if (meta.coverTitleBold !== undefined) {
+      titleEl.fontWeight = meta.coverTitleBold ? "bold" : "normal";
+    }
+
+    if (meta.coverTitlePosition) {
+      if (meta.coverTitlePosition === "top") {
+        const targetY = is169 ? 120 : 160;
+        const delta = targetY - titleEl.y;
+        titleEl.y = targetY;
+        const sub = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
+        if (sub) sub.y = Math.max(targetY + titleEl.height + 10, sub.y + delta);
+      } else if (meta.coverTitlePosition === "middle") {
+        const targetY = is169 ? 240 : 360;
+        const delta = targetY - titleEl.y;
+        titleEl.y = targetY;
+        const sub = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
+        if (sub) sub.y = Math.max(targetY + titleEl.height + 10, sub.y + delta);
+      } else if (meta.coverTitlePosition === "lower") {
+        const targetY = is169 ? 340 : 500;
+        const delta = targetY - titleEl.y;
+        titleEl.y = targetY;
+        const sub = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
+        if (sub) sub.y = Math.max(targetY + titleEl.height + 10, sub.y + delta);
+      }
+    }
+  }
+
+  // 8. Custom Note / Add Content on Cover Page
+  if (meta.coverCustomNotes?.trim()) {
+    const existingNoteIdx = processed.findIndex((e) => e.id === "cover-custom-note");
+    const noteEl: CanvasCoverElement = {
+      id: "cover-custom-note",
+      type: "text",
+      name: "Custom Cover Note",
+      x: is169 ? 80 : 60,
+      y: pageH - (is169 ? 65 : 75),
+      width: pageW - (is169 ? 160 : 120),
+      height: 24,
+      text: meta.coverCustomNotes.trim(),
+      fontFamily: meta.coverFontFamily || "Inter, sans-serif",
+      fontSize: 11,
+      fontWeight: "500",
+      textAlign: meta.coverTitleAlignment || "left",
+      textColor: "#64748B",
+      zIndex: 99,
+    };
+
+    if (existingNoteIdx >= 0) {
+      processed[existingNoteIdx] = noteEl;
+    } else {
+      processed.push(noteEl);
+    }
+  }
+
   return processed;
 }
 

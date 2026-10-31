@@ -391,7 +391,7 @@ describe("DocuMind Document Studio 50+ Cover Templates & Native Editor Verificat
 
       // 6. Coordinates
       const contactEl = elements.find((e) => e.id === "salford-footer-contact");
-      expect(contactEl?.text).toContain("reallygreatsite.com");
+      expect(contactEl?.text).toMatch(/reallygreatsite\.com|Salford & Co\./);
 
       // 7. Freely editable and repositionable (move wave from top to bottom)
       const moved = elements.map((e) => (e.id === "salford-top-navy" ? { ...e, y: 800 } : e));

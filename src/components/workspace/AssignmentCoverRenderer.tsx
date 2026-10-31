@@ -107,6 +107,8 @@ export function AssignmentCoverRenderer({
           const widthPct = (el.width / canvasW) * 100;
           const heightPct = (el.height / canvasH) * 100;
 
+          const isBrandOrBadge = el.type === "badge" || el.id?.includes("brand") || el.shapeType === "badge-pill";
+
           return (
             <div
               key={el.id || `el-${idx}`}
@@ -140,7 +142,7 @@ export function AssignmentCoverRenderer({
                     borderRadius: el.borderRadius ? `${el.borderRadius}px` : undefined,
                     padding: el.fillColor ? "2px 6px" : undefined,
                     boxSizing: "border-box",
-                    wordBreak: "break-word",
+                    wordBreak: isBrandOrBadge ? "normal" : "break-word",
                     display: "flex",
                     alignItems: "center",
                     justifyContent:
@@ -149,7 +151,8 @@ export function AssignmentCoverRenderer({
                         : el.textAlign === "right"
                           ? "flex-end"
                           : "flex-start",
-                    whiteSpace: "pre-line",
+                    whiteSpace: isBrandOrBadge ? "nowrap" : "pre-line",
+                    textOverflow: isBrandOrBadge ? "ellipsis" : undefined,
                   }}
                 >
                   {el.text}

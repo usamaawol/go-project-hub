@@ -572,19 +572,13 @@ function parseContentIntoSections(
         }
       }
 
-      // If still under 3 bullets, synthesize structured operational facets addressing the topic directly
-      if (list.length < 3) {
-        const p1 = `Core Mandate: ${cleanT}`;
-        const p2 = `Operational Execution: Apply focused implementation criteria and guardrails for ${cleanT.toLowerCase()}`;
-        const p3 = `Quality Verification: Validate end-to-end stability, component health, and ensure zero regressions`;
-
-        if (!list.includes(p1) && list.length === 0) list.push(p1);
-        if (!list.some((it) => it.toLowerCase().includes("execution") || it.toLowerCase().includes("implementation"))) {
-          list.push(p2);
-        }
-        if (!list.some((it) => it.toLowerCase().includes("quality") || it.toLowerCase().includes("verification"))) {
-          list.push(p3);
-        }
+      // If still under 2 bullets and no content, provide clear academic anchors
+      if (list.length === 0) {
+        list.push(`Core Concept: ${cleanT}`);
+        list.push(`Key Insight: Critical dimensions and analysis of ${cleanT}`);
+        list.push(`Implications: Practical applications and findings`);
+      } else if (list.length === 1) {
+        list.push(`Analysis: Detailed breakdown and evaluation of ${cleanT}`);
       }
     }
 
@@ -811,9 +805,9 @@ function parseContentIntoSections(
           bullets.length > 0
             ? bullets.slice(0, bulletLimit)
             : [
-                `Core Mandate: ${title}`,
-                `Operational Execution: Implement verification guidelines for ${title}`,
-                `Quality Standard: Validate stable, error-free operation`,
+                `Core Concept: ${title}`,
+                `Analysis: Methodological exploration of ${title}`,
+                `Implications: Key findings and practical takeaways`,
               ],
         visual: {
           type: vis.type,
@@ -832,9 +826,9 @@ function parseContentIntoSections(
           bullets.length > 0
             ? bullets.slice(0, bulletLimit)
             : [
-                `Core Mandate: ${title}`,
-                `Operational Execution: Implement verification guidelines for ${title}`,
-                `Quality Standard: Validate stable, error-free operation`,
+                `Core Concept: ${title}`,
+                `Analysis: Methodological exploration of ${title}`,
+                `Implications: Key findings and practical takeaways`,
               ],
       });
     }
