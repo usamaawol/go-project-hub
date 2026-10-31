@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
+import { getFirestore, type Firestore } from "firebase/firestore";
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -55,11 +56,13 @@ export const isFirebaseConfigured = Boolean(
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
+let db: Firestore | null = null;
 
 if (typeof window !== "undefined" && isFirebaseConfigured) {
   try {
     app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     auth = getAuth(app);
+    db = getFirestore(app);
     if (firebaseConfig.measurementId) {
       void isSupported()
         .then((supported) => {
@@ -489,4 +492,4 @@ export async function logoutUser(): Promise<void> {
   notifyListeners(null);
 }
 
-export { app, auth };
+export { app, auth, db };
