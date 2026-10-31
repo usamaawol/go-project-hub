@@ -526,8 +526,10 @@ export function UnifiedAssignmentWorkflow({
     if (!file) return;
 
     setLogoError(null);
-    const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
-    if (!validTypes.includes(file.type)) {
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    const validExts = ["png", "jpg", "jpeg", "webp"];
+    const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/x-png"];
+    if (!validTypes.includes(file.type) && !validExts.includes(ext)) {
       setLogoError("Please upload a PNG, JPG, or WebP university logo image.");
       return;
     }
@@ -545,6 +547,9 @@ export function UnifiedAssignmentWorkflow({
       toast.success("University logo attached", {
         description: `Preserving aspect ratio & native transparency (${file.name}).`,
       });
+    };
+    reader.onerror = () => {
+      setLogoError("Could not read logo image. Please try another image.");
     };
     reader.readAsDataURL(file);
   };

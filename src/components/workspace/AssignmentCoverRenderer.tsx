@@ -69,32 +69,39 @@ export function AssignmentCoverRenderer({
 
   // Universal vector canvas rendering for 100% WYSIWYG fidelity across browser preview & PPTX export
   const useCanvasRendering = true;
+  const hasCustomElements = Boolean(safeMeta.customCoverElements && safeMeta.customCoverElements.length > 0);
 
   const is169 = aspectRatio === "16:9";
   const canvasW = is169 ? 1333 : 794;
   const canvasH = is169 ? 750 : 1123;
 
   if (useCanvasRendering) {
-    const rawElements = hasCustomElements
-      ? (is169
-          ? safeMeta.customCoverElements!.map((el) => ({
-              ...el,
-              x: (el.x / 794) * 1333,
-              y: (el.y / 1123) * 750,
-              width: (el.width / 794) * 1333,
-              height: (el.height / 1123) * 750,
-            }))
-          : safeMeta.customCoverElements!)
-      : generateDefaultCoverElements(getCoverTemplateById(templateId), safeMeta, canvasW, canvasH);
+    let rawElements: CanvasCoverElement[] = [];
+    try {
+      rawElements = hasCustomElements
+        ? (is169
+            ? safeMeta.customCoverElements!.map((el) => ({
+                ...el,
+                x: (el.x / 794) * 1333,
+                y: (el.y / 1123) * 750,
+                width: (el.width / 794) * 1333,
+                height: (el.height / 1123) * 750,
+              }))
+            : safeMeta.customCoverElements!)
+        : generateDefaultCoverElements(getCoverTemplateById(templateId), safeMeta, canvasW, canvasH);
+    } catch (err) {
+      console.error("AssignmentCoverRenderer error:", err);
+      rawElements = generateDefaultCoverElements(getCoverTemplateById("classic-university"), safeMeta, canvasW, canvasH);
+    }
 
-    const sorted = [...rawElements].sort((a, b) => a.zIndex - b.zIndex);
+    const sorted = [...rawElements].sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
 
     return (
       <div
         className={`bg-white text-slate-900 select-none ${className}`}
         style={{ ...containerStyle, position: "relative", width: "100%", height: "100%", overflow: "hidden" }}
       >
-        {sorted.map((el) => {
+        {sorted.map((el, idx) => {
           const leftPct = (el.x / canvasW) * 100;
           const topPct = (el.y / canvasH) * 100;
           const widthPct = (el.width / canvasW) * 100;
@@ -102,7 +109,7 @@ export function AssignmentCoverRenderer({
 
           return (
             <div
-              key={el.id}
+              key={el.id || `el-${idx}`}
               style={{
                 position: "absolute",
                 left: `${leftPct}%`,
@@ -115,7 +122,7 @@ export function AssignmentCoverRenderer({
                 boxSizing: "border-box",
               }}
             >
-              {el.type === "text" && (
+              {(el.type === "text" || el.type === "badge") && (
                 <div
                   style={{
                     width: "100%",

@@ -95,7 +95,7 @@ function postProcessCoverElements(
 
       if (el.type === "text" || el.type === "badge") {
         if (el.x < 220 && el.y < 110) {
-          if (el.isMetadataField === "assignmentTitle" || el.id.includes("title")) {
+          if (el.isMetadataField === "assignmentTitle" || el.id?.includes("title")) {
             el.y = Math.max(el.y, is169 ? 120 : 135);
           } else {
             el.x = 220;
@@ -112,9 +112,9 @@ function postProcessCoverElements(
       (e) =>
         e.type === "text" &&
         e.id !== "canvas-bg" &&
-        !e.id.includes("title") &&
-        !e.id.includes("brand") &&
-        !e.id.includes("footer") &&
+        !e.id?.includes("title") &&
+        !e.id?.includes("brand") &&
+        !e.id?.includes("footer") &&
         e.y > 220,
     );
 

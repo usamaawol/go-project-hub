@@ -10,6 +10,7 @@ import {
 import { renderSlideDeckToPptx } from "@/lib/presentation-renderer";
 import { computeThemeTokens, type RawThemeInput } from "@/lib/presentation-theme";
 import type { SlidePreviewItem } from "@/lib/presentation-session-client";
+import { AssignmentCoverRenderer } from "@/components/workspace/AssignmentCoverRenderer";
 
 describe("Assignment Presentation Maker High-Fidelity & Full Slide Editing", () => {
   const sampleMeta: AssignmentMetadata = {
@@ -148,5 +149,20 @@ describe("Assignment Presentation Maker High-Fidelity & Full Slide Editing", () 
     const buffer = await pptx.write({ outputType: "nodebuffer" });
     expect(buffer).toBeDefined();
     expect((buffer as Buffer).length).toBeGreaterThan(10000);
+  });
+
+  it("renders AssignmentCoverRenderer with logo in 16:9 and A4 mode without crashing", () => {
+    const rendered169 = AssignmentCoverRenderer({
+      metadata: sampleMeta,
+      aspectRatio: "16:9",
+    });
+    expect(rendered169).toBeDefined();
+
+    const renderedA4 = AssignmentCoverRenderer({
+      metadata: sampleMeta,
+      aspectRatio: "a4",
+      isThumbnail: true,
+    });
+    expect(renderedA4).toBeDefined();
   });
 });
