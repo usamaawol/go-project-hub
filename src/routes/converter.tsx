@@ -259,13 +259,19 @@ export const A4DocumentConverterEditor = forwardRef<
   const initialHtml = useMemo(() => convertBlocksToA4Html(blocks), [blocks]);
   const [editedHtml, setEditedHtml] = useState<string>(initialHtml);
 
-  // Sync initial HTML when text changes
+  const isLoadedRef = useRef(false);
+
+  // Sync initial HTML when text changes (new document conversion)
   useEffect(() => {
-    setEditedHtml(initialHtml);
     if (editorRef.current) {
-      editorRef.current.innerHTML = initialHtml;
+      if (!isLoadedRef.current || editorRef.current.dataset.sourceText !== text) {
+        editorRef.current.innerHTML = initialHtml;
+        editorRef.current.dataset.sourceText = text;
+        setEditedHtml(initialHtml);
+        isLoadedRef.current = true;
+      }
     }
-  }, [initialHtml]);
+  }, [initialHtml, text]);
 
   const handleAdjustFontSize = (delta: number) => {
     setBaseFontSize((prev) => Math.max(10, Math.min(28, prev + delta)));
@@ -298,6 +304,7 @@ export const A4DocumentConverterEditor = forwardRef<
     setEditedHtml(initialHtml);
     if (editorRef.current) {
       editorRef.current.innerHTML = initialHtml;
+      editorRef.current.dataset.sourceText = text;
     }
     toast.info("Reset document to original converted content.");
   };
@@ -371,9 +378,16 @@ export const A4DocumentConverterEditor = forwardRef<
         editorRef={editorRef}
         currentLineSpacing={currentLineSpacing}
         onLineSpacingChange={(sp) => setCurrentLineSpacing(sp)}
+        onCommand={() => {
+          if (editorRef.current) {
+            const html = editorRef.current.innerHTML;
+            setEditedHtml(html);
+            onEditedHtmlChange?.(html);
+          }
+        }}
       />
 
-      {/* 2. Secondary Quick Controls Bar: Text Size, Line Gap, Font Family, Width & Quick Downloads */}
+      {/* 2. Secondary Quick Controls Bar: Text Size, Inline Styling, Line Gap, Font Family, Width & Quick Downloads */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-xl bg-surface-2/60 border border-border text-xs">
         <div className="flex flex-wrap items-center gap-2">
           {/* Base Font Size Adjustment */}
@@ -383,6 +397,10 @@ export const A4DocumentConverterEditor = forwardRef<
             </span>
             <button
               type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onClick={() => handleAdjustFontSize(-1)}
               className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2 cursor-pointer"
               title="Decrease text size"
@@ -394,11 +412,79 @@ export const A4DocumentConverterEditor = forwardRef<
             </span>
             <button
               type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onClick={() => handleAdjustFontSize(1)}
               className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2 cursor-pointer"
               title="Increase text size"
             >
               <Plus className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* Quick Bold / Italic / Underline Buttons */}
+          <div className="flex items-center gap-0.5 bg-background p-1 rounded-lg border border-border/80">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={() => {
+                if (editorRef.current) {
+                  editorRef.current.focus();
+                  document.execCommand("bold");
+                  const html = editorRef.current.innerHTML;
+                  setEditedHtml(html);
+                  onEditedHtmlChange?.(html);
+                }
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded text-foreground hover:bg-surface-2 transition-colors cursor-pointer font-bold text-xs"
+              title="Bold (Ctrl+B) — Makes Selected Text Bold"
+            >
+              <Bold className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={() => {
+                if (editorRef.current) {
+                  editorRef.current.focus();
+                  document.execCommand("italic");
+                  const html = editorRef.current.innerHTML;
+                  setEditedHtml(html);
+                  onEditedHtmlChange?.(html);
+                }
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded text-foreground hover:bg-surface-2 transition-colors cursor-pointer italic text-xs"
+              title="Italic (Ctrl+I) — Makes Selected Text Italic"
+            >
+              <Italic className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={() => {
+                if (editorRef.current) {
+                  editorRef.current.focus();
+                  document.execCommand("underline");
+                  const html = editorRef.current.innerHTML;
+                  setEditedHtml(html);
+                  onEditedHtmlChange?.(html);
+                }
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded text-foreground hover:bg-surface-2 transition-colors cursor-pointer underline text-xs"
+              title="Underline (Ctrl+U) — Makes Selected Text Underlined"
+            >
+              <Underline className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -536,13 +622,33 @@ export const A4DocumentConverterEditor = forwardRef<
                 setEditedHtml(html);
                 onEditedHtmlChange?.(html);
               }}
-              className="w-full focus:outline-none select-text cursor-text"
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+                  e.preventDefault();
+                  document.execCommand("bold");
+                  const html = e.currentTarget.innerHTML;
+                  setEditedHtml(html);
+                  onEditedHtmlChange?.(html);
+                } else if ((e.ctrlKey || e.metaKey) && (e.key === "i" || e.key === "I")) {
+                  e.preventDefault();
+                  document.execCommand("italic");
+                  const html = e.currentTarget.innerHTML;
+                  setEditedHtml(html);
+                  onEditedHtmlChange?.(html);
+                } else if ((e.ctrlKey || e.metaKey) && (e.key === "u" || e.key === "U")) {
+                  e.preventDefault();
+                  document.execCommand("underline");
+                  const html = e.currentTarget.innerHTML;
+                  setEditedHtml(html);
+                  onEditedHtmlChange?.(html);
+                }
+              }}
+              className="w-full focus:outline-none select-text cursor-text min-h-[800px]"
               style={{
                 fontFamily: fontFamilyMap[fontFamily] || "Inter, sans-serif",
                 fontSize: `${baseFontSize}px`,
                 lineHeight: currentLineSpacing,
               }}
-              dangerouslySetInnerHTML={{ __html: initialHtml }}
             />
           </div>
 

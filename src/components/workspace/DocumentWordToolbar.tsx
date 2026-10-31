@@ -103,12 +103,25 @@ export function DocumentWordToolbar({
   const [showSizeMenu, setShowSizeMenu] = useState(false);
   const [showSpacingMenu, setShowSpacingMenu] = useState(false);
   const [selectedWordCount, setSelectedWordCount] = useState<number>(0);
+  const savedRangeRef = useRef<Range | null>(null);
 
   // Monitor selection state
   useEffect(() => {
     const handleSelectionChange = () => {
       if (typeof document === "undefined") return;
       try {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          if (editorRef?.current) {
+            if (editorRef.current.contains(range.commonAncestorContainer)) {
+              savedRangeRef.current = range.cloneRange();
+            }
+          } else {
+            savedRangeRef.current = range.cloneRange();
+          }
+        }
+
         setIsBold(document.queryCommandState("bold"));
         setIsItalic(document.queryCommandState("italic"));
         setIsUnderline(document.queryCommandState("underline"));
@@ -117,7 +130,6 @@ export function DocumentWordToolbar({
         const block = (document.queryCommandValue("formatBlock") || "p").toLowerCase();
         setCurrentBlock(block);
 
-        const sel = window.getSelection();
         if (sel && !sel.isCollapsed) {
           const txt = sel.toString().trim();
           setSelectedWordCount(txt ? txt.split(/\s+/).length : 0);
@@ -133,19 +145,53 @@ export function DocumentWordToolbar({
     return () => {
       document.removeEventListener("selectionchange", handleSelectionChange);
     };
-  }, []);
+  }, [editorRef]);
+
+  const preventBlur = (e: React.MouseEvent | React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const restoreSelection = () => {
+    if (editorRef?.current) {
+      editorRef.current.focus();
+    }
+    const sel = window.getSelection();
+    if (sel && savedRangeRef.current && (!sel.rangeCount || sel.isCollapsed)) {
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+    }
+  };
 
   const exec = (command: string, value: string | undefined = undefined) => {
     if (typeof document === "undefined") return;
     try {
+      restoreSelection();
       document.execCommand(command, false, value);
+
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+      }
+
+      if (editorRef?.current) {
+        editorRef.current.dispatchEvent(new Event("input", { bubbles: true }));
+      }
       onCommand?.(command, value);
+
+      try {
+        setIsBold(document.queryCommandState("bold"));
+        setIsItalic(document.queryCommandState("italic"));
+        setIsUnderline(document.queryCommandState("underline"));
+        setIsStrike(document.queryCommandState("strikeThrough"));
+      } catch {}
     } catch (e) {
       console.warn("Editor command failed:", command, e);
     }
   };
 
   const applySpanStyle = (styleKey: string, styleValue: string) => {
+    restoreSelection();
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
     const range = sel.getRangeAt(0);
@@ -163,6 +209,11 @@ export function DocumentWordToolbar({
       const newRange = document.createRange();
       newRange.selectNodeContents(span);
       sel.addRange(newRange);
+      savedRangeRef.current = newRange.cloneRange();
+
+      if (editorRef?.current) {
+        editorRef.current.dispatchEvent(new Event("input", { bubbles: true }));
+      }
       onCommand?.("customSpan", `${styleKey}:${styleValue}`);
     } catch (e) {
       console.warn("Failed to apply span style:", e);
@@ -184,6 +235,7 @@ export function DocumentWordToolbar({
       <div className="flex items-center gap-0.5 border-r border-border/60 pr-1.5 mr-0.5">
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("undo")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Undo (Ctrl+Z)"
@@ -192,6 +244,7 @@ export function DocumentWordToolbar({
         </button>
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("redo")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Redo (Ctrl+Y)"
@@ -301,6 +354,7 @@ export function DocumentWordToolbar({
       <div className="flex items-center gap-0.5 border-r border-border/60 pr-1.5 mr-0.5">
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("bold")}
           className={`p-1.5 rounded-md transition-colors cursor-pointer ${
             isBold
@@ -314,6 +368,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("italic")}
           className={`p-1.5 rounded-md transition-colors cursor-pointer ${
             isItalic
@@ -327,6 +382,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("underline")}
           className={`p-1.5 rounded-md transition-colors cursor-pointer ${
             isUnderline
@@ -340,6 +396,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("strikeThrough")}
           className={`p-1.5 rounded-md transition-colors cursor-pointer ${
             isStrike
@@ -449,6 +506,7 @@ export function DocumentWordToolbar({
       <div className="flex items-center gap-0.5 border-r border-border/60 pr-1.5 mr-0.5">
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("justifyLeft")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Align Left"
@@ -458,6 +516,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("justifyCenter")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Align Center"
@@ -467,6 +526,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("justifyRight")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Align Right"
@@ -476,6 +536,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("justifyFull")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Justify Text Evenly"
@@ -488,6 +549,7 @@ export function DocumentWordToolbar({
       <div className="flex items-center gap-0.5 border-r border-border/60 pr-1.5 mr-0.5">
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("insertUnorderedList")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Bulleted List"
@@ -497,6 +559,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("insertOrderedList")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Numbered List"
@@ -506,6 +569,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("outdent")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Decrease Indent"
@@ -515,6 +579,7 @@ export function DocumentWordToolbar({
 
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("indent")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Increase Indent"
@@ -528,6 +593,7 @@ export function DocumentWordToolbar({
         <div className="relative">
           <button
             type="button"
+            onMouseDown={preventBlur}
             onClick={() => setShowSpacingMenu(!showSpacingMenu)}
             className="flex items-center gap-1 h-8 rounded-lg bg-surface-2 border border-border px-2 text-xs font-mono font-medium text-foreground hover:bg-surface-3 transition-colors cursor-pointer"
             title="Line Spacing (e.g., 1.5x, 2.0x)"
@@ -545,6 +611,7 @@ export function DocumentWordToolbar({
                 <button
                   key={sp.value}
                   type="button"
+                  onMouseDown={preventBlur}
                   onClick={() => {
                     onLineSpacingChange?.(sp.value);
                     setShowSpacingMenu(false);
@@ -567,20 +634,12 @@ export function DocumentWordToolbar({
       <div className="flex items-center gap-0.5">
         <button
           type="button"
+          onMouseDown={preventBlur}
           onClick={() => exec("removeFormat")}
           className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Clear Formatting for Selected Words"
         >
           <RemoveFormatting className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => exec("insertHorizontalRule")}
-          className="p-1.5 rounded-md hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          title="Insert Horizontal Divider"
-        >
-          <Minus className="h-4 w-4" />
         </button>
       </div>
 
