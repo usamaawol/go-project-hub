@@ -57,6 +57,7 @@ import {
 import {
   parsePlainTextToBlocks,
   parseHtmlToBlocks,
+  convertHtmlToPlainText,
   type DocSynthesizerBlock,
 } from "@/lib/document-synthesizer";
 import { DocumentWordToolbar } from "@/components/workspace/DocumentWordToolbar";
@@ -241,6 +242,8 @@ export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
 export interface A4DocumentConverterEditorHandle {
   triggerDownload: (format?: string) => Promise<void>;
   getEditedHtml: () => string;
+  getEditedText: () => string;
+  getOptions: () => { fontSize: number; lineSpacing: string; fontFamily: string };
 }
 
 export interface A4DocumentConverterEditorProps {
@@ -249,8 +252,13 @@ export interface A4DocumentConverterEditorProps {
   fileExt: string;
   targetFormat: string;
   rawBlobUrl?: string;
+  initialHtmlContent?: string;
   onDownload?: () => void;
-  onEditedHtmlChange?: (html: string) => void;
+  onEditedHtmlChange?: (
+    html: string,
+    plainText: string,
+    options: { fontSize: number; lineSpacing: string; fontFamily: string },
+  ) => void;
 }
 
 export const A4DocumentConverterEditor = forwardRef<
@@ -263,6 +271,7 @@ export const A4DocumentConverterEditor = forwardRef<
     fileExt,
     targetFormat,
     rawBlobUrl,
+    initialHtmlContent,
     onDownload,
     onEditedHtmlChange,
   },
@@ -280,25 +289,35 @@ export const A4DocumentConverterEditor = forwardRef<
   const blocks = useMemo(() => parsePlainTextToBlocks(text), [text]);
 
   // Convert blocks to authentic semantic HTML with ZERO horizontal lines and ZERO fake avatars
-  const initialHtml = useMemo(() => convertBlocksToA4Html(blocks), [blocks]);
-  const [editedHtml, setEditedHtml] = useState<string>(initialHtml);
+  const defaultHtml = useMemo(() => convertBlocksToA4Html(blocks), [blocks]);
+  const startingHtml = initialHtmlContent || defaultHtml;
+  const [editedHtml, setEditedHtml] = useState<string>(startingHtml);
 
   const isLoadedRef = useRef(false);
+
+  const notifyChange = (html: string, sp = currentLineSpacing, sz = baseFontSize, ff = fontFamily) => {
+    setEditedHtml(html);
+    const plain = editorRef.current?.innerText || convertHtmlToPlainText(html);
+    onEditedHtmlChange?.(html, plain, { fontSize: sz, lineSpacing: sp, fontFamily: ff });
+  };
 
   // Sync initial HTML when text changes (new document conversion)
   useEffect(() => {
     if (editorRef.current) {
       if (!isLoadedRef.current || editorRef.current.dataset.sourceText !== text) {
-        editorRef.current.innerHTML = initialHtml;
+        editorRef.current.innerHTML = startingHtml;
         editorRef.current.dataset.sourceText = text;
-        setEditedHtml(initialHtml);
+        setEditedHtml(startingHtml);
         isLoadedRef.current = true;
       }
     }
-  }, [initialHtml, text]);
+  }, [startingHtml, text]);
 
   const handleAdjustFontSize = (delta: number) => {
-    setBaseFontSize((prev) => Math.max(10, Math.min(28, prev + delta)));
+    const nextSize = Math.max(10, Math.min(28, baseFontSize + delta));
+    setBaseFontSize(nextSize);
+    const html = editorRef.current?.innerHTML || editedHtml;
+    notifyChange(html, currentLineSpacing, nextSize, fontFamily);
   };
 
   const fontFamilyMap: Record<string, string> = {
@@ -317,7 +336,7 @@ export const A4DocumentConverterEditor = forwardRef<
   };
 
   const handleCopyPlainText = () => {
-    const plain = (editorRef.current?.innerText || text).replace(/\n\s*\n/g, "\n\n");
+    const plain = (editorRef.current?.innerText || convertHtmlToPlainText(editedHtml || text)).replace(/\n\s*\n/g, "\n\n");
     navigator.clipboard.writeText(plain);
     setCopied(true);
     toast.success("Copied plain text to clipboard!");
@@ -325,11 +344,12 @@ export const A4DocumentConverterEditor = forwardRef<
   };
 
   const handleResetToOriginal = () => {
-    setEditedHtml(initialHtml);
+    setEditedHtml(defaultHtml);
     if (editorRef.current) {
-      editorRef.current.innerHTML = initialHtml;
+      editorRef.current.innerHTML = defaultHtml;
       editorRef.current.dataset.sourceText = text;
     }
+    notifyChange(defaultHtml);
     toast.info("Reset document to original converted content.");
   };
 
@@ -348,17 +368,19 @@ export const A4DocumentConverterEditor = forwardRef<
         blob = await generateClientPdf(htmlToExport, baseName, {
           lineSpacing: numLineSpacing,
           fontSize: ptFontSize,
+          fontFamily,
           removeDividers: true,
         });
       } else if (format === "DOCX" || format === "DOC") {
         blob = await generateClientDocx(htmlToExport, baseName, {
           lineSpacing: numLineSpacing,
           fontSize: ptFontSize,
+          fontFamily,
           removeDividers: true,
         });
       } else {
         // TXT
-        const plainText = editorRef.current?.innerText || text;
+        const plainText = editorRef.current?.innerText || convertHtmlToPlainText(htmlToExport);
         blob = new Blob([plainText], { type: "text/plain;charset=utf-8" });
       }
 
@@ -388,6 +410,8 @@ export const A4DocumentConverterEditor = forwardRef<
   useImperativeHandle(ref, () => ({
     triggerDownload: (fmt) => handleDownloadDocument(fmt || targetFormat),
     getEditedHtml: () => editorRef.current?.innerHTML || editedHtml,
+    getEditedText: () => editorRef.current?.innerText || convertHtmlToPlainText(editorRef.current?.innerHTML || editedHtml),
+    getOptions: () => ({ fontSize: baseFontSize, lineSpacing: currentLineSpacing, fontFamily }),
   }));
 
   const wordCount = useMemo(() => {
@@ -401,12 +425,15 @@ export const A4DocumentConverterEditor = forwardRef<
       <DocumentWordToolbar
         editorRef={editorRef}
         currentLineSpacing={currentLineSpacing}
-        onLineSpacingChange={(sp) => setCurrentLineSpacing(sp)}
+        onLineSpacingChange={(sp) => {
+          setCurrentLineSpacing(sp);
+          const html = editorRef.current?.innerHTML || editedHtml;
+          notifyChange(html, sp, baseFontSize, fontFamily);
+        }}
         onCommand={() => {
           if (editorRef.current) {
             const html = editorRef.current.innerHTML;
-            setEditedHtml(html);
-            onEditedHtmlChange?.(html);
+            notifyChange(html);
           }
         }}
       />
@@ -461,8 +488,7 @@ export const A4DocumentConverterEditor = forwardRef<
                   editorRef.current.focus();
                   document.execCommand("bold");
                   const html = editorRef.current.innerHTML;
-                  setEditedHtml(html);
-                  onEditedHtmlChange?.(html);
+                  notifyChange(html);
                 }
               }}
               className="h-6 w-6 flex items-center justify-center rounded text-foreground hover:bg-surface-2 transition-colors cursor-pointer font-bold text-xs"
@@ -481,8 +507,7 @@ export const A4DocumentConverterEditor = forwardRef<
                   editorRef.current.focus();
                   document.execCommand("italic");
                   const html = editorRef.current.innerHTML;
-                  setEditedHtml(html);
-                  onEditedHtmlChange?.(html);
+                  notifyChange(html);
                 }
               }}
               className="h-6 w-6 flex items-center justify-center rounded text-foreground hover:bg-surface-2 transition-colors cursor-pointer italic text-xs"
@@ -501,8 +526,7 @@ export const A4DocumentConverterEditor = forwardRef<
                   editorRef.current.focus();
                   document.execCommand("underline");
                   const html = editorRef.current.innerHTML;
-                  setEditedHtml(html);
-                  onEditedHtmlChange?.(html);
+                  notifyChange(html);
                 }
               }}
               className="h-6 w-6 flex items-center justify-center rounded text-foreground hover:bg-surface-2 transition-colors cursor-pointer underline text-xs"
@@ -528,7 +552,11 @@ export const A4DocumentConverterEditor = forwardRef<
               <button
                 key={sp.value}
                 type="button"
-                onClick={() => setCurrentLineSpacing(sp.value)}
+                onClick={() => {
+                  setCurrentLineSpacing(sp.value);
+                  const html = editorRef.current?.innerHTML || editedHtml;
+                  notifyChange(html, sp.value, baseFontSize, fontFamily);
+                }}
                 className={`px-1.5 py-0.5 rounded text-[11px] font-mono transition-all cursor-pointer ${
                   currentLineSpacing === sp.value
                     ? "bg-primary text-primary-foreground font-bold shadow-xs"
@@ -544,7 +572,12 @@ export const A4DocumentConverterEditor = forwardRef<
           {/* Font Family Selector */}
           <select
             value={fontFamily}
-            onChange={(e) => setFontFamily(e.target.value)}
+            onChange={(e) => {
+              const nextFam = e.target.value;
+              setFontFamily(nextFam);
+              const html = editorRef.current?.innerHTML || editedHtml;
+              notifyChange(html, currentLineSpacing, baseFontSize, nextFam);
+            }}
             className="h-7 text-xs px-2 rounded-lg border border-border bg-background text-foreground font-semibold outline-none focus:border-primary cursor-pointer"
           >
             <option value="sans">Modern Sans (Inter)</option>
@@ -643,28 +676,21 @@ export const A4DocumentConverterEditor = forwardRef<
               suppressContentEditableWarning
               onInput={(e) => {
                 const html = e.currentTarget.innerHTML;
-                setEditedHtml(html);
-                onEditedHtmlChange?.(html);
+                notifyChange(html);
               }}
               onKeyDown={(e) => {
                 if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
                   e.preventDefault();
                   document.execCommand("bold");
-                  const html = e.currentTarget.innerHTML;
-                  setEditedHtml(html);
-                  onEditedHtmlChange?.(html);
+                  notifyChange(e.currentTarget.innerHTML);
                 } else if ((e.ctrlKey || e.metaKey) && (e.key === "i" || e.key === "I")) {
                   e.preventDefault();
                   document.execCommand("italic");
-                  const html = e.currentTarget.innerHTML;
-                  setEditedHtml(html);
-                  onEditedHtmlChange?.(html);
+                  notifyChange(e.currentTarget.innerHTML);
                 } else if ((e.ctrlKey || e.metaKey) && (e.key === "u" || e.key === "U")) {
                   e.preventDefault();
                   document.execCommand("underline");
-                  const html = e.currentTarget.innerHTML;
-                  setEditedHtml(html);
-                  onEditedHtmlChange?.(html);
+                  notifyChange(e.currentTarget.innerHTML);
                 }
               }}
               className="w-full focus:outline-none select-text cursor-text min-h-[800px]"
@@ -738,6 +764,20 @@ function ConverterPage() {
     wordCount?: number | undefined;
     previewText?: string | undefined;
   } | null>(null);
+
+  // Live edited document synchronization
+  const [currentEditedHtml, setCurrentEditedHtml] = useState<string>("");
+  const [currentEditedText, setCurrentEditedText] = useState<string>("");
+  const [editorOptions, setEditorOptions] = useState<{
+    fontSize: number;
+    lineSpacing: string;
+    fontFamily: string;
+  }>({
+    fontSize: 14,
+    lineSpacing: "1.5",
+    fontFamily: "sans",
+  });
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<"document" | "raw">("document");
@@ -762,6 +802,8 @@ function ConverterPage() {
       URL.revokeObjectURL(convertedResult.blobUrl);
     }
     setConvertedResult(null);
+    setCurrentEditedHtml("");
+    setCurrentEditedText("");
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
     if (!ALLOWED_EXTS.includes(ext)) {
@@ -799,6 +841,8 @@ function ConverterPage() {
     }
     setSelectedFile(null);
     setConvertedResult(null);
+    setCurrentEditedHtml("");
+    setCurrentEditedText("");
     setErrorMessage(null);
     setSearchTerm("");
     if (fileInputRef.current) {
@@ -816,6 +860,10 @@ function ConverterPage() {
       // Execute genuine conversion preserving 100% content and topics
       const result = await convertDocument(selectedFile, targetFormat);
       const blobUrl = URL.createObjectURL(result.blob);
+
+      const initialHtml = convertBlocksToA4Html(parsePlainTextToBlocks(result.previewText || ""));
+      setCurrentEditedHtml(initialHtml);
+      setCurrentEditedText(result.previewText || "");
 
       setConvertedResult({
         filename: result.filename,
@@ -845,11 +893,14 @@ function ConverterPage() {
   };
 
   const handleCopyPlainText = () => {
-    if (!convertedResult?.previewText) return;
-    navigator.clipboard.writeText(convertedResult.previewText);
+    const textToCopy =
+      currentEditedText ||
+      (currentEditedHtml ? convertHtmlToPlainText(currentEditedHtml) : convertedResult?.previewText || "");
+    if (!textToCopy) return;
+    navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     toast.success("Copied clean plain text to clipboard!", {
-      description: "Unformatted plain text ready to paste anywhere.",
+      description: "Preserves your latest edits and formatting verbatim.",
     });
     setTimeout(() => setCopied(false), 2000);
   };
@@ -859,14 +910,52 @@ function ConverterPage() {
     if (a4EditorRef.current) {
       await a4EditorRef.current.triggerDownload(convertedResult.targetFormat);
     } else {
+      const htmlToExport =
+        currentEditedHtml ||
+        convertBlocksToA4Html(parsePlainTextToBlocks(convertedResult.previewText || ""));
+      const baseName = convertedResult.filename.replace(/\.(docx|doc|pdf|txt)$/i, "");
+      const outputFilename = `${baseName}.${convertedResult.targetFormat.toLowerCase()}`;
+
+      const numLineSpacing = parseFloat(editorOptions.lineSpacing) || 1.35;
+      const ptFontSize = Math.round(editorOptions.fontSize * 0.75);
+
+      let blob: Blob;
+      if (convertedResult.targetFormat === "PDF") {
+        blob = await generateClientPdf(htmlToExport, baseName, {
+          lineSpacing: numLineSpacing,
+          fontSize: ptFontSize,
+          fontFamily: editorOptions.fontFamily,
+          removeDividers: true,
+        });
+      } else if (convertedResult.targetFormat === "DOCX" || convertedResult.targetFormat === "DOC") {
+        blob = await generateClientDocx(htmlToExport, baseName, {
+          lineSpacing: numLineSpacing,
+          fontSize: ptFontSize,
+          fontFamily: editorOptions.fontFamily,
+          removeDividers: true,
+        });
+      } else {
+        const plainText =
+          currentEditedText ||
+          convertHtmlToPlainText(htmlToExport) ||
+          convertedResult.previewText ||
+          "";
+        blob = new Blob([plainText], { type: "text/plain;charset=utf-8" });
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = convertedResult.blobUrl;
-      a.download = convertedResult.filename;
+      a.href = blobUrl;
+      a.download = outputFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+
       eraseWorkspaceJobsOnDownload();
-      toast.success(`Downloaded ${convertedResult.filename}! (Temporary data erased)`);
+      toast.success(`Downloaded ${outputFilename}!`, {
+        description: "Your edits, custom font size, line spacing, and styles are 100% preserved.",
+      });
     }
   };
 
@@ -874,12 +963,16 @@ function ConverterPage() {
     (f) => f !== fileExt,
   );
 
-  const filteredLines = convertedResult?.previewText
+  const currentWorkingText =
+    currentEditedText ||
+    (currentEditedHtml ? convertHtmlToPlainText(currentEditedHtml) : convertedResult?.previewText || "");
+
+  const filteredLines = currentWorkingText
     ? searchTerm.trim()
-      ? convertedResult.previewText
+      ? currentWorkingText
           .split("\n")
           .filter((line) => line.toLowerCase().includes(searchTerm.toLowerCase()))
-      : convertedResult.previewText.split("\n")
+      : currentWorkingText.split("\n")
     : [];
 
   return (
@@ -1215,11 +1308,17 @@ function ConverterPage() {
                   <A4DocumentConverterEditor
                     ref={a4EditorRef}
                     text={convertedResult.previewText || ""}
+                    initialHtmlContent={currentEditedHtml}
                     filename={convertedResult.filename}
                     fileExt={fileExt}
                     targetFormat={convertedResult.targetFormat}
                     rawBlobUrl={convertedResult.blobUrl}
                     onDownload={handleDownload}
+                    onEditedHtmlChange={(html, plain, opts) => {
+                      setCurrentEditedHtml(html);
+                      setCurrentEditedText(plain);
+                      setEditorOptions(opts);
+                    }}
                   />
                 </div>
               )}
@@ -1250,7 +1349,7 @@ function ConverterPage() {
                         )}
                       </Button>
                       <span className="font-mono text-[11px]">
-                        {convertedResult.wordCount} words · {convertedResult.previewText?.length || 0} characters
+                        {currentWorkingText.trim() ? currentWorkingText.trim().split(/\s+/).length : 0} words · {currentWorkingText.length} characters
                       </span>
                     </div>
                   </div>

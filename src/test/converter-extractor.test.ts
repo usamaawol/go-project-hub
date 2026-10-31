@@ -558,5 +558,77 @@ Zero permanent storage of sensitive documents.
       expect(pdfBlob).toBeDefined();
       expect(pdfBlob.size).toBeGreaterThan(500);
     });
+
+    it("faithfully preserves live user edits, additions, alignments, and custom styling when downloading", async () => {
+      const { parseHtmlToBlocks, convertHtmlToPlainText } = await import("../lib/document-synthesizer");
+      const { generateClientDocx, generateClientPdf } = await import("../lib/document-converter");
+
+      // Complex contentEditable HTML produced after live user editing:
+      // Includes text alignment, nested divs, manual additions, line breaks, bold/italic/colors
+      const userEditedHtml = `
+        <h2 style="text-align: center; color: #1E3A8A;">Project Proposal: AI-Powered Research Assistant</h2>
+        <p style="text-align: justify;">DocuMind delivers <strong>state-of-the-art document conversion</strong> with <em>100% fidelity</em>.</p>
+        <div>
+          <div>Key user edit: User added this line directly in the A4 document editor.</div>
+          <div>Another bullet: <span style="color: #059669; font-weight: bold;">Verified 100% Accurate</span></div>
+        </div>
+        <p style="text-align: right;"><span style="color: #DC2626;">Confidential Document</span> - Do Not Distribute</p>
+      `;
+
+      // 1. Verify structured block parsing
+      const blocks = parseHtmlToBlocks(userEditedHtml);
+      expect(blocks.length).toBeGreaterThanOrEqual(4);
+
+      // Verify Heading
+      const hBlock = blocks.find((b) => b.type === "heading2");
+      expect(hBlock).toBeDefined();
+      expect(hBlock!.text).toContain("Project Proposal");
+      expect(hBlock!.alignment).toBe("center");
+      expect(hBlock!.runs?.[0]?.color).toBe("1E3A8A");
+
+      // Verify User Added Lines
+      const userAddedBlock = blocks.find((b) => b.text?.includes("Key user edit"));
+      expect(userAddedBlock).toBeDefined();
+      expect(userAddedBlock!.text).toContain("User added this line directly in the A4 document editor");
+
+      // Verify Green Highlighted Run
+      const greenRun = blocks.flatMap((b) => b.runs || []).find((r) => r.color === "059669");
+      expect(greenRun).toBeDefined();
+      expect(greenRun!.text).toContain("Verified 100% Accurate");
+      expect(greenRun!.bold).toBe(true);
+
+      // Verify Right Alignment
+      const rightBlock = blocks.find((b) => b.alignment === "right");
+      expect(rightBlock).toBeDefined();
+      expect(rightBlock!.text).toContain("Confidential Document");
+
+      // 2. Verify Plain Text Generation Preserves Edits
+      const plainText = convertHtmlToPlainText(userEditedHtml);
+      expect(plainText).toContain("Project Proposal: AI-Powered Research Assistant");
+      expect(plainText).toContain("Key user edit: User added this line directly in the A4 document editor");
+      expect(plainText).toContain("Verified 100% Accurate");
+      expect(plainText).toContain("Confidential Document");
+
+      // 3. Verify PDF Export with custom font size, spacing, and font family
+      const pdfBlob = await generateClientPdf(userEditedHtml, "proposal", {
+        fontSize: 16,
+        lineSpacing: 1.8,
+        fontFamily: "times",
+        removeDividers: true,
+      });
+      expect(pdfBlob).toBeDefined();
+      expect(pdfBlob.size).toBeGreaterThan(1000);
+
+      // 4. Verify DOCX Export with custom font size, spacing, and font family
+      const docxBlob = await generateClientDocx(userEditedHtml, "proposal", {
+        fontSize: 16,
+        lineSpacing: 1.8,
+        fontFamily: "times",
+        removeDividers: true,
+      });
+      expect(docxBlob).toBeDefined();
+      const docxSize = (docxBlob as any).size ?? (docxBlob as any).byteLength;
+      expect(docxSize).toBeGreaterThan(1000);
+    });
   });
 });

@@ -51,6 +51,7 @@ export interface SynthesizerExportOptions {
   hasCoverPage?: boolean;
   coverMetadata?: AssignmentMetadata;
   headerText?: string;
+  footerText?: string;
   docTitle?: string;
   docSubtitle?: string;
   institution?: string;
@@ -63,6 +64,7 @@ export interface SynthesizerExportOptions {
   removeDividers?: boolean;
   lineSpacing?: number;
   fontSize?: number;
+  fontFamily?: string;
 }
 
 export interface DocSynthesizerBlock {
@@ -167,6 +169,171 @@ export function normalizeColorToHex(input?: string): string | undefined {
   return undefined;
 }
 
+export function parseHtmlDocument(html: string): Document | null {
+  if (typeof DOMParser !== "undefined") {
+    try {
+      return new DOMParser().parseFromString(html, "text/html");
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const req = typeof require !== "undefined" ? require : null;
+    if (req) {
+      const { JSDOM } = req("jsdom");
+      return new JSDOM(html).window.document;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export interface InheritedRunStyle {
+  bold?: boolean;
+  italics?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  color?: string;
+  highlight?: string;
+  size?: number;
+}
+
+export function extractRunsFromNode(
+  node: Node,
+  inherited: InheritedRunStyle,
+  runs: DocSynthesizerInlineRun[],
+) {
+  if (node.nodeType === 3) {
+    // Text node
+    const text = node.nodeValue || "";
+    if (text) {
+      runs.push({
+        text,
+        bold: Boolean(inherited.bold),
+        italics: Boolean(inherited.italics),
+        underline: Boolean(inherited.underline),
+        strike: Boolean(inherited.strike),
+        color: inherited.color,
+        highlight: inherited.highlight,
+        size: inherited.size,
+      });
+    }
+    return;
+  }
+
+  if (node.nodeType === 1) {
+    const el = node as Element;
+    const tag = el.tagName.toLowerCase();
+
+    if (tag === "br") {
+      runs.push({
+        text: "\n",
+        bold: Boolean(inherited.bold),
+        italics: Boolean(inherited.italics),
+        underline: Boolean(inherited.underline),
+        strike: Boolean(inherited.strike),
+        color: inherited.color,
+        highlight: inherited.highlight,
+        size: inherited.size,
+      });
+      return;
+    }
+
+    const current: InheritedRunStyle = { ...inherited };
+
+    if (tag === "b" || tag === "strong") current.bold = true;
+    if (tag === "i" || tag === "em") current.italics = true;
+    if (tag === "u") current.underline = true;
+    if (tag === "s" || tag === "strike" || tag === "del") current.strike = true;
+
+    if (tag === "mark") {
+      current.highlight =
+        normalizeColorToHex(el.getAttribute("color") || "") || "FEF08A";
+    }
+
+    if (tag === "font") {
+      const fontColor = el.getAttribute("color");
+      if (fontColor) {
+        const hex = normalizeColorToHex(fontColor);
+        if (hex) current.color = hex;
+      }
+    }
+
+    const styleAttr = el.getAttribute("style");
+    if (styleAttr) {
+      const colorMatch = styleAttr.match(/(?:^|;)\s*color:\s*([^;]+)/i);
+      if (colorMatch && colorMatch[1]) {
+        const hex = normalizeColorToHex(colorMatch[1]);
+        if (hex) current.color = hex;
+      }
+
+      const bgMatch = styleAttr.match(/(?:^|;)\s*background(?:-color)?:\s*([^;]+)/i);
+      if (bgMatch && bgMatch[1]) {
+        const hex = normalizeColorToHex(bgMatch[1]);
+        if (hex) current.highlight = hex;
+      }
+
+      if (/font-weight:\s*(bold|[6-9]00)/i.test(styleAttr)) {
+        current.bold = true;
+      }
+
+      if (/font-style:\s*italic/i.test(styleAttr)) {
+        current.italics = true;
+      }
+
+      if (/text-decoration(?:-line)?:\s*[^;]*underline/i.test(styleAttr)) {
+        current.underline = true;
+      }
+
+      if (/text-decoration(?:-line)?:\s*[^;]*line-through/i.test(styleAttr)) {
+        current.strike = true;
+      }
+
+      const sizeMatch = styleAttr.match(/font-size:\s*(\d+(?:\.\d+)?)\s*(px|pt)?/i);
+      if (sizeMatch && sizeMatch[1]) {
+        const val = parseFloat(sizeMatch[1]);
+        const unit = (sizeMatch[2] || "px").toLowerCase();
+        const pt = unit === "px" ? Math.round(val * 0.75) : Math.round(val);
+        if (pt > 6 && pt < 72) {
+          current.size = pt;
+        }
+      }
+    }
+
+    for (let i = 0; i < el.childNodes.length; i++) {
+      extractRunsFromNode(el.childNodes[i]!, current, runs);
+    }
+  }
+}
+
+export function mergeAdjacentRuns(runs: DocSynthesizerInlineRun[]): DocSynthesizerInlineRun[] {
+  if (runs.length <= 1) return runs;
+  const merged: DocSynthesizerInlineRun[] = [];
+  for (const r of runs) {
+    if (!r.text) continue;
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.text !== "\n" &&
+      r.text !== "\n" &&
+      Boolean(last.bold) === Boolean(r.bold) &&
+      Boolean(last.italics) === Boolean(r.italics) &&
+      Boolean(last.underline) === Boolean(r.underline) &&
+      Boolean(last.strike) === Boolean(r.strike) &&
+      last.color === r.color &&
+      last.highlight === r.highlight &&
+      last.size === r.size
+    ) {
+      last.text += r.text;
+    } else {
+      merged.push({ ...r });
+    }
+  }
+  return merged;
+}
+
 /**
  * Parses inline HTML tags (strong, b, em, i, u, s, span, mark, font) into rich text runs.
  * Accurately preserves colors, highlights, fonts, and avoids false strikethroughs on <span>.
@@ -175,6 +342,16 @@ export function parseInlineHtmlToRuns(html: string): DocSynthesizerInlineRun[] {
   if (!html) return [];
   if (!/<[^>]+>/.test(html)) {
     return [{ text: decodeHtmlEntities(html) }];
+  }
+
+  const doc = parseHtmlDocument(html);
+  if (doc && doc.body) {
+    const domRuns: DocSynthesizerInlineRun[] = [];
+    for (let i = 0; i < doc.body.childNodes.length; i++) {
+      extractRunsFromNode(doc.body.childNodes[i]!, {}, domRuns);
+    }
+    const merged = mergeAdjacentRuns(domRuns);
+    if (merged.length > 0) return merged;
   }
 
   const runs: DocSynthesizerInlineRun[] = [];
@@ -623,16 +800,284 @@ function extractBlockAlignment(fullTagMatch: string, content: string): "left" | 
   return undefined;
 }
 
+const DOM_BLOCK_TAGS = new Set([
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "p",
+  "div",
+  "blockquote",
+  "ul",
+  "ol",
+  "table",
+  "hr",
+  "section",
+  "article",
+  "header",
+  "footer",
+  "main",
+  "aside",
+]);
+
+function getElementAlignment(el: Element): "left" | "center" | "right" | "justify" | undefined {
+  const alignAttr = el.getAttribute("align")?.toLowerCase();
+  if (alignAttr === "center" || alignAttr === "right" || alignAttr === "justify" || alignAttr === "left") {
+    return alignAttr as any;
+  }
+  const style = el.getAttribute("style") || "";
+  const match = style.match(/text-align:\s*(center|right|justify|left)/i);
+  if (match && match[1]) {
+    return match[1].toLowerCase() as any;
+  }
+  return undefined;
+}
+
+function extractRunsFromElement(el: Element): DocSynthesizerInlineRun[] {
+  const runs: DocSynthesizerInlineRun[] = [];
+  const elStyle: InheritedRunStyle = {};
+
+  const colorAttr = el.getAttribute("color");
+  if (colorAttr) {
+    elStyle.color = normalizeColorToHex(colorAttr);
+  }
+  const styleAttr = el.getAttribute("style") || "";
+  const colorMatch = styleAttr.match(/(?:^|;)\s*color:\s*([^;]+)/i);
+  if (colorMatch && colorMatch[1]) {
+    const hex = normalizeColorToHex(colorMatch[1]);
+    if (hex) elStyle.color = hex;
+  }
+
+  for (let i = 0; i < el.childNodes.length; i++) {
+    extractRunsFromNode(el.childNodes[i]!, elStyle, runs);
+  }
+  return mergeAdjacentRuns(runs);
+}
+
+function extractBlocksFromDom(
+  container: Node,
+  blocks: DocSynthesizerBlock[],
+  parentAlignment?: "left" | "center" | "right" | "justify",
+) {
+  let pendingInlineNodes: Node[] = [];
+
+  const flushPendingInline = () => {
+    if (pendingInlineNodes.length === 0) return;
+    const runs: DocSynthesizerInlineRun[] = [];
+    for (const node of pendingInlineNodes) {
+      extractRunsFromNode(node, {}, runs);
+    }
+    pendingInlineNodes = [];
+    const mergedRuns = mergeAdjacentRuns(runs);
+    const fullText = mergedRuns.map((r) => r.text).join("");
+    if (fullText.trim() || mergedRuns.some((r) => r.text === "\n")) {
+      blocks.push({
+        type: "paragraph",
+        text: fullText.trim(),
+        runs: mergedRuns,
+        alignment: parentAlignment,
+      });
+    }
+  };
+
+  const childNodes = container.childNodes;
+  for (let i = 0; i < childNodes.length; i++) {
+    const child = childNodes[i]!;
+
+    if (child.nodeType === 3) {
+      // Text node
+      if (child.nodeValue && child.nodeValue.trim()) {
+        pendingInlineNodes.push(child);
+      }
+      continue;
+    }
+
+    if (child.nodeType !== 1) {
+      continue;
+    }
+
+    const el = child as Element;
+    const tag = el.tagName.toLowerCase();
+
+    if (tag === "hr") {
+      flushPendingInline();
+      blocks.push({ type: "divider" });
+      continue;
+    }
+
+    if (tag === "h1") {
+      flushPendingInline();
+      const runs = extractRunsFromElement(el);
+      const text = (el.textContent || "").trim();
+      const align = getElementAlignment(el) || parentAlignment;
+      if (text) {
+        blocks.push({ type: "heading1", text, runs, alignment: align });
+      }
+      continue;
+    }
+
+    if (tag === "h2") {
+      flushPendingInline();
+      const runs = extractRunsFromElement(el);
+      const text = (el.textContent || "").trim();
+      const align = getElementAlignment(el) || parentAlignment;
+      if (text) {
+        blocks.push({ type: "heading2", text, runs, alignment: align });
+      }
+      continue;
+    }
+
+    if (tag === "h3" || tag === "h4" || tag === "h5" || tag === "h6") {
+      flushPendingInline();
+      const runs = extractRunsFromElement(el);
+      const text = (el.textContent || "").trim();
+      const align = getElementAlignment(el) || parentAlignment;
+      if (text) {
+        blocks.push({ type: "heading3", text, runs, alignment: align });
+      }
+      continue;
+    }
+
+    if (tag === "ul" || tag === "ol") {
+      flushPendingInline();
+      const items: string[] = [];
+      const liElements = el.querySelectorAll("li");
+      for (let lIdx = 0; lIdx < liElements.length; lIdx++) {
+        const liText = (liElements[lIdx]!.textContent || "").trim();
+        if (liText) items.push(liText);
+      }
+      if (items.length > 0) {
+        blocks.push({ type: "list", items });
+      }
+      continue;
+    }
+
+    if (tag === "table") {
+      flushPendingInline();
+      const headers: string[] = [];
+      const rows: string[][] = [];
+      const trElements = el.querySelectorAll("tr");
+      for (let rIdx = 0; rIdx < trElements.length; rIdx++) {
+        const tr = trElements[rIdx]!;
+        const rowCells: string[] = [];
+        let isHeaderRow = false;
+        const cells = tr.querySelectorAll("th, td");
+        for (let cIdx = 0; cIdx < cells.length; cIdx++) {
+          const cell = cells[cIdx]!;
+          if (cell.tagName.toLowerCase() === "th") isHeaderRow = true;
+          rowCells.push((cell.textContent || "").trim());
+        }
+        if (rowCells.length > 0) {
+          if (isHeaderRow && headers.length === 0) {
+            headers.push(...rowCells);
+          } else {
+            rows.push(rowCells);
+          }
+        }
+      }
+      if (rows.length > 0 || headers.length > 0) {
+        blocks.push({
+          type: "table",
+          table: { headers: headers.length > 0 ? headers : undefined, rows },
+        });
+      }
+      continue;
+    }
+
+    if (tag === "p") {
+      flushPendingInline();
+      const runs = extractRunsFromElement(el);
+      const text = (el.textContent || "").trim();
+      const align = getElementAlignment(el) || parentAlignment;
+      if (text || runs.some((r) => r.text === "\n")) {
+        blocks.push({ type: "paragraph", text, runs, alignment: align });
+      }
+      continue;
+    }
+
+    if (
+      tag === "div" ||
+      tag === "blockquote" ||
+      tag === "section" ||
+      tag === "article" ||
+      tag === "header" ||
+      tag === "footer" ||
+      tag === "main"
+    ) {
+      const hasBlockChildren = Array.from(el.children).some((c) =>
+        DOM_BLOCK_TAGS.has(c.tagName.toLowerCase()),
+      );
+      if (hasBlockChildren) {
+        flushPendingInline();
+        extractBlocksFromDom(el, blocks, getElementAlignment(el) || parentAlignment);
+      } else {
+        flushPendingInline();
+        const runs = extractRunsFromElement(el);
+        const text = (el.textContent || "").trim();
+        const align = getElementAlignment(el) || parentAlignment;
+        if (text || runs.some((r) => r.text === "\n")) {
+          blocks.push({ type: "paragraph", text, runs, alignment: align });
+        }
+      }
+      continue;
+    }
+
+    // Inline elements: span, b, i, a, font, mark, etc.
+    pendingInlineNodes.push(child);
+  }
+
+  flushPendingInline();
+}
+
+/**
+ * Converts rich HTML into clean, formatted plain text preserving paragraphs and lists.
+ */
+export function convertHtmlToPlainText(html: string): string {
+  const blocks = parseHtmlToBlocks(html);
+  if (blocks.length === 0) return stripTags(html);
+  return blocks
+    .map((b) => {
+      if (b.type === "list" && b.items) {
+        return b.items.map((it) => `• ${it}`).join("\n");
+      }
+      if (b.type === "table" && b.table) {
+        const rows = [
+          ...(b.table.headers ? [b.table.headers.join("\t")] : []),
+          ...b.table.rows.map((r) => r.join("\t")),
+        ];
+        return rows.join("\n");
+      }
+      if (b.runs && b.runs.length > 0) {
+        return b.runs.map((r) => r.text).join("");
+      }
+      return b.text || "";
+    })
+    .filter((txt) => txt.trim().length > 0)
+    .join("\n\n");
+}
+
 /**
  * Parses rich HTML into structured document blocks (headings, paragraphs, lists, tables).
  */
 export function parseHtmlToBlocks(html: string): DocSynthesizerBlock[] {
-  const blocks: DocSynthesizerBlock[] = [];
+  if (!html) return [];
   const cleanedHtml = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<img[^>]*>/gi, "");
 
+  const doc = parseHtmlDocument(cleanedHtml);
+  if (doc && doc.body) {
+    const blocks: DocSynthesizerBlock[] = [];
+    extractBlocksFromDom(doc.body, blocks);
+    if (blocks.length > 0) {
+      return blocks;
+    }
+  }
+
+  const blocks: DocSynthesizerBlock[] = [];
   const blockRegex =
     /<(h[1-6]|table|ul|ol|p|div|hr|blockquote)(?:[^>]*)>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
   let match: RegExpExecArray | null;
@@ -1027,10 +1472,29 @@ export async function renderExecutivePdf(
   }
 
   const pdfDoc = await PDFDocument.create();
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
-  const fontBoldItalic = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique);
+
+  let regularFontId = StandardFonts.Helvetica;
+  let boldFontId = StandardFonts.HelveticaBold;
+  let italicFontId = StandardFonts.HelveticaOblique;
+  let boldItalicFontId = StandardFonts.HelveticaBoldOblique;
+
+  const fam = (options?.fontFamily || "").toLowerCase();
+  if (fam.includes("times") || fam.includes("serif") || fam.includes("georgia")) {
+    regularFontId = StandardFonts.TimesRoman;
+    boldFontId = StandardFonts.TimesRomanBold;
+    italicFontId = StandardFonts.TimesRomanItalic;
+    boldItalicFontId = StandardFonts.TimesRomanBoldItalic;
+  } else if (fam.includes("mono") || fam.includes("courier")) {
+    regularFontId = StandardFonts.Courier;
+    boldFontId = StandardFonts.CourierBold;
+    italicFontId = StandardFonts.CourierOblique;
+    boldItalicFontId = StandardFonts.CourierBoldOblique;
+  }
+
+  const fontRegular = await pdfDoc.embedFont(regularFontId);
+  const fontBold = await pdfDoc.embedFont(boldFontId);
+  const fontItalic = await pdfDoc.embedFont(italicFontId);
+  const fontBoldItalic = await pdfDoc.embedFont(boldItalicFontId);
 
   // Standard ISO A4 dimensions (210mm x 297mm at 72 dpi)
   const pageWidth = 595.28;
@@ -1275,41 +1739,56 @@ export async function renderExecutivePdf(
       y -= 8;
     } else if (block.type === "heading1") {
       const text = sanitizeLine(block.text || "", fontBold);
-      const wrapped = wrapPdfText(text, fontBold, 13.5, contentWidth - 20);
-      if (y - wrapped.length * 18 - 25 < bottomMargin) addNewPage();
+      const baseFontSize = options?.fontSize || 9.5;
+      const h1FontSize = Math.round(baseFontSize * 1.4);
+      const textIndent = options?.removeDividers ? 0 : 12;
+      const wrapped = wrapPdfText(text, fontBold, h1FontSize, contentWidth - (options?.removeDividers ? 0 : 20));
+      if (y - wrapped.length * (h1FontSize + 4.5) - 25 < bottomMargin) addNewPage();
 
       y -= 12;
-      const barH = wrapped.length * 17;
-      // Soft executive accent background card
-      currentPage.drawRectangle({
-        x: margin,
-        y: y - barH + 8,
-        width: contentWidth,
-        height: barH + 10,
-        color: rgb(0.95, 0.97, 1.0),
-      });
+      const barH = wrapped.length * (h1FontSize + 3.5);
 
-      // Left blue ribbon
-      currentPage.drawRectangle({
-        x: margin,
-        y: y - barH + 8,
-        width: 4,
-        height: barH + 10,
-        color: rgb(0.14, 0.38, 0.92),
-      });
+      if (!options?.removeDividers) {
+        // Soft executive accent background card
+        currentPage.drawRectangle({
+          x: margin,
+          y: y - barH + 8,
+          width: contentWidth,
+          height: barH + 10,
+          color: rgb(0.95, 0.97, 1.0),
+        });
+
+        // Left blue ribbon
+        currentPage.drawRectangle({
+          x: margin,
+          y: y - barH + 8,
+          width: 4,
+          height: barH + 10,
+          color: rgb(0.14, 0.38, 0.92),
+        });
+      }
 
       const headColor1 = block.runs?.[0]?.color ? hexToRgb(block.runs[0].color) : undefined;
       const headPdfColor1 = headColor1 ? rgb(headColor1.r, headColor1.g, headColor1.b) : rgb(0.08, 0.12, 0.22);
 
       for (const line of wrapped) {
+        let lineX = margin + textIndent;
+        if (block.alignment === "center") {
+          const lw = fontBold.widthOfTextAtSize(line, h1FontSize);
+          lineX = margin + Math.max(0, (contentWidth - lw) / 2);
+        } else if (block.alignment === "right") {
+          const lw = fontBold.widthOfTextAtSize(line, h1FontSize);
+          lineX = margin + Math.max(0, contentWidth - lw);
+        }
+
         currentPage.drawText(line, {
-          x: margin + 12,
+          x: lineX,
           y,
-          size: 13.5,
+          size: h1FontSize,
           font: fontBold,
           color: headPdfColor1,
         });
-        y -= 17;
+        y -= h1FontSize + 3.5;
       }
 
       // Subtle horizontal rule below section card (skip if removeDividers requested)
@@ -1326,47 +1805,72 @@ export async function renderExecutivePdf(
       }
     } else if (block.type === "heading2") {
       const text = sanitizeLine(block.text || "", fontBold);
-      const wrapped = wrapPdfText(text, fontBold, 11.5, contentWidth - 14);
-      if (y - wrapped.length * 16 - 15 < bottomMargin) addNewPage();
+      const baseFontSize = options?.fontSize || 9.5;
+      const h2FontSize = Math.round(baseFontSize * 1.2);
+      const dotIndent = options?.removeDividers ? 0 : 14;
+      const wrapped = wrapPdfText(text, fontBold, h2FontSize, contentWidth - dotIndent);
+      if (y - wrapped.length * (h2FontSize + 4.5) - 15 < bottomMargin) addNewPage();
 
       y -= 8;
-      // Accent bullet dot
-      currentPage.drawCircle({
-        x: margin + 4,
-        y: y + 4,
-        size: 3,
-        color: rgb(0.14, 0.38, 0.92),
-      });
+      if (!options?.removeDividers) {
+        // Accent bullet dot
+        currentPage.drawCircle({
+          x: margin + 4,
+          y: y + 4,
+          size: 3,
+          color: rgb(0.14, 0.38, 0.92),
+        });
+      }
 
       const headColor2 = block.runs?.[0]?.color ? hexToRgb(block.runs[0].color) : undefined;
       const headPdfColor2 = headColor2 ? rgb(headColor2.r, headColor2.g, headColor2.b) : rgb(0.10, 0.15, 0.25);
 
       for (const line of wrapped) {
+        let lineX = margin + dotIndent;
+        if (block.alignment === "center") {
+          const lw = fontBold.widthOfTextAtSize(line, h2FontSize);
+          lineX = margin + Math.max(0, (contentWidth - lw) / 2);
+        } else if (block.alignment === "right") {
+          const lw = fontBold.widthOfTextAtSize(line, h2FontSize);
+          lineX = margin + Math.max(0, contentWidth - lw);
+        }
+
         currentPage.drawText(line, {
-          x: margin + 14,
+          x: lineX,
           y,
-          size: 11.5,
+          size: h2FontSize,
           font: fontBold,
           color: headPdfColor2,
         });
-        y -= 16;
+        y -= h2FontSize + 4.5;
       }
       y -= 4;
     } else if (block.type === "heading3") {
       const text = sanitizeLine(block.text || "", fontBold);
-      const wrapped = wrapPdfText(text, fontBold, 10.5, contentWidth);
-      if (y - wrapped.length * 14 - 10 < bottomMargin) addNewPage();
+      const baseFontSize = options?.fontSize || 9.5;
+      const h3FontSize = Math.round(baseFontSize * 1.05);
+      const wrapped = wrapPdfText(text, fontBold, h3FontSize, contentWidth);
+      if (y - wrapped.length * (h3FontSize + 3.5) - 10 < bottomMargin) addNewPage();
 
       y -= 6;
       for (const line of wrapped) {
+        let lineX = margin;
+        if (block.alignment === "center") {
+          const lw = fontBold.widthOfTextAtSize(line, h3FontSize);
+          lineX = margin + Math.max(0, (contentWidth - lw) / 2);
+        } else if (block.alignment === "right") {
+          const lw = fontBold.widthOfTextAtSize(line, h3FontSize);
+          lineX = margin + Math.max(0, contentWidth - lw);
+        }
+
         currentPage.drawText(line, {
-          x: margin,
+          x: lineX,
           y,
-          size: 10.5,
+          size: h3FontSize,
           font: fontBold,
           color: rgb(0.2, 0.25, 0.33),
         });
-        y -= 14;
+        y -= h3FontSize + 3.5;
       }
       y -= 2;
     } else if (block.type === "paragraph") {
@@ -1688,12 +2192,14 @@ export async function renderExecutivePdf(
 
     // Running Header (pages after the first body page)
     if (p > startBodyPageIdx) {
-      page.drawLine({
-        start: { x: margin, y: pageHeight - 38 },
-        end: { x: margin + contentWidth, y: pageHeight - 38 },
-        thickness: 0.5,
-        color: rgb(0.88, 0.9, 0.94),
-      });
+      if (!options?.removeDividers) {
+        page.drawLine({
+          start: { x: margin, y: pageHeight - 38 },
+          end: { x: margin + contentWidth, y: pageHeight - 38 },
+          thickness: 0.5,
+          color: rgb(0.88, 0.9, 0.94),
+        });
+      }
 
       const headerTitle = sanitizeLine((options?.headerText || mainTitle).slice(0, 50), fontRegular);
       page.drawText(headerTitle, {
@@ -1706,12 +2212,14 @@ export async function renderExecutivePdf(
     }
 
     // Running Footer on body pages
-    page.drawLine({
-      start: { x: margin, y: 44 },
-      end: { x: margin + contentWidth, y: 44 },
-      thickness: 0.5,
-      color: rgb(0.88, 0.9, 0.94),
-    });
+    if (!options?.removeDividers) {
+      page.drawLine({
+        start: { x: margin, y: 44 },
+        end: { x: margin + contentWidth, y: 44 },
+        thickness: 0.5,
+        color: rgb(0.88, 0.9, 0.94),
+      });
+    }
 
     if (options?.footerText) {
       page.drawText(sanitizeLine(options.footerText.slice(0, 60), fontRegular), {
@@ -1736,6 +2244,44 @@ export async function renderExecutivePdf(
   }
 
   return await pdfDoc.save();
+}
+
+function createDocxTextRuns(
+  text: string,
+  style: {
+    bold?: boolean;
+    italics?: boolean;
+    underline?: boolean;
+    strike?: boolean;
+    color?: string;
+    size?: number;
+    font?: string;
+  },
+): TextRun[] {
+  if (!text) return [];
+  const lines = text.split("\n");
+  const runs: TextRun[] = [];
+  for (let idx = 0; idx < lines.length; idx++) {
+    if (idx > 0) {
+      runs.push(new TextRun({ break: 1 }));
+    }
+    const lineText = lines[idx]!;
+    if (lineText) {
+      runs.push(
+        new TextRun({
+          text: lineText,
+          bold: style.bold,
+          italics: style.italics,
+          underline: style.underline ? {} : undefined,
+          strike: style.strike,
+          color: style.color ? style.color.replace("#", "") : "0F172A",
+          size: style.size,
+          font: style.font,
+        }),
+      );
+    }
+  }
+  return runs;
 }
 
 /**
@@ -1769,6 +2315,21 @@ export async function renderExecutiveDocx(
     }
   }
 
+  const fam = (options?.fontFamily || "").toLowerCase();
+  const docxFontName = fam.includes("times")
+    ? "Times New Roman"
+    : fam.includes("serif") || fam.includes("georgia")
+      ? "Georgia"
+      : fam.includes("mono") || fam.includes("courier")
+        ? "Courier New"
+        : "Arial";
+
+  const baseFontSizeHalfPoints = options?.fontSize ? Math.round(options.fontSize * 2) : 21;
+  const h1SizeHalfPoints = Math.round(baseFontSizeHalfPoints * 1.4);
+  const h2SizeHalfPoints = Math.round(baseFontSizeHalfPoints * 1.2);
+  const h3SizeHalfPoints = Math.round(baseFontSizeHalfPoints * 1.05);
+  const titleSizeHalfPoints = Math.round(baseFontSizeHalfPoints * 1.8);
+
   const meta = options?.coverMetadata;
   const hasCoverPage = Boolean(options?.hasCoverPage || meta);
   const accent = (options?.primaryColor || meta?.accentColor || "#1E3A8A").replace("#", "");
@@ -1789,7 +2350,12 @@ export async function renderExecutiveDocx(
     if (block.type === "title") {
       children.push(
         new Paragraph({
-          text: block.text || mainTitle,
+          children: createDocxTextRuns(block.text || mainTitle, {
+            bold: true,
+            size: titleSizeHalfPoints,
+            color: "0F172A",
+            font: docxFontName,
+          }),
           heading: HeadingLevel.TITLE,
           spacing: { before: 240, after: 120 },
         }),
@@ -1797,19 +2363,43 @@ export async function renderExecutiveDocx(
     } else if (block.type === "subtitle") {
       children.push(
         new Paragraph({
-          children: [
-            new TextRun({
-              text: block.text || "",
-              color: "475569",
-              size: 22,
-              bold: true,
-            }),
-          ],
+          children: createDocxTextRuns(block.text || "", {
+            bold: true,
+            color: "475569",
+            size: Math.round(baseFontSizeHalfPoints * 1.1),
+            font: docxFontName,
+          }),
           spacing: { after: 180 },
         }),
       );
     } else if (block.type === "heading1") {
       const runs = block.runs && block.runs.length > 0 ? block.runs : undefined;
+      const headingRuns: TextRun[] = [];
+      if (runs) {
+        for (const r of runs) {
+          headingRuns.push(
+            ...createDocxTextRuns(r.text, {
+              bold: true,
+              italics: r.italics,
+              underline: r.underline,
+              strike: r.strike,
+              color: r.color || "0F172A",
+              size: r.size ? Math.round(r.size * 2) : h1SizeHalfPoints,
+              font: docxFontName,
+            }),
+          );
+        }
+      } else {
+        headingRuns.push(
+          ...createDocxTextRuns(block.text || "", {
+            bold: true,
+            size: h1SizeHalfPoints,
+            color: "0F172A",
+            font: docxFontName,
+          }),
+        );
+      }
+
       children.push(
         new Paragraph({
           alignment:
@@ -1821,25 +2411,38 @@ export async function renderExecutiveDocx(
                   ? AlignmentType.JUSTIFIED
                   : AlignmentType.LEFT,
           heading: HeadingLevel.HEADING_1,
-          children: runs
-            ? runs.map(
-                (r) =>
-                  new TextRun({
-                    text: r.text,
-                    bold: true,
-                    italics: r.italics,
-                    underline: r.underline ? {} : undefined,
-                    strike: r.strike,
-                    color: r.color ? r.color.replace("#", "") : "0F172A",
-                    size: r.size ? Math.round(r.size * 2) : 30,
-                  }),
-              )
-            : [new TextRun({ text: block.text || "", bold: true, size: 30, color: "0F172A" })],
+          children: headingRuns,
           spacing: { before: 300, after: 140 },
         }),
       );
     } else if (block.type === "heading2") {
       const runs = block.runs && block.runs.length > 0 ? block.runs : undefined;
+      const headingRuns: TextRun[] = [];
+      if (runs) {
+        for (const r of runs) {
+          headingRuns.push(
+            ...createDocxTextRuns(r.text, {
+              bold: true,
+              italics: r.italics,
+              underline: r.underline,
+              strike: r.strike,
+              color: r.color || "1E293B",
+              size: r.size ? Math.round(r.size * 2) : h2SizeHalfPoints,
+              font: docxFontName,
+            }),
+          );
+        }
+      } else {
+        headingRuns.push(
+          ...createDocxTextRuns(block.text || "", {
+            bold: true,
+            size: h2SizeHalfPoints,
+            color: "1E293B",
+            font: docxFontName,
+          }),
+        );
+      }
+
       children.push(
         new Paragraph({
           alignment:
@@ -1851,25 +2454,38 @@ export async function renderExecutiveDocx(
                   ? AlignmentType.JUSTIFIED
                   : AlignmentType.LEFT,
           heading: HeadingLevel.HEADING_2,
-          children: runs
-            ? runs.map(
-                (r) =>
-                  new TextRun({
-                    text: r.text,
-                    bold: true,
-                    italics: r.italics,
-                    underline: r.underline ? {} : undefined,
-                    strike: r.strike,
-                    color: r.color ? r.color.replace("#", "") : "1E293B",
-                    size: r.size ? Math.round(r.size * 2) : 26,
-                  }),
-              )
-            : [new TextRun({ text: block.text || "", bold: true, size: 26, color: "1E293B" })],
+          children: headingRuns,
           spacing: { before: 240, after: 100 },
         }),
       );
     } else if (block.type === "heading3") {
       const runs = block.runs && block.runs.length > 0 ? block.runs : undefined;
+      const headingRuns: TextRun[] = [];
+      if (runs) {
+        for (const r of runs) {
+          headingRuns.push(
+            ...createDocxTextRuns(r.text, {
+              bold: true,
+              italics: r.italics,
+              underline: r.underline,
+              strike: r.strike,
+              color: r.color || "334155",
+              size: r.size ? Math.round(r.size * 2) : h3SizeHalfPoints,
+              font: docxFontName,
+            }),
+          );
+        }
+      } else {
+        headingRuns.push(
+          ...createDocxTextRuns(block.text || "", {
+            bold: true,
+            size: h3SizeHalfPoints,
+            color: "334155",
+            font: docxFontName,
+          }),
+        );
+      }
+
       children.push(
         new Paragraph({
           alignment:
@@ -1881,29 +2497,30 @@ export async function renderExecutiveDocx(
                   ? AlignmentType.JUSTIFIED
                   : AlignmentType.LEFT,
           heading: HeadingLevel.HEADING_3,
-          children: runs
-            ? runs.map(
-                (r) =>
-                  new TextRun({
-                    text: r.text,
-                    bold: true,
-                    italics: r.italics,
-                    underline: r.underline ? {} : undefined,
-                    strike: r.strike,
-                    color: r.color ? r.color.replace("#", "") : "334155",
-                    size: r.size ? Math.round(r.size * 2) : 22,
-                  }),
-              )
-            : [new TextRun({ text: block.text || "", bold: true, size: 22, color: "334155" })],
+          children: headingRuns,
           spacing: { before: 180, after: 80 },
         }),
       );
     } else if (block.type === "paragraph") {
       const lineMultiplier = options?.lineSpacing || 1.15;
       const lineSpacingTwips = Math.round(lineMultiplier * 240);
-      const baseFontSizeHalfPoints = options?.fontSize ? Math.round(options.fontSize * 2) : 21;
 
       if (block.runs && block.runs.length > 0) {
+        const textRuns: TextRun[] = [];
+        for (const r of block.runs) {
+          textRuns.push(
+            ...createDocxTextRuns(r.text, {
+              bold: r.bold,
+              italics: r.italics,
+              underline: r.underline,
+              strike: r.strike,
+              color: r.color,
+              size: r.size ? Math.round(r.size * 2) : baseFontSizeHalfPoints,
+              font: docxFontName,
+            }),
+          );
+        }
+
         children.push(
           new Paragraph({
             alignment:
@@ -1914,18 +2531,7 @@ export async function renderExecutiveDocx(
                   : block.alignment === "justify"
                     ? AlignmentType.JUSTIFIED
                     : AlignmentType.LEFT,
-            children: block.runs.map(
-              (r) =>
-                new TextRun({
-                  text: r.text,
-                  bold: r.bold,
-                  italics: r.italics,
-                  underline: r.underline ? {} : undefined,
-                  strike: r.strike,
-                  color: r.color ? r.color.replace("#", "") : "0F172A",
-                  size: r.size ? Math.round(r.size * 2) : baseFontSizeHalfPoints,
-                }),
-            ),
+            children: textRuns,
             spacing: { after: 120, line: lineSpacingTwips },
           }),
         );
@@ -1950,13 +2556,11 @@ export async function renderExecutiveDocx(
                   : block.alignment === "justify"
                     ? AlignmentType.JUSTIFIED
                     : AlignmentType.LEFT,
-            children: [
-              new TextRun({
-                text: pText,
-                size: isMetaLine ? 19 : baseFontSizeHalfPoints,
-                color: isMetaLine ? "475569" : "0f172a",
-              }),
-            ],
+            children: createDocxTextRuns(pText, {
+              size: isMetaLine ? 19 : baseFontSizeHalfPoints,
+              color: isMetaLine ? "475569" : "0F172A",
+              font: docxFontName,
+            }),
             spacing: isMetaLine
               ? { after: 40, line: 240 }
               : { after: 120, line: lineSpacingTwips },
@@ -1968,7 +2572,10 @@ export async function renderExecutiveDocx(
         children.push(
           new Paragraph({
             bullet: { level: 0 },
-            children: [new TextRun({ text: item, size: 21 })],
+            children: createDocxTextRuns(item, {
+              size: baseFontSizeHalfPoints,
+              font: docxFontName,
+            }),
             spacing: { after: 60 },
           }),
         );
@@ -2305,6 +2912,15 @@ export async function renderExecutiveDocx(
     bodyChildren.push(...children);
 
     doc = new Document({
+      styles: {
+        default: {
+          document: {
+            run: {
+              font: docxFontName,
+            },
+          },
+        },
+      },
       sections: [
         {
           properties: {
@@ -2360,6 +2976,15 @@ export async function renderExecutiveDocx(
     });
   } else {
     doc = new Document({
+      styles: {
+        default: {
+          document: {
+            run: {
+              font: docxFontName,
+            },
+          },
+        },
+      },
       sections: [
         {
           properties: {
