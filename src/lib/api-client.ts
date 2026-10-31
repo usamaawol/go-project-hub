@@ -987,6 +987,11 @@ export interface SlidePreviewItem {
   rightColumn?: { title: string; bullets: string[] };
   metrics?: Array<{ label: string; value: string; description?: string }>;
   notes?: string;
+  titleFontSize?: number;
+  isTitleBold?: boolean;
+  isSubtitleItalic?: boolean;
+  textColor?: string;
+  cardBgColor?: string;
 }
 
 export interface PresentationSessionData {

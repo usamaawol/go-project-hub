@@ -67,15 +67,25 @@ export function AssignmentCoverRenderer({
   // Base font sizing helper based on thumbnail vs presentation vs document
   const scale = isThumbnail ? 0.38 : aspectRatio === "16:9" ? 0.95 : 1.0;
 
-  // Priority 1: If custom cover elements exist, or if it's a Canva template, or when rendering A4/thumbnails
-  const hasCustomElements = Boolean(safeMeta.customCoverElements && safeMeta.customCoverElements.length > 0);
-  const isCanvaTemplate = templateId.startsWith("canva-");
-  const useCanvasRendering = hasCustomElements || isCanvaTemplate || isThumbnail || aspectRatio === "a4";
+  // Universal vector canvas rendering for 100% WYSIWYG fidelity across browser preview & PPTX export
+  const useCanvasRendering = true;
+
+  const is169 = aspectRatio === "16:9";
+  const canvasW = is169 ? 1333 : 794;
+  const canvasH = is169 ? 750 : 1123;
 
   if (useCanvasRendering) {
     const rawElements = hasCustomElements
-      ? safeMeta.customCoverElements!
-      : generateDefaultCoverElements(getCoverTemplateById(templateId), safeMeta);
+      ? (is169
+          ? safeMeta.customCoverElements!.map((el) => ({
+              ...el,
+              x: (el.x / 794) * 1333,
+              y: (el.y / 1123) * 750,
+              width: (el.width / 794) * 1333,
+              height: (el.height / 1123) * 750,
+            }))
+          : safeMeta.customCoverElements!)
+      : generateDefaultCoverElements(getCoverTemplateById(templateId), safeMeta, canvasW, canvasH);
 
     const sorted = [...rawElements].sort((a, b) => a.zIndex - b.zIndex);
 
@@ -85,10 +95,10 @@ export function AssignmentCoverRenderer({
         style={{ ...containerStyle, position: "relative", width: "100%", height: "100%", overflow: "hidden" }}
       >
         {sorted.map((el) => {
-          const leftPct = (el.x / 794) * 100;
-          const topPct = (el.y / 1123) * 100;
-          const widthPct = (el.width / 794) * 100;
-          const heightPct = (el.height / 1123) * 100;
+          const leftPct = (el.x / canvasW) * 100;
+          const topPct = (el.y / canvasH) * 100;
+          const widthPct = (el.width / canvasW) * 100;
+          const heightPct = (el.height / canvasH) * 100;
 
           return (
             <div

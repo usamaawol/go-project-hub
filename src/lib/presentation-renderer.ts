@@ -5,9 +5,11 @@
  */
 
 import PptxGenJS from "pptxgenjs";
-import { type ThemeTokens } from "./presentation-theme";
+import { type ThemeTokens, stripHex } from "./presentation-theme";
 import type { SlidePreviewItem } from "./presentation-session-client";
 import { buildContextualVisual } from "./presentation-visual-generator";
+import { getCoverTemplateById, generateDefaultCoverElements } from "./cover-templates-registry";
+import { getDefaultAssignmentMetadata } from "./assignment-types";
 
 /**
  * Dynamically computes non-overlapping vertical coordinates for titles,
@@ -115,15 +117,15 @@ export async function renderSlideDeckToPptx(
         },
       );
 
-      // Slide Title (dynamic non-overlapping placement)
+      // Slide Title (dynamic non-overlapping placement, honoring user edits)
       slide.addText(s.title, {
         x: 1.0,
         y: geo.titleY,
         w: 11.333,
         h: geo.titleH,
-        fontSize: geo.titleFontSize,
-        bold: true,
-        color: tokens.textPrimaryHex,
+        fontSize: s.titleFontSize || geo.titleFontSize,
+        bold: s.isTitleBold !== undefined ? s.isTitleBold : true,
+        color: s.textColor ? stripHex(s.textColor) : tokens.textPrimaryHex,
         fontFace: fontTitle,
       });
 
@@ -137,8 +139,13 @@ export async function renderSlideDeckToPptx(
           fontSize: geo.subtitleFontSize,
           color: tokens.textSecondaryHex,
           fontFace: fontBody,
-          italic: true,
+          italic: s.isSubtitleItalic !== undefined ? s.isSubtitleItalic : true,
         });
+      }
+
+      // Presenter Notes
+      if (s.notes) {
+        slide.addNotes(s.notes);
       }
 
       // Slide Footer (left & middle)
@@ -247,256 +254,95 @@ export async function renderSlideDeckToPptx(
       }
 
       case "assignment-cover": {
-        const meta = s.assignmentMetadata;
-        const coverAccent = (meta?.accentColor || tokens.accentHex).replace(/^#/, "");
-        const isGroup = meta?.assignmentType === "group";
+        const meta = s.assignmentMetadata || getDefaultAssignmentMetadata();
         const tplId = meta?.coverTemplateId || "classic-university";
+        const template = getCoverTemplateById(tplId);
+        const canvasW = 1333;
+        const canvasH = 750;
 
-        const titleText = meta?.assignmentTitle?.trim() || s.title || "Academic Assignment";
-        const courseText = meta?.courseName?.trim() || "Course Subject";
-        const instructorText = meta?.instructorName?.trim() || "Course Instructor";
-        const uniText = meta?.universityName?.trim() || "";
-        const deptText = [meta?.collegeOrFaculty, meta?.department].filter(Boolean).join(" · ");
-        const studentName = meta?.studentName?.trim() || "Candidate Student";
-        const studentId = meta?.studentId?.trim() || "";
-        const dateText = meta?.submissionDate?.trim() || "";
-        const yearText = [meta?.academicYear, meta?.semester].filter(Boolean).join(" · ");
+        const rawElements = (meta.customCoverElements && meta.customCoverElements.length > 0)
+          ? meta.customCoverElements.map((el) => ({
+              ...el,
+              x: (el.x / 794) * canvasW,
+              y: (el.y / 1123) * canvasH,
+              width: (el.width / 794) * canvasW,
+              height: (el.height / 1123) * canvasH,
+            }))
+          : generateDefaultCoverElements(template, meta, canvasW, canvasH);
 
-        // 1. Template-specific frame / decorative styling
-        if (tplId === "formal-academic" || tplId === "classic-university" || tplId === "university-branding") {
-          slide.addShape(pptx.ShapeType.rect, {
-            x: 0.6,
-            y: 0.5,
-            w: 12.133,
-            h: 6.5,
-            fill: { color: tokens.bgHex },
-            line: { color: coverAccent, width: 2 },
-          });
-        } else if (tplId === "modern-minimal") {
-          slide.addShape(pptx.ShapeType.rect, {
-            x: 0,
-            y: 0,
-            w: 0.35,
-            h: 7.5,
-            fill: { color: coverAccent },
-          });
-        } else if (tplId === "professional-navy") {
-          slide.addShape(pptx.ShapeType.rect, {
-            x: 0,
-            y: 0,
-            w: 13.333,
-            h: 1.4,
-            fill: { color: "0F172A" },
-          });
-        }
+        const sorted = [...rawElements].sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
 
-        // 2. University Logo (if uploaded, preserve aspect ratio)
-        let logoY = 0.8;
-        if (meta?.logoDataUrl && meta.logoDataUrl.startsWith("data:image")) {
-          try {
-            const logoX = tplId === "modern-minimal" || tplId === "structured-research" ? 1.0 : 5.86;
-            slide.addImage({
-              data: meta.logoDataUrl,
-              x: logoX,
-              y: 0.7,
-              w: 1.6,
-              h: 1.0,
+        for (const el of sorted) {
+          const x = (el.x / canvasW) * 13.333;
+          const y = (el.y / canvasH) * 7.5;
+          const w = (el.width / canvasW) * 13.333;
+          const h = (el.height / canvasH) * 7.5;
+
+          if (el.type === "shape") {
+            if (el.id === "canvas-bg") {
+              slide.background = { color: stripHex(el.fillColor || "#FFFFFF") };
+            } else if (el.shapeType === "circle") {
+              slide.addShape(pptx.ShapeType.ellipse, {
+                x,
+                y,
+                w,
+                h,
+                fill: el.fillColor && el.fillColor !== "transparent" ? { color: stripHex(el.fillColor) } : undefined,
+                line: el.borderWidth ? { color: stripHex(el.borderColor || tokens.accentHex), width: el.borderWidth } : undefined,
+              });
+            } else {
+              const isRounded = el.shapeType === "rounded-card" || el.shapeType === "badge-pill" || Boolean(el.borderRadius);
+              slide.addShape(isRounded ? pptx.ShapeType.roundRect : pptx.ShapeType.rect, {
+                x,
+                y,
+                w,
+                h,
+                fill: el.fillColor && el.fillColor !== "transparent" ? { color: stripHex(el.fillColor) } : undefined,
+                line: el.borderWidth ? { color: stripHex(el.borderColor || tokens.accentHex), width: el.borderWidth } : undefined,
+              });
+            }
+          } else if (el.type === "image" && el.imageUrl) {
+            if (el.imageUrl.startsWith("data:image")) {
+              try {
+                slide.addImage({
+                  data: el.imageUrl,
+                  x,
+                  y,
+                  w,
+                  h,
+                });
+              } catch {
+                // graceful image fallback
+              }
+            }
+          } else if (el.type === "text" && el.text && el.text.trim()) {
+            const fontPt = Math.max(9, Math.round((el.fontSize || 14) * 0.95));
+            slide.addText(el.text, {
+              x,
+              y,
+              w,
+              h,
+              fontSize: fontPt,
+              bold: el.fontWeight === "bold" || el.fontWeight === "700" || el.fontWeight === "800",
+              italic: el.fontStyle === "italic",
+              color: stripHex(el.textColor || "#0F172A"),
+              fontFace: fontTitle,
+              align: el.textAlign || "left",
+              valign: "top",
             });
-            logoY = 1.85;
-          } catch {
-            // graceful fallback if dataUrl cannot be parsed
-          }
-        }
-
-        // 3. University & Department Headers
-        if (uniText) {
-          slide.addText(uniText.toUpperCase(), {
-            x: 1.0,
-            y: logoY,
-            w: 11.333,
-            h: 0.4,
-            align: tplId === "modern-minimal" ? "left" : "center",
-            fontSize: sizes.sectionTag + 3,
-            bold: true,
-            color: tplId === "professional-navy" && logoY < 1.4 ? "FFFFFF" : tokens.textPrimaryHex,
-            fontFace: fontTitle,
-            charSpacing: 2,
-          });
-        }
-
-        if (deptText) {
-          slide.addText(deptText, {
-            x: 1.0,
-            y: logoY + 0.38,
-            w: 11.333,
-            h: 0.3,
-            align: tplId === "modern-minimal" ? "left" : "center",
-            fontSize: sizes.caption + 1,
-            color: tokens.textSecondaryHex,
-            fontFace: fontBody,
-          });
-        }
-
-        // 4. Course Tag Pill
-        const pillY = Math.max(logoY + 0.8, 2.5);
-        slide.addShape(pptx.ShapeType.roundRect, {
-          x: 1.0,
-          y: pillY,
-          w: 4.2,
-          h: 0.38,
-          fill: { color: tokens.cardBgHex },
-          line: { color: coverAccent, width: 1 },
-        });
-
-        slide.addText(
-          `${meta?.courseCode ? `${meta.courseCode}  •  ` : ""}${courseText}`.toUpperCase(),
-          {
-            x: 1.1,
-            y: pillY + 0.05,
-            w: 4.0,
-            h: 0.28,
-            fontSize: sizes.sectionTag,
-            bold: true,
-            color: coverAccent,
-            fontFace: fontTitle,
-            charSpacing: 1,
-          },
-        );
-
-        // 5. Main Assignment Title
-        const titleY = pillY + 0.55;
-        let titleSize = sizes.heroTitle;
-        if (titleText.length > 70) titleSize = Math.max(20, sizes.heroTitle - 10);
-        else if (titleText.length > 40) titleSize = Math.max(24, sizes.heroTitle - 6);
-
-        slide.addText(titleText, {
-          x: 1.0,
-          y: titleY,
-          w: 11.333,
-          h: 1.2,
-          fontSize: titleSize,
-          bold: true,
-          color: tokens.textPrimaryHex,
-          fontFace: fontTitle,
-        });
-
-        // 6. Bottom Metadata Card: Student(s) on Left, Instructor & Date on Right
-        const cardY = 4.8;
-        const cardW = 5.4;
-        const cardH = 1.6;
-
-        // Left Container: Student / Group Directory
-        slide.addShape(pptx.ShapeType.roundRect, {
-          x: 1.0,
-          y: cardY,
-          w: cardW,
-          h: cardH,
-          fill: { color: tokens.cardBgHex },
-          line: { color: tokens.cardBorderHex, width: 1 },
-        });
-
-        slide.addText(isGroup ? "GROUP CANDIDATES:" : "SUBMITTED BY CANDIDATE:", {
-          x: 1.2,
-          y: cardY + 0.15,
-          w: 5.0,
-          h: 0.25,
-          fontSize: sizes.caption,
-          bold: true,
-          color: coverAccent,
-          fontFace: fontTitle,
-          charSpacing: 1,
-        });
-
-        if (isGroup && meta?.groupMembers && meta.groupMembers.length > 0) {
-          const membersList = meta.groupMembers
-            .filter((m) => m.fullName.trim() || m.studentId.trim())
-            .slice(0, 3)
-            .map((m) => `${m.fullName || "Member"} (${m.studentId || "ID N/A"})`)
-            .join("\n");
-
-          slide.addText(membersList, {
-            x: 1.2,
-            y: cardY + 0.45,
-            w: 5.0,
-            h: 0.95,
-            fontSize: sizes.body - 3,
-            color: tokens.textPrimaryHex,
-            fontFace: fontBody,
-          });
-        } else {
-          slide.addText(studentName, {
-            x: 1.2,
-            y: cardY + 0.45,
-            w: 5.0,
-            h: 0.35,
-            fontSize: sizes.body,
-            bold: true,
-            color: tokens.textPrimaryHex,
-            fontFace: fontBody,
-          });
-          if (studentId) {
-            slide.addText(`Student ID: ${studentId}`, {
-              x: 1.2,
-              y: cardY + 0.85,
-              w: 5.0,
-              h: 0.3,
-              fontSize: sizes.body - 2,
-              color: tokens.textSecondaryHex,
-              fontFace: fontBody,
+          } else if (el.type === "divider") {
+            slide.addShape(pptx.ShapeType.rect, {
+              x,
+              y,
+              w,
+              h: Math.max(0.04, h),
+              fill: { color: stripHex(el.fillColor || tokens.accentHex) },
             });
           }
         }
 
-        // Right Container: Evaluator & Submission Timeline
-        slide.addShape(pptx.ShapeType.roundRect, {
-          x: 6.9,
-          y: cardY,
-          w: cardW,
-          h: cardH,
-          fill: { color: tokens.cardBgHex },
-          line: { color: tokens.cardBorderHex, width: 1 },
-        });
-
-        slide.addText("FACULTY EVALUATOR & TIMELINE:", {
-          x: 7.1,
-          y: cardY + 0.15,
-          w: 5.0,
-          h: 0.25,
-          fontSize: sizes.caption,
-          bold: true,
-          color: coverAccent,
-          fontFace: fontTitle,
-          charSpacing: 1,
-        });
-
-        slide.addText(instructorText, {
-          x: 7.1,
-          y: cardY + 0.45,
-          w: 5.0,
-          h: 0.35,
-          fontSize: sizes.body,
-          bold: true,
-          color: tokens.textPrimaryHex,
-          fontFace: fontBody,
-        });
-
-        const timelineDetails = [
-          dateText ? `Date: ${dateText}` : "",
-          yearText ? `Session: ${yearText}` : "",
-        ]
-          .filter(Boolean)
-          .join("   •   ");
-
-        if (timelineDetails) {
-          slide.addText(timelineDetails, {
-            x: 7.1,
-            y: cardY + 0.85,
-            w: 5.0,
-            h: 0.3,
-            fontSize: sizes.caption,
-            color: tokens.textSecondaryHex,
-            fontFace: fontBody,
-          });
+        if (s.notes) {
+          slide.addNotes(s.notes);
         }
         break;
       }
@@ -1246,19 +1092,35 @@ export async function renderSlideDeckToPptx(
               fontFace: fontBody,
             });
           } else {
-            const bulletItems = s.bullets.slice(0, 5).map((b) => ({
-              text: b,
-              options: { breakLine: true },
-            }));
-            slide.addText(bulletItems, {
+            // Render as an Executive Content Card with rounded border and accent edge
+            slide.addShape(pptx.ShapeType.roundRect, {
               x: 1.0,
               y: startY,
               w: 11.333,
               h: cardH,
+              fill: { color: tokens.cardBgHex },
+              line: { color: tokens.cardBorderHex, width: 1.2 },
+            });
+            slide.addShape(pptx.ShapeType.rect, {
+              x: 1.0,
+              y: startY,
+              w: 0.15,
+              h: cardH,
+              fill: { color: tokens.accentHex },
+            });
+            const bulletItems = s.bullets.slice(0, 6).map((b) => ({
+              text: b,
+              options: { breakLine: true },
+            }));
+            slide.addText(bulletItems, {
+              x: 1.4,
+              y: startY + 0.35,
+              w: 10.5,
+              h: cardH - 0.7,
               fontSize: sizes.body,
-              color: tokens.textPrimaryHex,
+              color: tokens.cardTextHex,
               bullet: true,
-              lineSpacing: 28,
+              lineSpacing: 30,
               fontFace: fontBody,
             });
           }

@@ -43,6 +43,122 @@ export const CANVAS_LETTER_HEIGHT = 1056;
  * Universal element generator that populates standard cover elements
  * customized to the specific visual geometry, typography, and color tokens of each template.
  */
+function postProcessCoverElements(
+  elements: CanvasCoverElement[],
+  meta: AssignmentMetadata,
+  pageW: number,
+  pageH: number,
+): CanvasCoverElement[] {
+  const is169 = pageH <= 800; // 16:9 widescreen presentation canvas (e.g. 1333x750)
+  const processed = [...elements];
+
+  // 1. Enforce Logo Placement in Top-Left Corner
+  if (meta.logoDataUrl) {
+    const existingLogoIdx = processed.findIndex(
+      (e) => e.id === "cover-logo" || e.name?.toLowerCase().includes("logo"),
+    );
+    const logoX = 60;
+    const logoY = is169 ? 35 : 48;
+    const logoW = 140;
+    const logoH = is169 ? 60 : 65;
+
+    if (existingLogoIdx >= 0) {
+      processed[existingLogoIdx] = {
+        ...processed[existingLogoIdx]!,
+        x: logoX,
+        y: logoY,
+        width: logoW,
+        height: logoH,
+        imageUrl: meta.logoDataUrl,
+        imageFit: "contain",
+      };
+    } else {
+      const maxZ = Math.max(...processed.map((e) => e.zIndex || 1), 10) + 1;
+      processed.push({
+        id: "cover-logo",
+        type: "image",
+        name: "Institutional Logo",
+        x: logoX,
+        y: logoY,
+        width: logoW,
+        height: logoH,
+        imageUrl: meta.logoDataUrl,
+        imageFit: "contain",
+        zIndex: maxZ,
+      });
+    }
+
+    // 2. Prevent Logo & Text / Shapes Overriding Each Other
+    for (let i = 0; i < processed.length; i++) {
+      const el = processed[i]!;
+      if (el.id === "cover-logo") continue;
+
+      if (el.type === "text" || el.type === "badge") {
+        if (el.x < 220 && el.y < 110) {
+          if (el.isMetadataField === "assignmentTitle" || el.id.includes("title")) {
+            el.y = Math.max(el.y, is169 ? 120 : 135);
+          } else {
+            el.x = 220;
+            el.width = Math.max(200, Math.min(el.width, pageW - 240));
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Page-Filling Balance for 16:9 Widescreen
+  if (is169) {
+    const metaElements = processed.filter(
+      (e) =>
+        e.type === "text" &&
+        e.id !== "canvas-bg" &&
+        !e.id.includes("title") &&
+        !e.id.includes("brand") &&
+        !e.id.includes("footer") &&
+        e.y > 220,
+    );
+
+    if (metaElements.length > 0) {
+      const minY = Math.min(...metaElements.map((e) => e.y));
+      const maxY = Math.max(...metaElements.map((e) => e.y + e.height));
+      const span = maxY - minY;
+
+      if (span < 200 && maxY < 580) {
+        const targetStart = 340;
+        const targetEnd = 620;
+        const scaleFactor = (targetEnd - targetStart) / Math.max(span, 1);
+
+        for (const el of metaElements) {
+          el.y = Math.round(targetStart + (el.y - minY) * Math.min(scaleFactor, 1.8));
+          if (el.fontSize && el.fontSize < 16) {
+            el.fontSize = Math.min(18, el.fontSize + 2);
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Remove Fake Placeholders (reallygreatsite, +123-456-7890)
+  const realAcademicContact = [
+    meta.universityName,
+    meta.department,
+    meta.submissionDate ? `Date: ${meta.submissionDate}` : "",
+    [meta.academicYear, meta.semester].filter(Boolean).join(" · "),
+  ].filter(Boolean).join("  •  ");
+
+  for (const el of processed) {
+    if (el.type === "text" && el.text) {
+      if (el.text.includes("reallygreatsite.com") || el.text.includes("+123-456-7890")) {
+        if (realAcademicContact) {
+          el.text = realAcademicContact;
+        }
+      }
+    }
+  }
+
+  return processed;
+}
+
 export function generateDefaultCoverElements(
   template: ExtendedCoverTemplateDefinition,
   meta: AssignmentMetadata,
@@ -50,7 +166,8 @@ export function generateDefaultCoverElements(
   pageH: number = CANVAS_A4_HEIGHT,
 ): CanvasCoverElement[] {
   if (template.generateElements) {
-    return template.generateElements(meta, pageW, pageH);
+    const generated = template.generateElements(meta, pageW, pageH);
+    return postProcessCoverElements(generated, meta, pageW, pageH);
   }
 
   const elements: CanvasCoverElement[] = [];
@@ -741,7 +858,7 @@ export function generateDefaultCoverElements(
     zIndex: zIndex++,
   });
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 // -------------------------------------------------------------
@@ -1004,7 +1121,7 @@ export function generateCanvaSalfordWave(
     zIndex: zIndex++,
   });
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaHanoverRedGeometric(
@@ -1313,7 +1430,7 @@ export function generateCanvaHanoverRedGeometric(
     zIndex: zIndex++,
   });
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaEmeraldGeometric(
@@ -1501,7 +1618,7 @@ export function generateCanvaEmeraldGeometric(
     });
   }
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaCharcoalAmber(
@@ -1690,7 +1807,7 @@ export function generateCanvaCharcoalAmber(
     zIndex: zIndex++,
   });
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaBlueYellowProposal(
@@ -2028,7 +2145,7 @@ export function generateCanvaBlueYellowProposal(
     zIndex: zIndex++,
   });
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaDiagonalStripes(
@@ -2157,7 +2274,7 @@ export function generateCanvaDiagonalStripes(
     });
   }
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaCoralArchitectural(
@@ -2272,7 +2389,7 @@ export function generateCanvaCoralArchitectural(
     });
   }
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaGoldWave(
@@ -2372,7 +2489,7 @@ export function generateCanvaGoldWave(
     });
   }
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaOceanFluid(
@@ -2489,7 +2606,7 @@ export function generateCanvaOceanFluid(
     });
   }
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaWarmEditorial(
@@ -2602,7 +2719,7 @@ export function generateCanvaWarmEditorial(
     });
   }
 
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 // -------------------------------------------------------------
@@ -2650,7 +2767,7 @@ export function generateCanvaVioletAuroraWave(
   elements.push({ id: "aurora-br-cyan", type: "shape", name: "Bottom-Right Cyan Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: cyan, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${cyan}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "aurora-br-violet", type: "shape", name: "Bottom-Right Violet Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: violet, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${violet}" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "aurora-footer-contact", type: "text", name: "Contact Information", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ contact@institution.edu\n🌐 www.institution.edu", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaTokyoNeomodern(
@@ -2690,7 +2807,7 @@ export function generateCanvaTokyoNeomodern(
 
   elements.push({ id: "tokyo-bottom-poly", type: "shape", name: "Bottom Accent Polygon", shapeType: "svg", x: pageW - 280, y: pageH - 160, width: 280, height: 160, fillColor: obsidian, svgContent: `<svg viewBox="0 0 280 160" width="100%" height="100%" preserveAspectRatio="none"><polygon points="60,160 280,0 280,160" fill="${obsidian}" /><polygon points="0,160 80,160 280,10 260,0" fill="${lime}" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "tokyo-footer-text", type: "text", name: "Footer Text", x: 60, y: pageH - 65, width: 400, height: 30, text: "VERIFIED BLUEPRINT • ACADEMIC SPECIFICATION • ISO 2026", fontFamily: "monospace", fontSize: 9.5, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaScandinavianFrost(
@@ -2729,7 +2846,7 @@ export function generateCanvaScandinavianFrost(
   elements.push({ id: "frost-br-mint", type: "shape", name: "Bottom Mint Wave", shapeType: "svg", x: pageW - 350, y: pageH - 240, width: 350, height: 240, fillColor: mint, svgContent: `<svg viewBox="0 0 350 240" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,240 C 120,240 190,160 350,80 L 350,240 Z" fill="${mint}" opacity="0.6" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "frost-br-teal", type: "shape", name: "Bottom Teal Wave", shapeType: "svg", x: pageW - 320, y: pageH - 210, width: 320, height: 210, fillColor: teal, svgContent: `<svg viewBox="0 0 320 210" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,210 C 110,210 180,140 320,70 L 320,210 Z" fill="${teal}" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "frost-footer", type: "text", name: "Footer Details", x: 80, y: pageH - 95, width: 350, height: 40, text: "Stockholm • Faculty of Natural Sciences\nwww.su.se • official academic document", fontFamily: "Inter, sans-serif", fontSize: 10.5, fontWeight: "400", textColor: "#64748B", lineHeight: 1.4, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaCrimsonExecutiveCurve(
@@ -2767,7 +2884,7 @@ export function generateCanvaCrimsonExecutiveCurve(
   elements.push({ id: "crimson-br-gold", type: "shape", name: "Bottom Gold Wave", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: gold, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${gold}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "crimson-br-crimson", type: "shape", name: "Bottom Crimson Wave", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: crimson, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${crimson}" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "crimson-footer", type: "text", name: "Footer Coordinates", x: 80, y: pageH - 110, width: 360, height: 45, text: "Executive Confidential • Board Review", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaSunsetHorizon(
@@ -2805,7 +2922,7 @@ export function generateCanvaSunsetHorizon(
   elements.push({ id: "sunset-br-amber", type: "shape", name: "Bottom Amber Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: amber, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${amber}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "sunset-br-rose", type: "shape", name: "Bottom Rose Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: rose, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${rose}" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "sunset-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ contact@organization.org\n🌐 www.organization.org", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaCyberHexMesh(
@@ -2843,7 +2960,7 @@ export function generateCanvaCyberHexMesh(
 
   elements.push({ id: "cyber-br-poly", type: "shape", name: "Bottom Cyber Poly", shapeType: "svg", x: pageW - 320, y: pageH - 200, width: 320, height: 200, fillColor: cobalt, svgContent: `<svg viewBox="0 0 320 200" width="100%" height="100%" preserveAspectRatio="none"><polygon points="80,200 320,0 320,200" fill="${cobalt}" /><polygon points="0,200 120,200 320,40 200,0" fill="${cyan}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "cyber-footer", type: "text", name: "Footer Text", x: 75, y: pageH - 85, width: 350, height: 35, text: "CLASSIFIED SPECIFICATION • SYSTEM CORE v4.2", fontFamily: "monospace", fontSize: 10, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaAcademicCrestModern(
@@ -2883,7 +3000,7 @@ export function generateCanvaAcademicCrestModern(
   elements.push({ id: "crest-bottom-navy", type: "shape", name: "Bottom Navy Bar", shapeType: "rectangle", x: 0, y: pageH - 50, width: pageW, height: 50, fillColor: navy, zIndex: zIndex++ });
   elements.push({ id: "crest-bottom-gold", type: "shape", name: "Bottom Gold Rule", shapeType: "rectangle", x: 0, y: pageH - 53, width: pageW, height: 3, fillColor: gold, zIndex: zIndex++ });
   elements.push({ id: "crest-bottom-text", type: "text", name: "Bottom Text", x: 60, y: pageH - 35, width: pageW - 120, height: 20, text: "DISSERTATION SUBMISSION • ALL RIGHTS RESERVED", fontFamily: "Inter, sans-serif", fontSize: 9.5, fontWeight: "600", textAlign: "center", textColor: "#E2E8F0", letterSpacing: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaForestBotanical(
@@ -2921,7 +3038,7 @@ export function generateCanvaForestBotanical(
   elements.push({ id: "forest-br-sage", type: "shape", name: "Bottom Sage Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: sage, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${sage}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "forest-br-emerald", type: "shape", name: "Bottom Emerald Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: emerald, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${emerald}" /></svg>`, zIndex: zIndex++ });
   elements.push({ id: "forest-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ research@institution.edu\n🌐 www.institution.edu", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 // -------------------------------------------------------------
@@ -2963,7 +3080,7 @@ export function generateCanvaQuantumIndigo(
   elements.push({ id: "quantum-br-cyan", type: "shape", name: "Bottom Cyan Polygon", shapeType: "svg", x: pageW - 360, y: pageH - 240, width: 360, height: 240, fillColor: cyan, svgContent: `<svg viewBox="0 0 360 240" width="100%" height="100%" preserveAspectRatio="none"><polygon points="100,240 360,0 360,240" fill="${cyan}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "quantum-br-indigo", type: "shape", name: "Bottom Indigo Polygon", shapeType: "svg", x: pageW - 330, y: pageH - 215, width: 330, height: 215, fillColor: indigo, svgContent: `<svg viewBox="0 0 330 215" width="100%" height="100%" preserveAspectRatio="none"><polygon points="90,215 330,0 330,215" fill="${indigo}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "quantum-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 95, width: 380, height: 40, text: "📞 +123-456-7890 • ✉️ quantum@research.edu\nVerified Academic Research • Peer Reviewed", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaMonochromeArch(
@@ -2997,7 +3114,7 @@ export function generateCanvaMonochromeArch(
   }
   elements.push({ id: "mono-br-arch", type: "shape", name: "Bottom Arch", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: charcoal, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 230,130 230,0 L 360,0 L 360,230 Z" fill="${charcoal}"/><path d="M 0,215 C 120,215 215,120 215,0 L 230,0 C 230,130 130,230 0,230 Z" fill="${zinc}" opacity="0.6"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "mono-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ design@atelier.io\n🌐 www.atelier.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaPrismGeometric(
@@ -3034,7 +3151,7 @@ export function generateCanvaPrismGeometric(
   elements.push({ id: "prism-br-coral", type: "shape", name: "Bottom Coral Facet", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: coral, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><polygon points="120,250 380,0 380,250" fill="${coral}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "prism-br-cobalt", type: "shape", name: "Bottom Cobalt Facet", shapeType: "svg", x: pageW - 350, y: pageH - 225, width: 350, height: 225, fillColor: cobalt, svgContent: `<svg viewBox="0 0 350 225" width="100%" height="100%" preserveAspectRatio="none"><polygon points="110,225 350,0 350,225" fill="${cobalt}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "prism-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ info@prism.io\n🌐 www.prism.io", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaBauhausModernist(
@@ -3073,7 +3190,7 @@ export function generateCanvaBauhausModernist(
   elements.push({ id: "bauhaus-bottom-vermilion", type: "shape", name: "Bottom Vermilion Block", shapeType: "rectangle", x: 0, y: pageH - 100, width: 140, height: 100, fillColor: vermilion, zIndex: zIndex++ });
   elements.push({ id: "bauhaus-bottom-yellow", type: "shape", name: "Bottom Yellow Block", shapeType: "rectangle", x: 140, y: pageH - 40, width: 200, height: 40, fillColor: yellow, zIndex: zIndex++ });
   elements.push({ id: "bauhaus-footer-text", type: "text", name: "Footer Text", x: 160, y: pageH - 85, width: pageW - 200, height: 30, text: "BAUHAUS DESIGN ARCHIVE • MODERN ARCHIVE 2026", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "700", textColor: navy, letterSpacing: 1, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaGradientGlassmorphism(
@@ -3111,7 +3228,7 @@ export function generateCanvaGradientGlassmorphism(
   elements.push({ id: "glass-br-pink", type: "shape", name: "Bottom Pink Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: secondary, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${secondary}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "glass-br-indigo", type: "shape", name: "Bottom Indigo Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: primary, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${primary}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "glass-footer", type: "text", name: "Footer Details", x: 80, y: pageH - 100, width: 360, height: 45, text: "📞 +123-456-7890 • ✉️ innovate@institution.edu\nVerified Executive Dossier", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaTerracottaEditorial(
@@ -3147,7 +3264,7 @@ export function generateCanvaTerracottaEditorial(
   elements.push({ id: "terra-br-sand", type: "shape", name: "Bottom Sand Wave", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: sand, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${sand}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "terra-br-terra", type: "shape", name: "Bottom Terracotta Wave", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: terracotta, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${terracotta}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "terra-footer", type: "text", name: "Footer Coordinates", x: 80, y: pageH - 110, width: 360, height: 45, text: "Mediterranean Monograph • Architecture Series", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaCyberpunkNeon(
@@ -3185,7 +3302,7 @@ export function generateCanvaCyberpunkNeon(
   }
   elements.push({ id: "cyber-br-dark", type: "shape", name: "Bottom Dark Polygon", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: darkBg, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><polygon points="90,220 350,0 350,220" fill="${darkBg}"/><line x1="90" y1="218" x2="350" y2="2" stroke="${cyan}" stroke-width="4"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "cyber-footer", type: "text", name: "Footer Text", x: 75, y: pageH - 90, width: 350, height: 35, text: "CYBER SPECIFICATION • SECURE LAYER 2026", fontFamily: "monospace", fontSize: 10, fontWeight: "600", textColor: "#94A3B8", letterSpacing: 1, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaEmeraldBlueprint(
@@ -3221,7 +3338,7 @@ export function generateCanvaEmeraldBlueprint(
   elements.push({ id: "em-br-mint", type: "shape", name: "Bottom Mint Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: mint, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${mint}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "em-br-emerald", type: "shape", name: "Bottom Emerald Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: emerald, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${emerald}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "em-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "📞 +123-456-7890\n✉️ research@institution.edu\n🌐 www.institution.edu", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaRoseGoldLuxury(
@@ -3257,7 +3374,7 @@ export function generateCanvaRoseGoldLuxury(
   elements.push({ id: "rose-br-gold", type: "shape", name: "Bottom Gold Wave", shapeType: "svg", x: pageW - 380, y: pageH - 250, width: 380, height: 250, fillColor: gold, svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${gold}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "rose-br-rose", type: "shape", name: "Bottom Rose Wave", shapeType: "svg", x: pageW - 350, y: pageH - 220, width: 350, height: 220, fillColor: rose, svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${rose}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "rose-footer", type: "text", name: "Footer Details", x: 80, y: pageH - 110, width: 360, height: 45, text: "Haute Prestige Luxury Edition • Monograph Series", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaSwissInternational(
@@ -3294,7 +3411,7 @@ export function generateCanvaSwissInternational(
   }
   elements.push({ id: "swiss-bottom-bar", type: "shape", name: "Bottom Black Bar", shapeType: "rectangle", x: 60, y: pageH - 90, width: pageW - 120, height: 6, fillColor: black, zIndex: zIndex++ });
   elements.push({ id: "swiss-footer-text", type: "text", name: "Footer Text", x: 60, y: pageH - 70, width: pageW - 120, height: 30, text: "ZÜRICH DESIGN ARCHIVE • HELVETICA STANDARDS", fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: "700", textColor: "#9CA3AF", letterSpacing: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaStanfordCardinalWave(
@@ -3330,7 +3447,7 @@ export function generateCanvaStanfordCardinalWave(
   elements.push({ id: "cardinal-br-gold", type: "shape", name: "Bottom Gold Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: gold, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${gold}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "cardinal-br-red", type: "shape", name: "Bottom Cardinal Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: cardinal, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${cardinal}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "cardinal-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "Stanford Engineering • CS Research Publishing\nVerified Academic Research Report", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 export function generateCanvaOceanicMaritimeCurve(
@@ -3366,7 +3483,7 @@ export function generateCanvaOceanicMaritimeCurve(
   elements.push({ id: "ocean-br-aqua", type: "shape", name: "Bottom Aqua Wave", shapeType: "svg", x: pageW - 390, y: pageH - 260, width: 390, height: 260, fillColor: aqua, svgContent: `<svg viewBox="0 0 390 260" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,260 C 140,260 220,170 390,85 L 390,260 Z" fill="${aqua}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "ocean-br-blue", type: "shape", name: "Bottom Ocean Wave", shapeType: "svg", x: pageW - 360, y: pageH - 230, width: 360, height: 230, fillColor: ocean, svgContent: `<svg viewBox="0 0 360 230" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,230 C 130,230 210,150 360,75 L 360,230 Z" fill="${ocean}"/></svg>`, zIndex: zIndex++ });
   elements.push({ id: "ocean-footer", type: "text", name: "Footer Contact", x: 80, y: pageH - 120, width: 360, height: 55, text: "LAT 32°44'N LONG 117°10'W • SCRIPPS SECTOR\nMarine Research Publishing", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: "500", textColor: "#64748B", lineHeight: 1.5, zIndex: zIndex++ });
-  return elements;
+  return postProcessCoverElements(elements, meta, pageW, pageH);
 }
 
 // -------------------------------------------------------------

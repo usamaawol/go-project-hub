@@ -22,6 +22,7 @@ import {
   type CoverTemplateDefinition,
   type CanvasCoverElement,
 } from "@/lib/assignment-types";
+import { getCoverTemplateById } from "@/lib/cover-templates-registry";
 import {
   extractAssignmentMetadataFromText,
   type ExtractedAssignmentSuggestions,
@@ -50,6 +51,7 @@ import {
   generateAndDownloadClientPptx,
   type SlidePreviewItem,
   type PresentationSessionData,
+  type SlideLayoutType,
 } from "@/lib/presentation-session-client";
 import { computeThemeTokens, TEMPLATES } from "@/lib/presentation-theme";
 import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
@@ -92,6 +94,15 @@ import {
   FileCode,
   Copy,
   ExternalLink,
+  Bold,
+  Italic,
+  Type,
+  Columns,
+  Quote,
+  ListChecks,
+  BarChart3,
+  MessageSquare,
+  Minus,
 } from "lucide-react";
 
 export interface UnifiedAssignmentWorkflowProps {
@@ -221,6 +232,187 @@ export function UnifiedAssignmentWorkflow({
   // Stage 6 Preview & Editing State (Presentation Mode)
   const [presentationSession, setPresentationSession] = useState<PresentationSessionData | null>(null);
   const [currentSlideIdx, setCurrentSlideIdx] = useState<number>(0);
+  const [showNotesDrawer, setShowNotesDrawer] = useState<boolean>(false);
+
+  const updateCurrentSlide = (fields: Partial<SlidePreviewItem>) => {
+    if (!presentationSession) return;
+    setPresentationSession((prev) => {
+      if (!prev) return null;
+      const updatedSlides = [...prev.slides];
+      const target = updatedSlides[currentSlideIdx];
+      if (!target) return prev;
+      updatedSlides[currentSlideIdx] = {
+        ...target,
+        ...fields,
+      };
+      const updatedTitle = currentSlideIdx === 0 && fields.title ? fields.title : prev.title;
+      return {
+        ...prev,
+        title: updatedTitle,
+        slides: updatedSlides,
+      };
+    });
+  };
+
+  const handleAddNewSlide = () => {
+    if (!presentationSession) return;
+    const newIdx = currentSlideIdx + 1;
+    const newSlide: SlidePreviewItem = {
+      id: `slide-${Date.now()}`,
+      slideNumber: newIdx + 1,
+      layout: "content",
+      title: "New Analysis Slide",
+      subtitle: "Supporting academic analysis and findings",
+      categoryTag: metadata.courseName ? metadata.courseName.toUpperCase() : "ANALYSIS",
+      bullets: [
+        "Primary premise and contextual evaluation.",
+        "Key evidence supporting this section.",
+        "Analytical conclusion or implications.",
+      ],
+      notes: "Speaker notes for this analysis slide.",
+    };
+
+    setPresentationSession((prev) => {
+      if (!prev) return null;
+      const slides = [...prev.slides];
+      slides.splice(newIdx, 0, newSlide);
+      return {
+        ...prev,
+        slides: slides.map((s, idx) => ({ ...s, slideNumber: idx + 1 })),
+        slideCount: slides.length,
+      };
+    });
+    setCurrentSlideIdx(newIdx);
+    toast.success("New slide added!");
+  };
+
+  const handleDuplicateCurrentSlide = () => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const target = presentationSession.slides[currentSlideIdx];
+    if (!target) return;
+    const newIdx = currentSlideIdx + 1;
+    const dupSlide: SlidePreviewItem = {
+      ...target,
+      id: `slide-${Date.now()}`,
+      slideNumber: newIdx + 1,
+      title: `${target.title} (Copy)`,
+      bullets: target.bullets ? [...target.bullets] : undefined,
+    };
+
+    setPresentationSession((prev) => {
+      if (!prev) return null;
+      const slides = [...prev.slides];
+      slides.splice(newIdx, 0, dupSlide);
+      return {
+        ...prev,
+        slides: slides.map((s, idx) => ({ ...s, slideNumber: idx + 1 })),
+        slideCount: slides.length,
+      };
+    });
+    setCurrentSlideIdx(newIdx);
+    toast.success("Slide duplicated!");
+  };
+
+  const handleDeleteCurrentSlide = () => {
+    if (!presentationSession || currentSlideIdx <= 0) {
+      toast.error("The Assignment Cover Page cannot be deleted.");
+      return;
+    }
+    if (presentationSession.slides.length <= 2) {
+      toast.error("Presentation requires at least one content slide.");
+      return;
+    }
+    setPresentationSession((prev) => {
+      if (!prev) return null;
+      const slides = prev.slides.filter((_, idx) => idx !== currentSlideIdx);
+      return {
+        ...prev,
+        slides: slides.map((s, idx) => ({ ...s, slideNumber: idx + 1 })),
+        slideCount: slides.length,
+      };
+    });
+    setCurrentSlideIdx((prev) => Math.max(0, prev - 1));
+    toast.success("Slide deleted.");
+  };
+
+  const handleMoveSlide = (direction: "up" | "down") => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const targetIdx = direction === "up" ? currentSlideIdx - 1 : currentSlideIdx + 1;
+    if (targetIdx <= 0 || targetIdx >= presentationSession.slides.length) return;
+
+    setPresentationSession((prev) => {
+      if (!prev) return null;
+      const slides = [...prev.slides];
+      const temp = slides[currentSlideIdx]!;
+      slides[currentSlideIdx] = slides[targetIdx]!;
+      slides[targetIdx] = temp;
+      return {
+        ...prev,
+        slides: slides.map((s, idx) => ({ ...s, slideNumber: idx + 1 })),
+      };
+    });
+    setCurrentSlideIdx(targetIdx);
+  };
+
+  const handleAddBullet = () => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const cur = presentationSession.slides[currentSlideIdx];
+    if (!cur) return;
+    const bullets = [...(cur.bullets || []), "New key analytical point"];
+    updateCurrentSlide({ bullets });
+  };
+
+  const handleUpdateBullet = (bIdx: number, val: string) => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const cur = presentationSession.slides[currentSlideIdx];
+    if (!cur) return;
+    const bullets = [...(cur.bullets || [])];
+    bullets[bIdx] = val;
+    updateCurrentSlide({ bullets });
+  };
+
+  const handleRemoveBullet = (bIdx: number) => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const cur = presentationSession.slides[currentSlideIdx];
+    if (!cur) return;
+    const bullets = (cur.bullets || []).filter((_, idx) => idx !== bIdx);
+    updateCurrentSlide({ bullets });
+  };
+
+  const handleAdjustFontSize = (delta: number) => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const cur = presentationSession.slides[currentSlideIdx];
+    if (!cur) return;
+    const currentSize = cur.titleFontSize || 26;
+    const nextSize = Math.max(14, Math.min(48, currentSize + delta));
+    updateCurrentSlide({ titleFontSize: nextSize });
+  };
+
+  const handleToggleBold = () => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const cur = presentationSession.slides[currentSlideIdx];
+    if (!cur) return;
+    const currentBold = cur.isTitleBold !== undefined ? cur.isTitleBold : true;
+    updateCurrentSlide({ isTitleBold: !currentBold });
+  };
+
+  const handleToggleItalic = () => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    const cur = presentationSession.slides[currentSlideIdx];
+    if (!cur) return;
+    const currentItalic = cur.isSubtitleItalic !== undefined ? cur.isSubtitleItalic : true;
+    updateCurrentSlide({ isSubtitleItalic: !currentItalic });
+  };
+
+  const handleSelectTextColor = (hex: string) => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    updateCurrentSlide({ textColor: hex });
+  };
+
+  const handleSelectLayout = (layout: SlideLayoutType) => {
+    if (!presentationSession || currentSlideIdx <= 0) return;
+    updateCurrentSlide({ layout });
+  };
 
   // Stage 7 Export States
   const [isExportingDocx, setIsExportingDocx] = useState<boolean>(false);
@@ -633,7 +825,20 @@ export function UnifiedAssignmentWorkflow({
     try {
       setIsExportingPptx(true);
       toast.loading("Generating Microsoft PowerPoint deck (.pptx)...", { id: "pptx-exp" });
-      await generateAndDownloadClientPptx(presentationSession);
+      const updatedSession: PresentationSessionData = {
+        ...presentationSession,
+        assignmentMetadata: { ...metadata, isAssignment: true },
+        slides: presentationSession.slides.map((s, idx) =>
+          idx === 0
+            ? {
+                ...s,
+                assignmentMetadata: { ...metadata, isAssignment: true },
+                title: metadata.assignmentTitle || s.title,
+              }
+            : s
+        ),
+      };
+      await generateAndDownloadClientPptx(updatedSession);
       eraseWorkspaceJobsOnDownload();
       setLastExportedFormat("PowerPoint Presentation (.pptx)");
       toast.success("PowerPoint deck downloaded successfully!", { id: "pptx-exp" });
@@ -1425,9 +1630,7 @@ export function UnifiedAssignmentWorkflow({
                   key={tpl.id}
                   onClick={() => {
                     updateMetaField("coverTemplateId", tpl.id);
-                    if (!metadata.accentColor) {
-                      updateMetaField("accentColor", tpl.defaultAccent);
-                    }
+                    updateMetaField("accentColor", tpl.defaultAccent);
                   }}
                   className={`group relative rounded-xl border p-2 flex flex-col justify-between cursor-pointer transition-all ${
                     isSelected
@@ -2017,84 +2220,833 @@ export function UnifiedAssignmentWorkflow({
             </div>
           ) : (
             /* PRESENTATION MAKER PREVIEW (16:9 SLIDE CANVAS & SLIDE EDITOR) */
-            presentationSession && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-4 items-start">
-                  {/* Thumbnails Sidebar */}
-                  <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-y-auto max-h-[500px] p-2 rounded-xl border border-border bg-card">
-                    <span className="text-[11px] font-mono font-bold uppercase text-muted-foreground mb-1">
-                      Slides ({presentationSession.slides.length})
-                    </span>
-                    {presentationSession.slides.map((s, idx) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setCurrentSlideIdx(idx)}
-                        className={`p-2 rounded-lg border text-left transition-all ${
-                          idx === currentSlideIdx
-                            ? "border-primary bg-primary/10 shadow-xs font-bold"
-                            : "border-border hover:bg-surface-2"
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 text-xs text-foreground">
-                          <span className="h-4 w-4 rounded-full bg-surface-2 flex items-center justify-center font-mono text-[10px]">
-                            {idx + 1}
-                          </span>
-                          <span className="truncate">{s.title || `Slide ${idx + 1}`}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+            presentationSession && (() => {
+              const tokens = computeThemeTokens(presentationSession.theme, presentationSession.typography);
+              const curSlide = presentationSession.slides[currentSlideIdx] || presentationSession.slides[0]!;
 
-                  {/* Active 16:9 Slide Canvas */}
-                  <div className="w-full aspect-[16/9] rounded-2xl border border-border bg-slate-900 text-white p-6 shadow-paper flex flex-col justify-between overflow-hidden relative">
+              return (
+                <div className="space-y-4">
+                  {/* Slide Editor Top Toolbar */}
+                  <div className="p-3 rounded-2xl border border-border bg-card shadow-xs flex flex-wrap items-center justify-between gap-3">
                     {currentSlideIdx === 0 ? (
-                      /* Slide 1: Assignment Cover */
-                      <div className="h-full w-full">
-                        <AssignmentCoverRenderer
-                          metadata={metadata}
-                          aspectRatio="16:9"
-                        />
+                      /* Slide 1 Cover Page Actions */
+                      <div className="flex flex-wrap items-center gap-2.5 w-full justify-between">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-mono font-bold uppercase text-muted-foreground flex items-center gap-1.5 mr-1">
+                            <Layers className="h-3.5 w-3.5 text-primary" /> Cover Template:
+                          </span>
+                          <select
+                            value={metadata.coverTemplateId}
+                            onChange={(e) => {
+                              const newTplId = e.target.value;
+                              const tpl = COVER_TEMPLATES.find((t) => t.id === newTplId);
+                              const newAccent = tpl?.defaultAccent || metadata.accentColor;
+                              setMetadata((prev) => ({
+                                ...prev,
+                                coverTemplateId: newTplId,
+                                accentColor: newAccent,
+                              }));
+                              toast.success(`Applied ${tpl?.name || newTplId} template!`);
+                            }}
+                            className="h-8 text-xs px-2.5 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[220px]"
+                          >
+                            {COVER_TEMPLATES.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name} ({t.category})
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Quick Edit Academic Info */}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsEditCoverModalOpen(true)}
+                            className="h-8 text-xs gap-1.5"
+                          >
+                            <Edit3 className="h-3.5 w-3.5 text-primary" />
+                            <span>Edit Academic Info</span>
+                          </Button>
+
+                          {/* Launch Canva Canvas Cover Editor */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsCanvasEditorOpen(true)}
+                            className="h-8 text-xs gap-1.5 hover:text-primary"
+                          >
+                            <Sliders className="h-3.5 w-3.5 text-primary" />
+                            <span>Canva Cover Editor</span>
+                          </Button>
+                        </div>
+
+                        {/* Accent Swatches for Cover */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-mono text-muted-foreground uppercase mr-1">Accent:</span>
+                          {ACCENT_PALETTE.map((swatch) => (
+                            <button
+                              key={swatch.hex}
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("accentColor", swatch.hex);
+                                toast.success(`Accent color set to ${swatch.name}`);
+                              }}
+                              title={swatch.name}
+                              style={{ backgroundColor: swatch.hex }}
+                              className={`h-5 w-5 rounded-full border transition-transform ${
+                                (metadata.accentColor || "#1E3A8A") === swatch.hex
+                                  ? "ring-2 ring-primary ring-offset-2 scale-110"
+                                  : "hover:scale-105 opacity-80"
+                              }`}
+                            />
+                          ))}
+                        </div>
                       </div>
                     ) : (
-                      /* Content Slides */
-                      (() => {
-                        const slide = presentationSession.slides[currentSlideIdx]!;
-                        return (
-                          <div className="h-full flex flex-col justify-between">
-                            <div>
-                              <span className="text-[10px] font-mono tracking-widest text-primary uppercase font-bold">
-                                {slide.categoryTag || metadata.courseName || "ASSIGNMENT"}
-                              </span>
-                              <h2 className="text-xl sm:text-2xl font-bold font-serif text-white mt-1">
-                                {slide.title}
-                              </h2>
-                              {slide.subtitle && (
-                                <p className="text-xs text-slate-400 italic mt-0.5">{slide.subtitle}</p>
-                              )}
-                            </div>
+                      /* Content Slides (Slide 2+) Rich Editor Toolbar */
+                      <div className="flex flex-wrap items-center gap-2.5 w-full justify-between">
+                        {/* Left Group: Text Formatting & Styling */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* Bold Toggle */}
+                          <button
+                            type="button"
+                            onClick={handleToggleBold}
+                            className={`p-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              curSlide.isTitleBold !== false
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:bg-surface-2"
+                            }`}
+                            title="Toggle Bold (B)"
+                          >
+                            <Bold className="h-3.5 w-3.5" />
+                          </button>
 
-                            <div className="my-auto space-y-2.5 max-w-2xl">
-                              {(slide.bullets || []).map((b, bIdx) => (
-                                <div key={bIdx} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-200">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-2" />
-                                  <span>{b}</span>
+                          {/* Italic Toggle */}
+                          <button
+                            type="button"
+                            onClick={handleToggleItalic}
+                            className={`p-1.5 rounded-lg border text-xs italic transition-all ${
+                              curSlide.isSubtitleItalic !== false
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:bg-surface-2"
+                            }`}
+                            title="Toggle Italic (I)"
+                          >
+                            <Italic className="h-3.5 w-3.5" />
+                          </button>
+
+                          <div className="h-4 w-px bg-border mx-1" />
+
+                          {/* Font Size A- / A+ Controls */}
+                          <div className="flex items-center gap-1 bg-surface-2/60 p-0.5 rounded-lg border border-border">
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustFontSize(-2)}
+                              className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                              title="Decrease font size"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="font-mono text-[11px] font-bold px-1.5 text-foreground min-w-[42px] text-center">
+                              {curSlide.titleFontSize || 26} pt
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustFontSize(2)}
+                              className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                              title="Increase font size"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+
+                          <div className="h-4 w-px bg-border mx-1" />
+
+                          {/* Quick Color Swatches */}
+                          <div className="flex items-center gap-1">
+                            {[
+                              { label: "Navy", hex: "#1E3A8A" },
+                              { label: "Royal Blue", hex: "#2563EB" },
+                              { label: "Emerald", hex: "#059669" },
+                              { label: "Gold", hex: "#D97706" },
+                              { label: "Crimson", hex: "#DC2626" },
+                              { label: "Slate", hex: "#0F172A" },
+                              { label: "White", hex: "#FFFFFF" },
+                            ].map((sw) => (
+                              <button
+                                key={sw.hex}
+                                type="button"
+                                onClick={() => handleSelectTextColor(sw.hex)}
+                                style={{ backgroundColor: sw.hex }}
+                                title={sw.label}
+                                className={`h-4.5 w-4.5 rounded-full border border-border/80 transition-transform ${
+                                  curSlide.textColor === sw.hex
+                                    ? "ring-2 ring-primary ring-offset-1 scale-110"
+                                    : "hover:scale-105"
+                                }`}
+                              />
+                            ))}
+                          </div>
+
+                          <div className="h-4 w-px bg-border mx-1" />
+
+                          {/* Slide Layout Switcher */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase">Layout:</span>
+                            <select
+                              value={curSlide.layout}
+                              onChange={(e) => handleSelectLayout(e.target.value as SlideLayoutType)}
+                              className="h-7 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary"
+                            >
+                              <option value="content">Executive Cards (Content)</option>
+                              <option value="agenda">Agenda 2-Col Grid</option>
+                              <option value="two-column">Two-Column Comparison</option>
+                              <option value="quote">Quote / Key Takeaway</option>
+                              <option value="conclusion">Synthesis Checklist</option>
+                              <option value="metrics">Telemetry & Stats</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Right Group: Slide Management Actions */}
+                        <div className="flex items-center gap-1.5">
+                          {/* Add Bullet */}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleAddBullet}
+                            className="h-7 text-xs gap-1 px-2.5"
+                            title="Add bullet point to slide"
+                          >
+                            <Plus className="h-3 w-3" />
+                            <span>Add Point</span>
+                          </Button>
+
+                          {/* Move Up */}
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSlide("up")}
+                            disabled={currentSlideIdx <= 1}
+                            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                            title="Move slide up"
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Move Down */}
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSlide("down")}
+                            disabled={currentSlideIdx >= presentationSession.slides.length - 1}
+                            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                            title="Move slide down"
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Duplicate */}
+                          <button
+                            type="button"
+                            onClick={handleDuplicateCurrentSlide}
+                            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground"
+                            title="Duplicate slide"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            onClick={handleDeleteCurrentSlide}
+                            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-red-500"
+                            title="Delete slide"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Speaker Notes Toggle */}
+                          <button
+                            type="button"
+                            onClick={() => setShowNotesDrawer(!showNotesDrawer)}
+                            className={`p-1.5 rounded-lg border text-xs transition-colors ${
+                              showNotesDrawer
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:bg-surface-2"
+                            }`}
+                            title="Toggle speaker notes"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Main Preview Area: Sidebar Thumbnails + 16:9 Slide Canvas */}
+                  <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4 items-start">
+                    {/* Thumbnails Sidebar */}
+                    <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-y-auto max-h-[580px] p-2.5 rounded-2xl border border-border bg-card shadow-xs">
+                      <div className="flex items-center justify-between pb-1 px-1 border-b border-border/80">
+                        <span className="text-[11px] font-mono font-bold uppercase text-muted-foreground">
+                          Slides ({presentationSession.slides.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleAddNewSlide}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
+                        >
+                          <Plus className="h-3 w-3" /> Add Slide
+                        </button>
+                      </div>
+
+                      {presentationSession.slides.map((s, idx) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setCurrentSlideIdx(idx)}
+                          className={`p-2.5 rounded-xl border text-left transition-all ${
+                            idx === currentSlideIdx
+                              ? "border-primary bg-primary/10 shadow-xs font-bold ring-1 ring-primary/40"
+                              : "border-border hover:bg-surface-2"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
+                            <span className="font-bold flex items-center gap-1.5 text-foreground">
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  idx === currentSlideIdx ? "bg-primary" : "bg-muted-foreground/40"
+                                }`}
+                              />
+                              {idx === 0 ? "Cover Slide" : `Slide ${idx + 1}`}
+                            </span>
+                            <span className="uppercase text-[9px] px-1.5 py-0.5 rounded bg-surface-2 font-mono">
+                              {idx === 0 ? "cover" : s.layout}
+                            </span>
+                          </div>
+                          <div className="text-xs font-semibold text-foreground truncate">
+                            {idx === 0 ? metadata.assignmentTitle || "Assignment Cover" : s.title}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate italic mt-0.5">
+                            {idx === 0 ? metadata.courseName || "Academic Submission" : s.subtitle || "Content slide"}
+                          </div>
+                        </button>
+                      ))}
+
+                      {/* Add Slide Bottom Action */}
+                      <button
+                        type="button"
+                        onClick={handleAddNewSlide}
+                        className="mt-1 flex items-center justify-center gap-1.5 p-2 rounded-xl border border-dashed border-border hover:border-primary text-xs font-semibold text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add New Slide</span>
+                      </button>
+                    </div>
+
+                    {/* Active 16:9 Slide Canvas (Interactive In-Canvas Direct Editing) */}
+                    <div className="space-y-3">
+                      <div
+                        className="w-full aspect-[16/9] rounded-2xl border border-border shadow-lift flex flex-col justify-between overflow-hidden relative select-text transition-all"
+                        style={{
+                          backgroundColor: tokens.bg,
+                          color: tokens.textPrimary,
+                          fontFamily: tokens.fontBody,
+                        }}
+                      >
+                        {/* Decorative Theme Accent Top Bar */}
+                        <div
+                          className="absolute top-0 left-0 right-0 h-1.5 z-10"
+                          style={{ backgroundColor: tokens.accent }}
+                        />
+
+                        {currentSlideIdx === 0 ? (
+                          /* Slide 1: Assignment Cover Page (16:9 Widescreen) */
+                          <div className="h-full w-full">
+                            <AssignmentCoverRenderer
+                              metadata={metadata}
+                              aspectRatio="16:9"
+                            />
+                          </div>
+                        ) : (
+                          /* Content Slides (Slide 2+) Interactive In-Canvas Direct Editing */
+                          <div className="h-full w-full p-6 sm:p-8 flex flex-col justify-between">
+                            {/* Slide Header: Category Tag, Editable Title & Subtitle */}
+                            <div className="shrink-0 space-y-1">
+                              <div
+                                className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase pb-2 border-b"
+                                style={{ borderColor: tokens.dividerColor }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="h-2 w-2 rounded-full"
+                                    style={{ backgroundColor: tokens.accent }}
+                                  />
+                                  <input
+                                    type="text"
+                                    value={curSlide.categoryTag || metadata.courseName || "ASSIGNMENT"}
+                                    onChange={(e) => updateCurrentSlide({ categoryTag: e.target.value })}
+                                    style={{ color: tokens.accent }}
+                                    className="bg-transparent font-mono text-[10px] font-bold tracking-widest uppercase outline-none border-b border-transparent hover:border-primary/40 focus:border-primary"
+                                    title="Click to edit category tag"
+                                  />
                                 </div>
-                              ))}
+                                <div className="flex items-center gap-2 text-[10px] font-mono" style={{ color: tokens.textMuted }}>
+                                  <span
+                                    className="uppercase px-1.5 py-0.5 rounded"
+                                    style={{
+                                      backgroundColor: tokens.cardBg,
+                                      borderColor: tokens.cardBorder,
+                                      borderWidth: "1px",
+                                    }}
+                                  >
+                                    {curSlide.layout}
+                                  </span>
+                                  <span>Slide {currentSlideIdx + 1} of {presentationSession.slides.length}</span>
+                                </div>
+                              </div>
+
+                              {/* Editable Slide Title */}
+                              <input
+                                type="text"
+                                value={curSlide.title}
+                                onChange={(e) => updateCurrentSlide({ title: e.target.value })}
+                                style={{
+                                  fontSize: `${curSlide.titleFontSize || 26}px`,
+                                  fontWeight: curSlide.isTitleBold !== false ? "bold" : "normal",
+                                  color: curSlide.textColor || tokens.textPrimary,
+                                  fontFamily: tokens.fontTitle,
+                                }}
+                                className="w-full bg-transparent outline-none border-b border-transparent hover:border-border/60 focus:border-primary/60 transition-colors mt-1.5"
+                                placeholder="Slide Title..."
+                              />
+
+                              {/* Editable Subtitle */}
+                              <input
+                                type="text"
+                                value={curSlide.subtitle || ""}
+                                onChange={(e) => updateCurrentSlide({ subtitle: e.target.value })}
+                                style={{
+                                  fontStyle: curSlide.isSubtitleItalic !== false ? "italic" : "normal",
+                                  color: tokens.textSecondary,
+                                  fontFamily: tokens.fontBody,
+                                }}
+                                className="w-full bg-transparent text-xs sm:text-sm outline-none border-b border-transparent hover:border-border/60 focus:border-primary/60 transition-colors"
+                                placeholder="Add subtitle or topic overview..."
+                              />
                             </div>
 
-                            <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                              <span>{metadata.courseName}</span>
+                            {/* Dynamic Slide Body by Layout */}
+                            <div className="flex-1 my-auto py-2 overflow-y-auto">
+                              {/* 1. AGENDA LAYOUT */}
+                              {curSlide.layout === "agenda" && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-auto">
+                                  {(curSlide.bullets || []).map((topic, bIdx) => (
+                                    <div
+                                      key={bIdx}
+                                      className="group/topic flex items-center gap-3 rounded-xl border p-3 transition-all"
+                                      style={{
+                                        backgroundColor: tokens.cardBg,
+                                        borderColor: tokens.cardBorder,
+                                        color: tokens.cardText,
+                                      }}
+                                    >
+                                      <span
+                                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold font-mono text-white"
+                                        style={{ backgroundColor: tokens.accent }}
+                                      >
+                                        0{bIdx + 1}
+                                      </span>
+                                      <input
+                                        type="text"
+                                        value={topic}
+                                        onChange={(e) => handleUpdateBullet(bIdx, e.target.value)}
+                                        className="flex-1 bg-transparent text-xs sm:text-sm font-semibold outline-none border-b border-transparent hover:border-border/60 focus:border-primary/60"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveBullet(bIdx)}
+                                        className="opacity-0 group-hover/topic:opacity-100 p-1 text-muted-foreground hover:text-red-500"
+                                        title="Remove point"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={handleAddBullet}
+                                    className="flex items-center justify-center gap-1.5 p-3 rounded-xl border border-dashed border-border hover:border-primary text-xs text-muted-foreground hover:text-primary transition-colors"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    <span>Add Agenda Topic</span>
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* 2. TWO-COLUMN COMPARATIVE LAYOUT */}
+                              {curSlide.layout === "two-column" && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-auto">
+                                  {/* Left Column Card */}
+                                  <div
+                                    className="rounded-xl border p-4 space-y-2.5 shadow-2xs"
+                                    style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
+                                  >
+                                    <input
+                                      type="text"
+                                      value={curSlide.leftColumn?.title || "Primary Analysis"}
+                                      onChange={(e) =>
+                                        updateCurrentSlide({
+                                          leftColumn: {
+                                            title: e.target.value,
+                                            bullets: curSlide.leftColumn?.bullets || curSlide.bullets?.slice(0, 3) || [],
+                                          },
+                                        })
+                                      }
+                                      className="w-full font-bold text-xs sm:text-sm bg-transparent border-b pb-1 outline-none"
+                                      style={{ color: tokens.cardText, borderColor: tokens.dividerColor }}
+                                    />
+                                    {(curSlide.leftColumn?.bullets || curSlide.bullets?.slice(0, 3) || []).map((b, idx) => (
+                                      <div key={idx} className="flex items-start gap-2 text-xs">
+                                        <span
+                                          className="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0"
+                                          style={{ backgroundColor: tokens.accent }}
+                                        />
+                                        <input
+                                          type="text"
+                                          value={b}
+                                          onChange={(e) => {
+                                            const bullets = [...(curSlide.leftColumn?.bullets || curSlide.bullets?.slice(0, 3) || [])];
+                                            bullets[idx] = e.target.value;
+                                            updateCurrentSlide({
+                                              leftColumn: { title: curSlide.leftColumn?.title || "Primary Analysis", bullets },
+                                            });
+                                          }}
+                                          className="flex-1 bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                          style={{ color: tokens.cardText }}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Right Column Card */}
+                                  <div
+                                    className="rounded-xl border p-4 space-y-2.5 shadow-2xs"
+                                    style={{ backgroundColor: tokens.cardBg, borderColor: tokens.accent }}
+                                  >
+                                    <input
+                                      type="text"
+                                      value={curSlide.rightColumn?.title || "Evaluation & Next Steps"}
+                                      onChange={(e) =>
+                                        updateCurrentSlide({
+                                          rightColumn: {
+                                            title: e.target.value,
+                                            bullets: curSlide.rightColumn?.bullets || curSlide.bullets?.slice(3) || [],
+                                          },
+                                        })
+                                      }
+                                      className="w-full font-bold text-xs sm:text-sm bg-transparent border-b pb-1 outline-none"
+                                      style={{ color: tokens.accent, borderColor: tokens.dividerColor }}
+                                    />
+                                    {(curSlide.rightColumn?.bullets || curSlide.bullets?.slice(3) || []).map((b, idx) => (
+                                      <div key={idx} className="flex items-start gap-2 text-xs">
+                                        <span
+                                          className="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0"
+                                          style={{ backgroundColor: tokens.accent }}
+                                        />
+                                        <input
+                                          type="text"
+                                          value={b}
+                                          onChange={(e) => {
+                                            const bullets = [...(curSlide.rightColumn?.bullets || curSlide.bullets?.slice(3) || [])];
+                                            bullets[idx] = e.target.value;
+                                            updateCurrentSlide({
+                                              rightColumn: { title: curSlide.rightColumn?.title || "Evaluation & Next Steps", bullets },
+                                            });
+                                          }}
+                                          className="flex-1 bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                          style={{ color: tokens.cardText }}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 3. QUOTE / TAKEAWAY LAYOUT */}
+                              {curSlide.layout === "quote" && (
+                                <div
+                                  className="rounded-2xl border p-6 my-auto space-y-3 relative overflow-hidden shadow-xs"
+                                  style={{
+                                    backgroundColor: tokens.cardBg,
+                                    borderColor: tokens.accent,
+                                    borderWidth: "1.5px",
+                                  }}
+                                >
+                                  <span className="text-4xl font-serif font-bold leading-none block" style={{ color: tokens.accent }}>
+                                    “
+                                  </span>
+                                  <textarea
+                                    rows={2}
+                                    value={
+                                      curSlide.quote?.text ||
+                                      curSlide.subtitle ||
+                                      curSlide.bullets?.[0] ||
+                                      "Decisive academic finding and core strategic insight."
+                                    }
+                                    onChange={(e) =>
+                                      updateCurrentSlide({
+                                        quote: {
+                                          text: e.target.value,
+                                          author: curSlide.quote?.author || "Author / Researcher",
+                                          role: curSlide.quote?.role || "Academic Citation",
+                                        },
+                                      })
+                                    }
+                                    className="w-full text-base sm:text-lg italic font-serif bg-transparent outline-none resize-none border-b border-transparent hover:border-border/60"
+                                    style={{ color: tokens.cardText }}
+                                  />
+                                  <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: tokens.dividerColor }}>
+                                    <span className="text-xs font-bold" style={{ color: tokens.accent }}>—</span>
+                                    <input
+                                      type="text"
+                                      value={curSlide.quote?.author || "Author / Researcher"}
+                                      onChange={(e) =>
+                                        updateCurrentSlide({
+                                          quote: {
+                                            text: curSlide.quote?.text || "Decisive academic finding.",
+                                            author: e.target.value,
+                                            role: curSlide.quote?.role || "Academic Citation",
+                                          },
+                                        })
+                                      }
+                                      className="text-xs font-bold bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                      style={{ color: tokens.accent }}
+                                      placeholder="Author"
+                                    />
+                                    <span className="text-xs text-muted-foreground">•</span>
+                                    <input
+                                      type="text"
+                                      value={curSlide.quote?.role || "Academic Citation"}
+                                      onChange={(e) =>
+                                        updateCurrentSlide({
+                                          quote: {
+                                            text: curSlide.quote?.text || "Decisive academic finding.",
+                                            author: curSlide.quote?.author || "Author",
+                                            role: e.target.value,
+                                          },
+                                        })
+                                      }
+                                      className="text-xs text-muted-foreground bg-transparent outline-none border-b border-transparent hover:border-border/60"
+                                      placeholder="Role / Source"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 4. CONCLUSION LAYOUT */}
+                              {curSlide.layout === "conclusion" && (
+                                <div
+                                  className="rounded-2xl border p-5 my-auto space-y-3 shadow-xs"
+                                  style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
+                                >
+                                  <div className="text-[10px] font-mono font-bold tracking-wider uppercase" style={{ color: tokens.accent }}>
+                                    FINAL SYNTHESIS & CHECKLIST
+                                  </div>
+                                  <div className="space-y-2">
+                                    {(curSlide.bullets || []).map((b, idx) => (
+                                      <div key={idx} className="group/concl flex items-center gap-3">
+                                        <span
+                                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                                          style={{ backgroundColor: tokens.accent }}
+                                        >
+                                          ✓
+                                        </span>
+                                        <input
+                                          type="text"
+                                          value={b}
+                                          onChange={(e) => handleUpdateBullet(idx, e.target.value)}
+                                          className="flex-1 bg-transparent text-xs sm:text-sm outline-none border-b border-transparent hover:border-border/60"
+                                          style={{ color: tokens.cardText }}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveBullet(idx)}
+                                          className="opacity-0 group-hover/concl:opacity-100 p-1 text-muted-foreground hover:text-red-500"
+                                          title="Remove point"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={handleAddBullet}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg border border-dashed border-border hover:border-primary text-muted-foreground hover:text-primary transition-colors"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    <span>Add Conclusion Point</span>
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* 5. METRICS / TELEMETRY LAYOUT */}
+                              {curSlide.layout === "metrics" && (
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-auto">
+                                  {(curSlide.metrics || [
+                                    { value: "100%", label: "Accuracy", description: "Verified data" },
+                                    { value: "4.5x", label: "Efficiency", description: "Speed improvement" },
+                                    { value: "Zero", label: "Anomalies", description: "Error free" },
+                                  ]).map((m, mIdx) => (
+                                    <div
+                                      key={mIdx}
+                                      className="rounded-xl border p-4 flex flex-col justify-between space-y-1 shadow-xs"
+                                      style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
+                                    >
+                                      <div className="h-1 w-8 rounded-full mb-2" style={{ backgroundColor: tokens.accent }} />
+                                      <input
+                                        type="text"
+                                        value={m.value}
+                                        onChange={(e) => {
+                                          const metrics = [...(curSlide.metrics || [
+                                            { value: "100%", label: "Accuracy", description: "Verified data" },
+                                            { value: "4.5x", label: "Efficiency", description: "Speed improvement" },
+                                            { value: "Zero", label: "Anomalies", description: "Error free" },
+                                          ])];
+                                          metrics[mIdx] = { ...metrics[mIdx]!, value: e.target.value };
+                                          updateCurrentSlide({ metrics });
+                                        }}
+                                        className="text-2xl sm:text-3xl font-mono font-bold bg-transparent outline-none"
+                                        style={{ color: tokens.accent }}
+                                      />
+                                      <input
+                                        type="text"
+                                        value={m.label}
+                                        onChange={(e) => {
+                                          const metrics = [...(curSlide.metrics || [
+                                            { value: "100%", label: "Accuracy", description: "Verified data" },
+                                            { value: "4.5x", label: "Efficiency", description: "Speed improvement" },
+                                            { value: "Zero", label: "Anomalies", description: "Error free" },
+                                          ])];
+                                          metrics[mIdx] = { ...metrics[mIdx]!, label: e.target.value };
+                                          updateCurrentSlide({ metrics });
+                                        }}
+                                        className="text-xs sm:text-sm font-semibold bg-transparent outline-none"
+                                        style={{ color: tokens.cardText }}
+                                      />
+                                      <input
+                                        type="text"
+                                        value={m.description || ""}
+                                        onChange={(e) => {
+                                          const metrics = [...(curSlide.metrics || [
+                                            { value: "100%", label: "Accuracy", description: "Verified data" },
+                                            { value: "4.5x", label: "Efficiency", description: "Speed improvement" },
+                                            { value: "Zero", label: "Anomalies", description: "Error free" },
+                                          ])];
+                                          metrics[mIdx] = { ...metrics[mIdx]!, description: e.target.value };
+                                          updateCurrentSlide({ metrics });
+                                        }}
+                                        className="text-[11px] bg-transparent outline-none"
+                                        style={{ color: tokens.cardMuted }}
+                                        placeholder="Description..."
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* 6. DEFAULT / CONTENT LAYOUT (Executive Bullet Cards) */}
+                              {curSlide.layout !== "agenda" &&
+                                curSlide.layout !== "two-column" &&
+                                curSlide.layout !== "quote" &&
+                                curSlide.layout !== "conclusion" &&
+                                curSlide.layout !== "metrics" && (
+                                  <div
+                                    className="rounded-2xl border p-5 sm:p-6 my-auto space-y-3 relative overflow-hidden shadow-xs"
+                                    style={{
+                                      backgroundColor: tokens.cardBg,
+                                      borderColor: tokens.cardBorder,
+                                      borderLeftWidth: "4px",
+                                      borderLeftColor: tokens.accent,
+                                    }}
+                                  >
+                                    {(curSlide.bullets || []).map((b, bIdx) => (
+                                      <div key={bIdx} className="group/bullet flex items-start gap-2.5">
+                                        <span
+                                          className="h-2 w-2 rounded-full shrink-0 mt-2"
+                                          style={{ backgroundColor: tokens.accent }}
+                                        />
+                                        <textarea
+                                          rows={1}
+                                          value={b}
+                                          onChange={(e) => handleUpdateBullet(bIdx, e.target.value)}
+                                          style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                                          className="flex-1 bg-transparent text-xs sm:text-sm outline-none resize-none border-b border-transparent hover:border-border/60 focus:border-primary/60 transition-colors leading-relaxed"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveBullet(bIdx)}
+                                          className="opacity-0 group-hover/bullet:opacity-100 p-1 text-muted-foreground hover:text-red-500 transition-opacity"
+                                          title="Remove point"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+
+                                    <button
+                                      type="button"
+                                      onClick={handleAddBullet}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg border border-dashed border-border hover:border-primary text-muted-foreground hover:text-primary transition-colors mt-2"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      <span>Add Bullet Point</span>
+                                    </button>
+                                  </div>
+                                )}
+                            </div>
+
+                            {/* Running Footer */}
+                            <div
+                              className="pt-2 border-t flex items-center justify-between text-[10px] font-mono shrink-0"
+                              style={{ borderColor: tokens.dividerColor, color: tokens.textMuted }}
+                            >
+                              <span>{metadata.universityName || metadata.courseName}</span>
                               <span>Slide {currentSlideIdx + 1} of {presentationSession.slides.length}</span>
                             </div>
                           </div>
-                        );
-                      })()
-                    )}
+                        )}
+                      </div>
+
+                      {/* Presenter Notes Expandable Drawer */}
+                      {showNotesDrawer && currentSlideIdx > 0 && (
+                        <div className="p-3.5 rounded-xl border border-border bg-card space-y-1.5 shadow-xs">
+                          <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                            <span className="flex items-center gap-1.5">
+                              <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                              Presenter Speaker Notes for Slide {currentSlideIdx + 1}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted-foreground/80">
+                              Exported to PowerPoint notes
+                            </span>
+                          </div>
+                          <textarea
+                            rows={2}
+                            value={curSlide.notes || ""}
+                            onChange={(e) => updateCurrentSlide({ notes: e.target.value })}
+                            placeholder="Add speaker talking points, guidance, or research citations..."
+                            className="w-full text-xs p-2 rounded-lg border border-border bg-surface-2/40 text-foreground outline-none resize-none focus:border-primary"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
+              );
+            })()
           )}
 
           {/* Navigation Controls */}
@@ -2305,6 +3257,128 @@ export function UnifiedAssignmentWorkflow({
             toast.success("Applied custom cover canvas design!");
           }}
         />
+      )}
+
+      {/* Quick Edit Cover Metadata Modal */}
+      {isEditCoverModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-serif font-bold text-base flex items-center gap-2 text-foreground">
+                <Edit3 className="h-4 w-4 text-primary" />
+                Quick Edit Assignment Cover Information
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsEditCoverModalOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-muted-foreground font-semibold mb-1">Assignment Title</label>
+                <input
+                  type="text"
+                  value={metadata.assignmentTitle || ""}
+                  onChange={(e) => updateMetaField("assignmentTitle", e.target.value)}
+                  className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-muted-foreground font-semibold mb-1">Course Name</label>
+                  <input
+                    type="text"
+                    value={metadata.courseName || ""}
+                    onChange={(e) => updateMetaField("courseName", e.target.value)}
+                    className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-muted-foreground font-semibold mb-1">Instructor (Submitted to)</label>
+                  <input
+                    type="text"
+                    value={metadata.instructorName || ""}
+                    onChange={(e) => updateMetaField("instructorName", e.target.value)}
+                    className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                  />
+                </div>
+              </div>
+
+              {metadata.assignmentType === "individual" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Student Full Name</label>
+                    <input
+                      type="text"
+                      value={metadata.studentName || ""}
+                      onChange={(e) => updateMetaField("studentName", e.target.value)}
+                      className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-muted-foreground font-semibold mb-1">Student ID</label>
+                    <input
+                      type="text"
+                      value={metadata.studentId || ""}
+                      onChange={(e) => updateMetaField("studentId", e.target.value)}
+                      className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-muted-foreground font-semibold mb-1">Group Name</label>
+                  <input
+                    type="text"
+                    value={metadata.groupName || ""}
+                    onChange={(e) => updateMetaField("groupName", e.target.value)}
+                    className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-muted-foreground font-semibold mb-1">University / College</label>
+                  <input
+                    type="text"
+                    value={metadata.universityName || ""}
+                    onChange={(e) => updateMetaField("universityName", e.target.value)}
+                    className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-muted-foreground font-semibold mb-1">Submission Date</label>
+                  <input
+                    type="text"
+                    value={metadata.submissionDate || ""}
+                    onChange={(e) => updateMetaField("submissionDate", e.target.value)}
+                    className="w-full p-2 rounded-lg border border-border bg-surface-2/40 text-foreground"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-border flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="hero"
+                size="sm"
+                onClick={() => {
+                  setIsEditCoverModalOpen(false);
+                  toast.success("Assignment cover information updated!");
+                }}
+                className="text-xs font-semibold"
+              >
+                Apply Changes
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -194,8 +194,13 @@ export function computeThemeTokens(
     textMuted = "#64748B";
 
     // Cards slightly shaded with crisp border
-    cardBg = adjustHex(rawBg, -6);
-    cardBorder = adjustHex(rawBg, -24);
+    if (rawBg.toUpperCase() === "#FFFFFF") {
+      cardBg = "#F8FAFC";
+      cardBorder = "#E2E8F0";
+    } else {
+      cardBg = adjustHex(rawBg, -8);
+      cardBorder = adjustHex(rawBg, -28);
+    }
     cardText = textPrimary;
     cardMuted = textMuted;
     dividerColor = adjustHex(rawBg, -20);

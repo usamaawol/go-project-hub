@@ -48,6 +48,12 @@ export interface SlidePreviewItem {
     caption?: string;
   };
   notes?: string;
+  // Interactive slide formatting overrides
+  titleFontSize?: number;
+  isTitleBold?: boolean;
+  isSubtitleItalic?: boolean;
+  textColor?: string;
+  cardBgColor?: string;
 }
 
 export interface PresentationSessionData {
