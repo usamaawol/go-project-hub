@@ -513,5 +513,50 @@ Zero permanent storage of sensitive documents.
       const docxSize = (docxBlob as any).size ?? (docxBlob as any).byteLength ?? (docxBlob as any).length;
       expect(docxSize).toBeGreaterThan(500);
     });
+
+    it("faithfully preserves user-edited text colors and styles WITHOUT generating strikethrough lines", async () => {
+      const { parseInlineHtmlToRuns, parseHtmlToBlocks } = await import("../lib/document-synthesizer");
+      const { generateClientDocx, generateClientPdf } = await import("../lib/document-converter");
+
+      const editedHtml = `
+        <h2 style="color: rgb(5, 150, 105);">ASSIGNMENT SUBMISSION</h2>
+        <p><span style="color: rgb(37, 99, 235);"><strong>Student Name</strong> Solomon Zewdu Student ID 3086/17 Section A</span></p>
+      `;
+
+      // 1. Verify inline run parser does NOT create false strikethroughs for <span ...>
+      const paragraphRuns = parseInlineHtmlToRuns('<span style="color: rgb(37, 99, 235);"><strong>Student Name</strong> Solomon Zewdu</span>');
+      expect(paragraphRuns.length).toBe(2);
+
+      // Run 1: Student Name
+      expect(paragraphRuns[0]!.text).toBe("Student Name");
+      expect(paragraphRuns[0]!.bold).toBe(true);
+      expect(paragraphRuns[0]!.strike).toBe(false); // CRITICAL: NO strikethrough!
+      expect(paragraphRuns[0]!.color).toBe("2563EB"); // Royal blue preserved!
+
+      // Run 2: Solomon Zewdu
+      expect(paragraphRuns[1]!.text).toContain("Solomon Zewdu");
+      expect(paragraphRuns[1]!.bold).toBe(false);
+      expect(paragraphRuns[1]!.strike).toBe(false); // CRITICAL: NO strikethrough!
+      expect(paragraphRuns[1]!.color).toBe("2563EB");
+
+      // 2. Verify HTML block parser
+      const blocks = parseHtmlToBlocks(editedHtml);
+      expect(blocks.length).toBe(2);
+      expect(blocks[0]!.type).toBe("heading2");
+      expect(blocks[0]!.runs?.[0]?.color).toBe("059669"); // Emerald green preserved!
+      expect(blocks[1]!.type).toBe("paragraph");
+      expect(blocks[1]!.runs?.[0]?.color).toBe("2563EB");
+      expect(blocks[1]!.runs?.[0]?.strike).toBe(false);
+
+      // 3. Export to DOCX and PDF to verify end-to-end binary generation
+      const docxBlob = await generateClientDocx(editedHtml, "edited_assignment");
+      expect(docxBlob).toBeDefined();
+      const docxSize = (docxBlob as any).size ?? (docxBlob as any).byteLength;
+      expect(docxSize).toBeGreaterThan(500);
+
+      const pdfBlob = await generateClientPdf(editedHtml, "edited_assignment");
+      expect(pdfBlob).toBeDefined();
+      expect(pdfBlob.size).toBeGreaterThan(500);
+    });
   });
 });

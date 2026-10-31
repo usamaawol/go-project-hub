@@ -162,13 +162,31 @@ export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
         return `<p style="font-size: 1.1em; font-weight: 500; opacity: 0.85; margin-bottom: 0.8em; color: inherit;">${escapeHtml(b.text || "")}</p>`;
       }
       if (b.type === "heading1") {
-        return `<h2 style="font-size: 1.4em; font-weight: 700; margin-top: 1.2em; margin-bottom: 0.45em; line-height: 1.3; color: inherit;">${escapeHtml(b.text || "")}</h2>`;
+        const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
+        const runsHtml = b.runs && b.runs.length > 0 ? b.runs.map(r => {
+          let t = escapeHtml(r.text);
+          if (r.color) t = `<span style="color: #${r.color.replace("#", "")};">${t}</span>`;
+          return t;
+        }).join("") : escapeHtml(b.text || "");
+        return `<h2 style="font-size: 1.4em; font-weight: 700; margin-top: 1.2em; margin-bottom: 0.45em; line-height: 1.3; color: inherit;${alignStyle}">${runsHtml}</h2>`;
       }
       if (b.type === "heading2") {
-        return `<h3 style="font-size: 1.2em; font-weight: 700; margin-top: 1em; margin-bottom: 0.35em; line-height: 1.35; color: inherit;">${escapeHtml(b.text || "")}</h3>`;
+        const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
+        const runsHtml = b.runs && b.runs.length > 0 ? b.runs.map(r => {
+          let t = escapeHtml(r.text);
+          if (r.color) t = `<span style="color: #${r.color.replace("#", "")};">${t}</span>`;
+          return t;
+        }).join("") : escapeHtml(b.text || "");
+        return `<h3 style="font-size: 1.2em; font-weight: 700; margin-top: 1em; margin-bottom: 0.35em; line-height: 1.35; color: inherit;${alignStyle}">${runsHtml}</h3>`;
       }
       if (b.type === "heading3") {
-        return `<h4 style="font-size: 1.05em; font-weight: 600; margin-top: 0.8em; margin-bottom: 0.3em; line-height: 1.4; color: inherit;">${escapeHtml(b.text || "")}</h4>`;
+        const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
+        const runsHtml = b.runs && b.runs.length > 0 ? b.runs.map(r => {
+          let t = escapeHtml(r.text);
+          if (r.color) t = `<span style="color: #${r.color.replace("#", "")};">${t}</span>`;
+          return t;
+        }).join("") : escapeHtml(b.text || "");
+        return `<h4 style="font-size: 1.05em; font-weight: 600; margin-top: 0.8em; margin-bottom: 0.3em; line-height: 1.4; color: inherit;${alignStyle}">${runsHtml}</h4>`;
       }
       if (b.type === "list" && b.items) {
         return `<ul style="margin: 0.6em 0; padding-left: 1.6em; list-style-type: disc;">\n${b.items
@@ -206,12 +224,16 @@ export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
             if (r.italics) t = `<em>${t}</em>`;
             if (r.underline) t = `<u>${t}</u>`;
             if (r.strike) t = `<s>${t}</s>`;
+            if (r.color) t = `<span style="color: #${r.color.replace("#", "")};">${t}</span>`;
+            if (r.highlight) t = `<mark style="background-color: #${r.highlight.replace("#", "")};">${t}</mark>`;
             return t;
           })
           .join("");
-        return `<p style="margin-bottom: 0.75em;">${runsHtml}</p>`;
+        const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
+        return `<p style="margin-bottom: 0.75em;${alignStyle}">${runsHtml}</p>`;
       }
-      return `<p style="margin-bottom: 0.75em;">${escapeHtml(b.text || "")}</p>`;
+      const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
+      return `<p style="margin-bottom: 0.75em;${alignStyle}">${escapeHtml(b.text || "")}</p>`;
     })
     .join("\n");
 }
