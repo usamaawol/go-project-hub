@@ -818,13 +818,43 @@ export function UnifiedAssignmentWorkflow({
         metadata.courseName?.trim() ||
         "Course Assignment";
 
+      // AI Intelligent Cover Layout Decision
+      const selectedTemplate = COVER_TEMPLATES.find((t) => t.id === metadata.coverTemplateId);
+      const isCenteredTpl =
+        selectedTemplate?.category === "Minimalist" ||
+        selectedTemplate?.category === "Academic" ||
+        selectedTemplate?.id.includes("thesis") ||
+        selectedTemplate?.id.includes("classic") ||
+        selectedTemplate?.id.includes("circular");
+
+      const aiAlignment: "left" | "center" | "right" =
+        metadata.coverTitleAlignment || (isCenteredTpl ? "center" : "left");
+      const titleLen = title.length;
+      const isLongTitle = titleLen > 35;
+      const isShortTitle = titleLen <= 16;
+      const hasManyMembers = (metadata.groupMembers || []).length > 2;
+      const aiPosition: "top" | "middle" | "lower" =
+        metadata.coverTitlePosition || (isLongTitle || hasManyMembers ? "top" : "middle");
+      const aiFontSize =
+        metadata.coverTitleFontSize || (isShortTitle ? 44 : isLongTitle ? 32 : 38);
+
+      const aiEnhancedMeta: AssignmentMetadata = {
+        ...metadata,
+        isAssignment: true,
+        coverTitleAlignment: aiAlignment,
+        coverTitlePosition: aiPosition,
+        coverTitleFontSize: aiFontSize,
+      };
+
+      setMetadata(aiEnhancedMeta);
+
       const slides = buildSlideDeckContent(
         title,
         rawContent,
         8,
         "balanced",
         "Academic Assignment",
-        { ...metadata, isAssignment: true },
+        aiEnhancedMeta,
       );
 
       const session: PresentationSessionData = {
@@ -832,14 +862,14 @@ export function UnifiedAssignmentWorkflow({
         title,
         purpose: "Academic Assignment",
         density: "balanced",
-        assignmentMetadata: { ...metadata, isAssignment: true },
+        assignmentMetadata: aiEnhancedMeta,
         theme: {
           id: "corporate-clean",
           name: "Academic Clean",
           category: "Academic",
           kind: "academic",
           colors: {
-            primary: metadata.accentColor || "#1E3A8A",
+            primary: aiEnhancedMeta.accentColor || "#1E3A8A",
             accent: "#3B82F6",
             bg: "#FFFFFF",
           },
@@ -3895,6 +3925,34 @@ export function UnifiedAssignmentWorkflow({
                               />
                             </div>
 
+                            {/* Academic Year */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Academic Year / Level
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.academicYear || ""}
+                                onChange={(e) => updateMetaField("academicYear", e.target.value)}
+                                placeholder="e.g. 3rd Year, Junior, 2026"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Semester / Term */}
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-semibold text-muted-foreground">
+                                Semester / Term
+                              </label>
+                              <input
+                                type="text"
+                                value={metadata.semester || ""}
+                                onChange={(e) => updateMetaField("semester", e.target.value)}
+                                placeholder="e.g. 1st Semester, Fall Term"
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                              />
+                            </div>
+
                             {/* Submission Date */}
                             <div className="space-y-1">
                               <label className="text-[11px] font-semibold text-muted-foreground">
@@ -3920,6 +3978,90 @@ export function UnifiedAssignmentWorkflow({
                                 placeholder="Add custom notes, project version, or additional credentials visible on the cover page..."
                                 className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
                               />
+                            </div>
+
+                            {/* Quick Layout & Placement Controls */}
+                            <div className="sm:col-span-2 lg:col-span-3 pt-2 border-t border-border/60 flex flex-wrap items-center justify-between gap-3 bg-surface-2/30 p-2.5 rounded-xl">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-bold text-muted-foreground uppercase font-mono">
+                                  Layout Alignment:
+                                </span>
+                                <div className="inline-flex rounded-lg border border-border p-0.5 bg-background">
+                                  {(["left", "center", "right"] as const).map((align) => (
+                                    <button
+                                      key={align}
+                                      type="button"
+                                      onClick={() => {
+                                        updateMetaField("coverTitleAlignment", align);
+                                        toast.success(`Cover aligned ${align}`);
+                                      }}
+                                      className={`px-2.5 py-1 text-xs font-semibold rounded capitalize transition-all ${
+                                        (metadata.coverTitleAlignment || "left") === align
+                                          ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                                          : "text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      {align}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-bold text-muted-foreground uppercase font-mono">
+                                  Vertical Zone:
+                                </span>
+                                <div className="inline-flex rounded-lg border border-border p-0.5 bg-background">
+                                  {(
+                                    [
+                                      { id: "top", label: "Top" },
+                                      { id: "middle", label: "Centered" },
+                                      { id: "lower", label: "Lower" },
+                                    ] as const
+                                  ).map((pos) => (
+                                    <button
+                                      key={pos.id}
+                                      type="button"
+                                      onClick={() => {
+                                        updateMetaField("coverTitlePosition", pos.id);
+                                        toast.success(`Positioned ${pos.label}`);
+                                      }}
+                                      className={`px-2.5 py-1 text-xs font-semibold rounded transition-all ${
+                                        (metadata.coverTitlePosition || "middle") === pos.id
+                                          ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                                          : "text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      {pos.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-bold text-muted-foreground uppercase font-mono">
+                                  Title Size:
+                                </span>
+                                <div className="inline-flex rounded-lg border border-border p-0.5 bg-background">
+                                  {[28, 36, 44, 50].map((sz) => (
+                                    <button
+                                      key={sz}
+                                      type="button"
+                                      onClick={() => {
+                                        updateMetaField("coverTitleFontSize", sz);
+                                        toast.success(`Title font size set to ${sz}pt`);
+                                      }}
+                                      className={`px-2 py-1 text-xs font-mono font-semibold rounded transition-all ${
+                                        (metadata.coverTitleFontSize || 38) === sz
+                                          ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                                          : "text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      {sz}pt
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>

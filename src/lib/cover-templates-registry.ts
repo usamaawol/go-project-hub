@@ -58,7 +58,7 @@ function postProcessCoverElements(
       (e) => e.id === "cover-logo" || e.name?.toLowerCase().includes("logo"),
     );
     const logoX = 60;
-    const logoY = is169 ? 35 : 48;
+    const logoY = is169 ? 35 : 45;
     const logoW = 140;
     const logoH = is169 ? 60 : 65;
 
@@ -88,11 +88,10 @@ function postProcessCoverElements(
       });
     }
 
-    // 2. Prevent Logo & Text / Shapes Overriding Each Other
+    // Prevent logo & text / shapes overlapping in top-left
     for (let i = 0; i < processed.length; i++) {
       const el = processed[i]!;
       if (el.id === "cover-logo") continue;
-
       if (el.type === "text" || el.type === "badge") {
         if (el.x < 220 && el.y < 110) {
           if (el.isMetadataField === "assignmentTitle" || el.id?.includes("title")) {
@@ -106,39 +105,7 @@ function postProcessCoverElements(
     }
   }
 
-  // 3. Page-Filling Balance for 16:9 Widescreen
-  if (is169) {
-    const metaElements = processed.filter(
-      (e) =>
-        e.type === "text" &&
-        e.id !== "canvas-bg" &&
-        !e.id?.includes("title") &&
-        !e.id?.includes("brand") &&
-        !e.id?.includes("footer") &&
-        e.y > 220,
-    );
-
-    if (metaElements.length > 0) {
-      const minY = Math.min(...metaElements.map((e) => e.y));
-      const maxY = Math.max(...metaElements.map((e) => e.y + e.height));
-      const span = maxY - minY;
-
-      if (span < 200 && maxY < 580) {
-        const targetStart = 340;
-        const targetEnd = 620;
-        const scaleFactor = (targetEnd - targetStart) / Math.max(span, 1);
-
-        for (const el of metaElements) {
-          el.y = Math.round(targetStart + (el.y - minY) * Math.min(scaleFactor, 1.8));
-          if (el.fontSize && el.fontSize < 16) {
-            el.fontSize = Math.min(18, el.fontSize + 2);
-          }
-        }
-      }
-    }
-  }
-
-  // 4. Remove Fake Placeholders (reallygreatsite, +123-456-7890)
+  // 2. Remove Fake Placeholders (reallygreatsite, +123-456-7890)
   const realAcademicContact = [
     meta.universityName,
     meta.department,
@@ -149,14 +116,12 @@ function postProcessCoverElements(
   for (const el of processed) {
     if (el.type === "text" && el.text) {
       if (el.text.includes("reallygreatsite.com") || el.text.includes("+123-456-7890")) {
-        if (realAcademicContact) {
-          el.text = realAcademicContact;
-        }
+        el.text = realAcademicContact || "Academic Assignment Submission";
       }
     }
   }
 
-  // 5. Top-Right Brand / University Pill Badge Dynamic Sizing & Positioning (Prevents Text Clipping)
+  // 3. Top-Right Brand / University Pill Badge Dynamic Sizing & Positioning
   const brandPillIdx = processed.findIndex(
     (e) =>
       (e.type === "badge" || e.shapeType === "badge-pill") &&
@@ -178,7 +143,7 @@ function postProcessCoverElements(
       brandText.fontSize = dynamicFontSize;
       const textW = Math.max(140, Math.min(380, Math.ceil(charCount * (dynamicFontSize * 0.72) + 28)));
       const pillW = textW + 32;
-      const rightMargin = is169 ? 60 : 45;
+      const rightMargin = is169 ? 70 : 45;
 
       if (brandPillIdx >= 0) {
         const brandPill = processed[brandPillIdx]!;
@@ -197,7 +162,7 @@ function postProcessCoverElements(
     }
   }
 
-  // 6. User Custom Cover Font Family
+  // 4. Custom Font Family
   if (meta.coverFontFamily) {
     for (const el of processed) {
       if (el.type === "text" || el.type === "badge") {
@@ -208,56 +173,7 @@ function postProcessCoverElements(
     }
   }
 
-  // 7. User Custom Cover Title Alignment & Positioning
-  const titleEl = processed.find(
-    (e) =>
-      e.isMetadataField === "assignmentTitle" ||
-      e.id?.includes("title-main") ||
-      e.id === "canva-title" ||
-      (e.type === "text" && e.id?.includes("title") && !e.id?.includes("sub")),
-  );
-
-  if (titleEl) {
-    if (meta.coverTitleAlignment) {
-      titleEl.textAlign = meta.coverTitleAlignment;
-      const subtitleEl = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
-      if (subtitleEl) {
-        subtitleEl.textAlign = meta.coverTitleAlignment;
-      }
-    }
-
-    if (meta.coverTitleFontSize && meta.coverTitleFontSize > 16) {
-      titleEl.fontSize = meta.coverTitleFontSize;
-    }
-
-    if (meta.coverTitleBold !== undefined) {
-      titleEl.fontWeight = meta.coverTitleBold ? "bold" : "normal";
-    }
-
-    if (meta.coverTitlePosition) {
-      if (meta.coverTitlePosition === "top") {
-        const targetY = is169 ? 120 : 160;
-        const delta = targetY - titleEl.y;
-        titleEl.y = targetY;
-        const sub = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
-        if (sub) sub.y = Math.max(targetY + titleEl.height + 10, sub.y + delta);
-      } else if (meta.coverTitlePosition === "middle") {
-        const targetY = is169 ? 240 : 360;
-        const delta = targetY - titleEl.y;
-        titleEl.y = targetY;
-        const sub = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
-        if (sub) sub.y = Math.max(targetY + titleEl.height + 10, sub.y + delta);
-      } else if (meta.coverTitlePosition === "lower") {
-        const targetY = is169 ? 340 : 500;
-        const delta = targetY - titleEl.y;
-        titleEl.y = targetY;
-        const sub = processed.find((e) => e.id?.includes("subtitle") || e.id?.includes("course"));
-        if (sub) sub.y = Math.max(targetY + titleEl.height + 10, sub.y + delta);
-      }
-    }
-  }
-
-  // 8. Custom Note / Add Content on Cover Page
+  // 5. Custom Cover Note Element
   if (meta.coverCustomNotes?.trim()) {
     const existingNoteIdx = processed.findIndex((e) => e.id === "cover-custom-note");
     const noteEl: CanvasCoverElement = {
@@ -281,6 +197,206 @@ function postProcessCoverElements(
       processed[existingNoteIdx] = noteEl;
     } else {
       processed.push(noteEl);
+    }
+  }
+
+  // 6. UNIFIED DYNAMIC FLOW ENGINE (Zero Collision & Full Positioning)
+  // Identify key structural flow elements:
+  const leadTagEl = processed.find(
+    (e) =>
+      e.type === "text" &&
+      (e.id?.includes("year") || e.id?.includes("lead") || e.id?.includes("category")) &&
+      !e.id?.includes("brand") &&
+      e.y < 350,
+  );
+
+  const titleEl = processed.find(
+    (e) =>
+      e.isMetadataField === "assignmentTitle" ||
+      e.id?.includes("title-main") ||
+      e.id === "canva-title" ||
+      (e.type === "text" && e.id?.includes("title") && !e.id?.includes("sub") && !e.id?.includes("year")),
+  );
+
+  const subtitleEl = processed.find(
+    (e) =>
+      e.type === "text" &&
+      (e.id?.includes("subtitle") || e.id?.includes("title-sub") || e.id?.includes("sub-heading")),
+  );
+
+  const metaLabelEl = processed.find(
+    (e) =>
+      e.type === "text" &&
+      (e.id?.includes("meta-label") || e.id?.includes("author-label") || e.text?.toLowerCase().includes("prepared by")),
+  );
+
+  const authorNameEl = processed.find(
+    (e) =>
+      e.isMetadataField === "studentName" ||
+      e.id?.includes("meta-name") ||
+      e.id?.includes("author-name") ||
+      (e.type === "text" && e.id?.includes("author") && !e.id?.includes("label")),
+  );
+
+  const courseInfoEl = processed.find(
+    (e) =>
+      e.type === "text" &&
+      (e.id?.includes("meta-course") || e.id?.includes("student-id") || e.id?.includes("group-members")),
+  );
+
+  const instructorEl = processed.find(
+    (e) =>
+      e.isMetadataField === "instructorName" ||
+      e.id?.includes("meta-instructor") ||
+      (e.type === "text" && e.text?.toLowerCase().includes("submitted to")),
+  );
+
+  const institutionInfoEl = processed.find(
+    (e) =>
+      e.type === "text" &&
+      (e.id?.includes("meta-univ") || e.id?.includes("brand-name") || e.id?.includes("institution-info")),
+  );
+
+  const footerEl = processed.find(
+    (e) =>
+      e.type === "text" &&
+      (e.id?.includes("footer") || e.id?.includes("contact") || e.id?.includes("date-stamp")),
+  );
+
+  const customNoteEl = processed.find((e) => e.id === "cover-custom-note");
+
+  if (titleEl) {
+    // A. Apply User Font Size & Weight
+    if (meta.coverTitleFontSize && meta.coverTitleFontSize > 16) {
+      titleEl.fontSize = meta.coverTitleFontSize;
+    }
+    if (meta.coverTitleBold !== undefined) {
+      titleEl.fontWeight = meta.coverTitleBold ? "bold" : "normal";
+    }
+
+    // B. Calculate Dynamic Stack Dimensions & Coordinates
+    const alignment = meta.coverTitleAlignment || "left";
+    let stackW: number;
+    let stackX: number;
+
+    if (is169) {
+      const leftMargin = 100;
+      const rightMargin = 160; // Safe distance from decorative slashes/polygons
+      if (alignment === "center") {
+        stackW = Math.min(880, pageW - 200);
+        stackX = Math.round((pageW - stackW) / 2);
+      } else if (alignment === "right") {
+        stackW = Math.min(680, pageW - leftMargin - rightMargin);
+        stackX = pageW - rightMargin - stackW;
+      } else {
+        // Left
+        stackW = Math.min(680, pageW - leftMargin - rightMargin);
+        stackX = leftMargin;
+      }
+    } else {
+      // Portrait A4
+      const margin = 60;
+      stackW = pageW - margin * 2;
+      stackX = margin;
+    }
+
+    // C. Dynamic Title Height Calculation
+    const titleFontSize = titleEl.fontSize || (is169 ? 42 : 36);
+    const titleText = titleEl.text || meta.assignmentTitle || "ASSIGNMENT";
+    const avgCharWidth = titleFontSize * 0.54;
+    const charsPerLine = Math.max(10, Math.floor(stackW / avgCharWidth));
+    const estimatedLines = Math.max(1, Math.ceil(titleText.length / charsPerLine));
+    titleEl.height = Math.max(estimatedLines * Math.round(titleFontSize * 1.15) + 12, 46);
+
+    // D. Build the Ordered Vertical Stack
+    const flowStack: { el: CanvasCoverElement; gapAfter: number }[] = [];
+
+    if (leadTagEl) {
+      leadTagEl.height = Math.max(leadTagEl.height, 22);
+      flowStack.push({ el: leadTagEl, gapAfter: is169 ? 12 : 10 });
+    }
+
+    flowStack.push({ el: titleEl, gapAfter: subtitleEl ? 10 : (is169 ? 28 : 22) });
+
+    if (subtitleEl) {
+      subtitleEl.height = Math.max(subtitleEl.height, 24);
+      flowStack.push({ el: subtitleEl, gapAfter: is169 ? 28 : 22 });
+    }
+
+    if (metaLabelEl) {
+      metaLabelEl.height = Math.max(metaLabelEl.height, 20);
+      flowStack.push({ el: metaLabelEl, gapAfter: 6 });
+    }
+
+    if (authorNameEl) {
+      authorNameEl.height = Math.max(authorNameEl.height, 28);
+      flowStack.push({ el: authorNameEl, gapAfter: courseInfoEl ? 8 : 12 });
+    }
+
+    if (courseInfoEl) {
+      courseInfoEl.height = Math.max(courseInfoEl.height, 22);
+      flowStack.push({ el: courseInfoEl, gapAfter: instructorEl ? 8 : 12 });
+    }
+
+    if (instructorEl) {
+      instructorEl.height = Math.max(instructorEl.height, 22);
+      flowStack.push({ el: instructorEl, gapAfter: institutionInfoEl ? 8 : 14 });
+    }
+
+    if (institutionInfoEl && institutionInfoEl.y > 200) {
+      institutionInfoEl.height = Math.max(institutionInfoEl.height, 22);
+      flowStack.push({ el: institutionInfoEl, gapAfter: 14 });
+    }
+
+    // E. Calculate Total Stack Height
+    let totalStackHeight = 0;
+    for (let i = 0; i < flowStack.length; i++) {
+      totalStackHeight += flowStack[i]!.el.height;
+      if (i < flowStack.length - 1) {
+        totalStackHeight += flowStack[i]!.gapAfter;
+      }
+    }
+
+    // F. Calculate Start Y Position (Top / Centered / Lower)
+    const position = meta.coverTitlePosition || "middle";
+    let startY: number;
+
+    if (position === "top") {
+      startY = is169 ? (leadTagEl ? 95 : 120) : (leadTagEl ? 105 : 135);
+    } else if (position === "lower") {
+      startY = Math.max(is169 ? 150 : 180, pageH - totalStackHeight - (is169 ? 85 : 105));
+    } else {
+      // Middle / Centered
+      startY = Math.max(is169 ? 120 : 140, Math.round((pageH - totalStackHeight) / 2) - 10);
+    }
+
+    // G. Position Every Flow Element Sequentially (ZERO COLLISION GUARANTEED)
+    let currY = startY;
+    for (let i = 0; i < flowStack.length; i++) {
+      const item = flowStack[i]!;
+      item.el.y = currY;
+      item.el.x = stackX;
+      item.el.width = stackW;
+      item.el.textAlign = alignment;
+      currY += item.el.height + item.gapAfter;
+    }
+
+    // H. Position Footer & Notes Below the Stack
+    if (footerEl) {
+      footerEl.x = stackX;
+      footerEl.width = stackW;
+      footerEl.textAlign = alignment;
+      footerEl.y = Math.max(currY + 16, pageH - (is169 ? 80 : 90));
+    }
+
+    if (customNoteEl) {
+      customNoteEl.x = stackX;
+      customNoteEl.width = stackW;
+      customNoteEl.textAlign = alignment;
+      customNoteEl.y = Math.min(
+        pageH - (is169 ? 42 : 50),
+        Math.max(currY + 8, pageH - (is169 ? 65 : 75)),
+      );
     }
   }
 
@@ -2147,20 +2263,29 @@ export function generateCanvaBlueYellowProposal(
   }
 
   // 8. Main Proposal Title
+  const yearTag = meta.academicYear
+    ? (/^\d{4}$/.test(meta.academicYear.trim())
+        ? meta.academicYear.trim()
+        : meta.academicYear.toUpperCase().includes("YEAR")
+          ? meta.academicYear.toUpperCase()
+          : `${meta.academicYear.toUpperCase()} ACADEMIC YEAR`)
+    : (meta.courseCode ? `${meta.courseCode} · ASSIGNMENT` : "2026");
+
   elements.push({
     id: "canva-title-year",
     type: "text",
     name: "Year / Category Lead",
     x: 100,
-    y: 235,
-    width: 480,
-    height: 52,
-    text: meta.academicYear || "2026",
+    y: 215,
+    width: 520,
+    height: 22,
+    text: yearTag,
     fontFamily: "Inter, Montserrat, sans-serif",
-    fontSize: 48,
-    fontWeight: "800",
-    textColor: navy,
-    letterSpacing: -1,
+    fontSize: 12,
+    fontWeight: "700",
+    textColor: "#B45309",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
     zIndex: zIndex++,
   });
 
@@ -2169,16 +2294,16 @@ export function generateCanvaBlueYellowProposal(
     type: "text",
     name: "Main Title Heading",
     x: 100,
-    y: 285,
-    width: 480,
-    height: 120,
+    y: 245,
+    width: 540,
+    height: 72,
     text: title || "PROJECT PROPOSAL",
     fontFamily: "Inter, Montserrat, sans-serif",
-    fontSize: 46,
+    fontSize: 44,
     fontWeight: "800",
     textColor: navy,
     textTransform: "uppercase",
-    lineHeight: 1.05,
+    lineHeight: 1.1,
     letterSpacing: -1,
     isMetadataField: "assignmentTitle",
     zIndex: zIndex++,
@@ -2190,13 +2315,13 @@ export function generateCanvaBlueYellowProposal(
     type: "text",
     name: "Prepared By Label",
     x: 100,
-    y: 445,
-    width: 360,
+    y: 335,
+    width: 480,
     height: 20,
     text: "Prepared by :",
     fontFamily: "Inter, sans-serif",
     fontSize: 13,
-    fontWeight: "500",
+    fontWeight: "600",
     textColor: "#64748B",
     zIndex: zIndex++,
   });
@@ -2206,9 +2331,9 @@ export function generateCanvaBlueYellowProposal(
     type: "text",
     name: "Author / Student Name",
     x: 100,
-    y: 470,
-    width: 360,
-    height: 30,
+    y: 360,
+    width: 480,
+    height: 28,
     text: author,
     fontFamily: "Inter, Montserrat, sans-serif",
     fontSize: 18,
@@ -2224,9 +2349,9 @@ export function generateCanvaBlueYellowProposal(
       type: "text",
       name: "Course / Student ID",
       x: 100,
-      y: 505,
-      width: 360,
-      height: 24,
+      y: 395,
+      width: 480,
+      height: 22,
       text: [course, studentId].filter(Boolean).join(" · "),
       fontFamily: "Inter, sans-serif",
       fontSize: 12,
@@ -2242,9 +2367,9 @@ export function generateCanvaBlueYellowProposal(
       type: "text",
       name: "Instructor Name",
       x: 100,
-      y: 535,
-      width: 360,
-      height: 24,
+      y: 425,
+      width: 480,
+      height: 22,
       text: `Submitted to: ${meta.instructorName}`,
       fontFamily: "Inter, sans-serif",
       fontSize: 12,
@@ -2261,15 +2386,14 @@ export function generateCanvaBlueYellowProposal(
     type: "text",
     name: "Footer Coordinates / Links",
     x: 100,
-    y: pageH - 180,
-    width: 360,
-    height: 50,
-    text: "📞 +123-456-7890\n🌐 www.reallygreatsite.com",
+    y: pageH - 90,
+    width: 480,
+    height: 36,
+    text: [institution, meta.department, meta.submissionDate ? `Date: ${meta.submissionDate}` : ""].filter(Boolean).join("  •  ") || "Academic Project Submission • Verified & Reviewed",
     fontFamily: "Inter, sans-serif",
     fontSize: 11,
     fontWeight: "500",
-    textColor: "#475569",
-    lineHeight: 1.6,
+    textColor: "#64748B",
     zIndex: zIndex++,
   });
 
@@ -4893,6 +5017,10 @@ export const COVER_TEMPLATES_REGISTRY: ExtendedCoverTemplateDefinition[] = [
  * Retrieves a template by ID, falling back to Classic University if not found.
  */
 export function getCoverTemplateById(id: string): ExtendedCoverTemplateDefinition {
+  if (id === "canva-blue-yellow-proposal" || id === "canva-blue-yellow") {
+    const modern = COVER_TEMPLATES_REGISTRY.find((t) => t.id === "canva-modern-proposal");
+    if (modern) return modern;
+  }
   return (
     COVER_TEMPLATES_REGISTRY.find((t) => t.id === id) ||
     COVER_TEMPLATES_REGISTRY.find((t) => t.id === "classic-university") ||

@@ -207,7 +207,10 @@ describe("Assignment Presentation Maker High-Fidelity & Full Slide Editing", () 
     const elements = generateDefaultCoverElements(template, customCoverMeta, 1333, 750);
 
     const titleEl = elements.find(
-      (e) => e.isMetadataField === "assignmentTitle" || e.id?.includes("title"),
+      (e) =>
+        e.isMetadataField === "assignmentTitle" ||
+        e.id === "canva-title-main" ||
+        (e.id?.includes("title") && !e.id?.includes("year")),
     );
     expect(titleEl).toBeDefined();
     expect(titleEl?.textAlign).toBe("center");
@@ -278,5 +281,75 @@ describe("Assignment Presentation Maker High-Fidelity & Full Slide Editing", () 
     const buffer = await pptx.write({ outputType: "nodebuffer" });
     expect(buffer).toBeDefined();
     expect((buffer as Buffer).length).toBeGreaterThan(12000);
+  });
+
+  it("resolves the screenshot defect: guarantees zero overlap between title and 'Prepared by:' across large font sizes", () => {
+    const screenshotMeta: AssignmentMetadata = {
+      ...sampleMeta,
+      assignmentTitle: "EPLAIN OOP",
+      academicYear: "3rd",
+      coverTitleFontSize: 46,
+      coverTitlePosition: "middle",
+      coverTitleAlignment: "left",
+      studentName: "Usama Awol",
+      instructorName: "Dame K",
+      courseName: "OOP",
+      studentId: "3265-17",
+      universityName: "Haramaya University",
+      department: "IT",
+      submissionDate: "2026-10-31",
+      coverTemplateId: "canva-blue-yellow-proposal",
+    };
+
+    const template = getCoverTemplateById("canva-blue-yellow-proposal");
+    const elements = generateDefaultCoverElements(template, screenshotMeta, 1333, 750);
+
+    const yearEl = elements.find((e) => e.id?.includes("year"));
+    const titleEl = elements.find(
+      (e) => e.isMetadataField === "assignmentTitle" || e.id?.includes("title-main"),
+    );
+    const metaLabelEl = elements.find(
+      (e) => e.id?.includes("meta-label") || e.text?.toLowerCase().includes("prepared by"),
+    );
+    const authorNameEl = elements.find(
+      (e) => e.isMetadataField === "studentName" || e.id?.includes("meta-name"),
+    );
+
+    expect(yearEl).toBeDefined();
+    expect(titleEl).toBeDefined();
+    expect(metaLabelEl).toBeDefined();
+    expect(authorNameEl).toBeDefined();
+
+    // 1. Year tag must be formatted as an academic tag (NOT 48px giant headline)
+    expect(yearEl!.text).toContain("3RD ACADEMIC YEAR");
+    expect(yearEl!.fontSize).toBeLessThanOrEqual(14);
+
+    // 2. Title must be cleanly separated from year tag above it
+    expect(titleEl!.y).toBeGreaterThanOrEqual(yearEl!.y + yearEl!.height);
+
+    // 3. ZERO COLLISION: "Prepared by :" must strictly start AFTER title element ends
+    expect(metaLabelEl!.y).toBeGreaterThanOrEqual(titleEl!.y + titleEl!.height + 15);
+
+    // 4. Author name must strictly start AFTER "Prepared by :" label
+    expect(authorNameEl!.y).toBeGreaterThanOrEqual(metaLabelEl!.y + metaLabelEl!.height);
+
+    // 5. When aligned right, elements must align to the right with safe margin from right corner slashes
+    const rightAlignedElements = generateDefaultCoverElements(
+      template,
+      { ...screenshotMeta, coverTitleAlignment: "right" },
+      1333,
+      750,
+    );
+    const rightTitle = rightAlignedElements.find(
+      (e) => e.isMetadataField === "assignmentTitle" || e.id?.includes("title-main"),
+    );
+    const rightMetaLabel = rightAlignedElements.find(
+      (e) => e.id?.includes("meta-label") || e.text?.toLowerCase().includes("prepared by"),
+    );
+
+    expect(rightTitle!.textAlign).toBe("right");
+    expect(rightMetaLabel!.textAlign).toBe("right");
+    expect(rightTitle!.x).toBe(rightMetaLabel!.x);
+    expect(rightTitle!.x + rightTitle!.width).toBeLessThanOrEqual(1333 - 100);
   });
 });
