@@ -4,6 +4,8 @@
  * 100% independent of backend servers. Runs natively on Vercel, static preview, and local.
  */
 
+import { cleanDocumentPageNoise } from "./document-synthesizer";
+
 export interface PdfExtractionResult {
   text: string;
   pageCount: number;
@@ -28,7 +30,7 @@ export async function extractTextFromPdfBytes(
     await parser.load();
     const parsed = await parser.getText();
     let text = (parsed.text || "").trim();
-    text = text.replace(/--\s*\d+\s*of\s*\d+\s*--/gi, "").trim();
+    text = cleanDocumentPageNoise(text);
     if (text.length > 0) {
       cleanedText = text;
       pageCount = parsed.total || 1;
@@ -97,7 +99,7 @@ export async function extractTextFromPdfBytes(
     }
 
     if (fullText.trim().length > 5) {
-      cleanedText = fullText.trim();
+      cleanedText = cleanDocumentPageNoise(fullText.trim());
       const words = cleanedText.split(/\s+/).filter(Boolean).length;
       const lines = cleanedText.split("\n").filter((l) => l.trim().length > 0).length;
       return {

@@ -189,6 +189,34 @@ export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
         }).join("") : escapeHtml(b.text || "");
         return `<h4 style="font-size: 1.05em; font-weight: 600; margin-top: 0.8em; margin-bottom: 0.3em; line-height: 1.4; color: inherit;${alignStyle}">${runsHtml}</h4>`;
       }
+      if (b.type === "identityCard" && b.identityData) {
+        const id = b.identityData;
+        return `<div class="identity-card" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; border-radius: 8px; padding: 18px 22px; margin: 1.5em 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+  <div style="font-size: 0.72em; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #2563eb; margin-bottom: 12px;">Assignment Information</div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; font-size: 0.9em;">
+    ${id.studentName ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Student Name</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.studentName)}</strong></div>` : ""}
+    ${id.studentId ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Student ID / Section</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.studentId)}${id.section ? ` • Section ${escapeHtml(id.section)}` : ""}</strong></div>` : ""}
+    ${id.submittedTo ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Submitted To</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.submittedTo)}</strong></div>` : ""}
+    ${id.submissionDate ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Submission Date</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.submissionDate)}</strong></div>` : ""}
+    ${id.technology ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Technology</span><span style="display: inline-block; background: #e0e7ff; color: #3730a3; font-weight: 700; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">${escapeHtml(id.technology)}</span></div>` : ""}
+  </div>
+</div>`;
+      }
+      if (b.type === "callout") {
+        const isDistinction = b.calloutType === "distinction" || b.calloutType === "warning";
+        const isTip = b.calloutType === "tip";
+        const borderCol = isDistinction ? "#d97706" : isTip ? "#059669" : "#2563eb";
+        const bgCol = isDistinction ? "#fffbeb" : isTip ? "#ecfdf5" : "#eff6ff";
+        const titleCol = isDistinction ? "#92400e" : isTip ? "#065f46" : "#1e40af";
+        const icon = isDistinction ? "⚠️ " : isTip ? "✨ " : "💡 ";
+        return `<div class="callout-card" style="margin: 1.25em 0; padding: 14px 18px; border-left: 4px solid ${borderCol}; background-color: ${bgCol}; border-radius: 0 8px 8px 0; color: #1e293b;">
+  ${b.calloutTitle ? `<div class="callout-title" style="font-weight: 700; color: ${titleCol}; margin-bottom: 6px; font-size: 0.95em;">${icon}${escapeHtml(b.calloutTitle)}</div>` : ""}
+  <div style="font-size: 0.93em; line-height: 1.55;">${escapeHtml(b.text || "")}</div>
+</div>`;
+      }
+      if (b.type === "code") {
+        return `<pre class="code-card" style="background: #0f172a; color: #f1f5f9; padding: 16px 20px; border-radius: 8px; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; font-size: 0.86em; line-height: 1.5; overflow-x: auto; margin: 1.25em 0; border: 1px solid #1e293b; box-shadow: 0 2px 4px rgba(0,0,0,0.15);"><code>${escapeHtml(b.text || "")}</code></pre>`;
+      }
       if (b.type === "list" && b.items) {
         return `<ul style="margin: 0.6em 0; padding-left: 1.6em; list-style-type: disc;">\n${b.items
           .map((item) => `  <li style="margin-bottom: 0.35em;">${escapeHtml(item)}</li>`)

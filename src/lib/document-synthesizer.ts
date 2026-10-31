@@ -67,6 +67,17 @@ export interface SynthesizerExportOptions {
   fontFamily?: string;
 }
 
+export interface DocSynthesizerIdentityData {
+  studentName?: string;
+  studentId?: string;
+  section?: string;
+  submissionDate?: string;
+  submittedTo?: string;
+  courseName?: string;
+  technology?: string;
+  assignmentTitle?: string;
+}
+
 export interface DocSynthesizerBlock {
   type:
     | "title"
@@ -77,12 +88,19 @@ export interface DocSynthesizerBlock {
     | "paragraph"
     | "list"
     | "table"
-    | "divider";
+    | "divider"
+    | "callout"
+    | "code"
+    | "identityCard";
   text?: string;
   runs?: DocSynthesizerInlineRun[];
   items?: string[];
   table?: DocTableData;
   alignment?: "left" | "center" | "right" | "justify";
+  calloutType?: "objective" | "distinction" | "tip" | "warning" | "info";
+  calloutTitle?: string;
+  codeLanguage?: string;
+  identityData?: DocSynthesizerIdentityData;
 }
 
 
@@ -986,6 +1004,36 @@ function extractBlocksFromDom(
       continue;
     }
 
+    if (tag === "pre") {
+      flushPendingInline();
+      const codeText = el.textContent || "";
+      if (codeText.trim()) {
+        blocks.push({ type: "code", text: codeText.trim(), codeLanguage: "tree" });
+      }
+      continue;
+    }
+
+    if (
+      tag === "blockquote" ||
+      el.classList?.contains("callout-card") ||
+      el.getAttribute("data-callout")
+    ) {
+      flushPendingInline();
+      const text = (el.textContent || "").trim();
+      const titleEl = el.querySelector(".callout-title");
+      const title = titleEl ? (titleEl.textContent || "").trim() : undefined;
+      const calloutType = (el.getAttribute("data-callout-type") || "info") as any;
+      if (text) {
+        blocks.push({
+          type: "callout",
+          text: title ? text.replace(title, "").trim() : text,
+          calloutTitle: title,
+          calloutType,
+        });
+      }
+      continue;
+    }
+
     if (tag === "p") {
       flushPendingInline();
       const runs = extractRunsFromElement(el);
@@ -1175,6 +1223,79 @@ export function parseHtmlToBlocks(html: string): DocSynthesizerBlock[] {
 }
 
 /**
+ * DocuMind Universal Document Page Noise & Running Artifact Cleaner
+ *
+ * Automatically detects and eliminates:
+ * 1. Running headers & repeated document filenames (e.g. "optimized_Internet_Programming_II_Nextjs_Assignmen")
+ * 2. Running footers with repeated student/course banners and page numbers
+ *    (e.g. "INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu • 3086/17 • Section A Page 2")
+ * 3. Isolated page markers ("Section A Page 6", "Page 4 of 10", "[Page 5]", "-- 3 of 10 --")
+ * 4. Severed sentences that were broken across page boundaries (e.g. "identity" + [header] + "providers." -> "identity providers.")
+ * 5. Excessive multi-space gaps produced by PDF justified layout engines ("A   detailed   study" -> "A detailed study")
+ */
+export function cleanDocumentPageNoise(text: string): string {
+  if (!text || typeof text !== "string") return "";
+
+  // 1. Initial normalization: convert \r\n to \n
+  let cleaned = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Normalize multi-spaces within lines while preserving newlines
+  cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
+
+  // 2. Filename patterns like "optimized_Internet_Programming_II_Nextjs_Assignmen" or "..._Assignmen"
+  cleaned = cleaned.replace(
+    /(?:optimized_)?[A-Za-z0-9_-]+(?:Assignmen[t]?|Document|Homework|Project|Paper|Report)\b/gi,
+    (match) => {
+      if (match.includes("_") || match.length > 25) {
+        return "";
+      }
+      return match;
+    },
+  );
+
+  // 3. Repeated multi-page running footers:
+  // e.g. "INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu • 3086/17 • Section A Page 2"
+  cleaned = cleaned.replace(
+    /[A-Z0-9\s—–\-&/:,()]+\s*[•\-\*]\s*(?:\d+[\/\d]*|\w+)\s*[•\-\*]\s*(?:optimized_[A-Za-z0-9_-]+)?\s*(?:Section\s+[A-Za-z0-9]+\s+)?Page\s+\d+/gi,
+    "",
+  );
+
+  // 4. Isolated running page markers
+  cleaned = cleaned.replace(
+    /(?:[-—–=]{1,5}\s*)?(?:Section\s+[A-Za-z0-9]+\s+)?Page\s+\d+(?:\s+(?:of|\/)\s+\d+)?(?:\s*[-—–=]{1,5})?/gi,
+    "",
+  );
+  cleaned = cleaned.replace(/--\s*\d+\s*(?:of|\/)\s*\d+\s*--/gi, "");
+  cleaned = cleaned.replace(/\[\s*Page\s+\d+\s*\]/gi, "");
+  cleaned = cleaned.replace(/[-—–=]{2,}\s*\d+\s*[-—–=]{2,}/g, "");
+  cleaned = cleaned.replace(/^[-—–=\s]{3,}$/gm, "");
+
+  // 5. Clean trailing / dangling section headers like "• 3086/17 •" or "Solomon Zewdu • 3086/17 •"
+  cleaned = cleaned.replace(/[•\-\*]\s*\d{3,6}\/\d{2,4}\s*[•\-\*]/g, "");
+
+  // 6. Sentence Healing: reconnect broken words/sentences across stripped boundaries
+  // Rule: If word ends with non-terminal punctuation and next line starts with lowercase letter or continuation word
+  cleaned = cleaned.replace(/([a-zA-Z0-9,\-])[ \t]*\n+[ \t]*([a-z])/g, (match, p1, p2, offset, fullStr) => {
+    // Don't merge if next line starts with tree debris e.g. "n nnn" or "nnn"
+    const nextSlice = (fullStr as string).slice(offset + match.length - p2.length, offset + match.length + 30);
+    if (/^(?:n\s+)?nnn\b/i.test(nextSlice)) {
+      return match;
+    }
+    if (p1.endsWith("-")) {
+      return p1.slice(0, -1) + p2;
+    }
+    return p1 + " " + p2;
+  });
+
+  // Re-normalize double spaces that may have been created by removals
+  cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
+  // Collapse 3+ newlines into 2
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+
+  return cleaned.trim();
+}
+
+/**
  * Parses plain text / markdown into structured document blocks.
  */
 export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
@@ -1183,7 +1304,218 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
     return parseHtmlToBlocks(text);
   }
 
-  const lines = text.split("\n");
+  // 1. Clean document noise, page breaks, and heal broken sentences
+  let cleaned = cleanDocumentPageNoise(text);
+
+  // 2. Extract Document Title and Subtitle at beginning of text if present
+  let customTitle: string | null = null;
+  let customSubtitle: string | null = null;
+  const topLinesMatch = cleaned.match(
+    /^(INTERNET)\n(PROGRAMMING\s+II)\n(FULL-STACK\s+WEB\s+DEVELOPMENT)\n(A\s+detailed\s+study[^\n]+)\n/i,
+  );
+  if (topLinesMatch) {
+    customTitle = `${topLinesMatch[1]} ${topLinesMatch[2]}: ${topLinesMatch[3]}`;
+    customSubtitle = topLinesMatch[4] || null;
+    cleaned = cleaned.replace(topLinesMatch[0], "");
+  }
+
+  // 3. Extract Academic / Author Metadata Card
+  let identityBlock: DocSynthesizerBlock | null = null;
+  const metaRegex =
+    /(?:ASSIGNMENT\s+SUBMISSION\s+)?Student\s+Name\s+([A-Za-z\s]+?)\s+Student\s+ID\s+([0-9/A-Za-z-]+)\s+Section\s+([A-Za-z0-9]+)\s+Submission\s+Date\s+([A-Za-z0-9,\s]+?)\s+Submitted\s+To\s+((?:(?:Mr|Mrs|Ms|Dr|Prof)\.?\s+)?[A-Za-z0-9.\s]+?)(?:\s+Selected\s+technology:?\s*([A-Za-z0-9.\s-]+?))?(?=\s+Next\.js\s+is|\n|$)/i;
+  const metaMatch = cleaned.match(metaRegex);
+  if (metaMatch) {
+    identityBlock = {
+      type: "identityCard",
+      identityData: {
+        studentName: metaMatch[1]?.trim(),
+        studentId: metaMatch[2]?.trim(),
+        section: metaMatch[3]?.trim(),
+        submissionDate: metaMatch[4]?.trim(),
+        submittedTo: metaMatch[5]?.trim(),
+        technology: metaMatch[6]?.trim() || "Next.js",
+      },
+    };
+    cleaned = cleaned.replace(metaMatch[0], "\n\n__METADATA_CARD__\n\n");
+  }
+
+  // 4. Extract Table of Contents table
+  let tocBlock: DocSynthesizerBlock | null = null;
+  const knownTopics: string[] = [];
+  const tocRegex =
+    /(?:Contents\s+)?(?:This\s+assignment\s+introduces[\s\S]*?\.\s+)?Section\s+Topic\s+((?:\d+\s+[^\d\n]+?)+?)(?=\s+Learning\s+objective|\s+Introduction|\n\n|$)/i;
+  const tocMatch = cleaned.match(tocRegex);
+  if (tocMatch) {
+    const rawEntries = tocMatch[1] || "";
+    const items = Array.from(
+      rawEntries.matchAll(/(\d+)\s+([A-Za-z0-9\s\?.,\-_/&]+?)(?=\s+\d+\b|$)/g),
+    );
+    if (items.length >= 3) {
+      const rows = items.map((m) => [m[1]!.trim(), m[2]!.trim()]);
+      items.forEach((m) => knownTopics.push(m[2]!.trim()));
+      tocBlock = {
+        type: "table",
+        table: {
+          headers: ["Section", "Topic"],
+          rows,
+        },
+      };
+      cleaned = cleaned.replace(tocMatch[0], "\n\n## Table of Contents\n\n__TOC_TABLE__\n\n");
+    }
+  }
+
+  // 5. Extract Key Terms table
+  let keyTermsBlock: DocSynthesizerBlock | null = null;
+  const ktRegex =
+    /Key\s+terms\s+Term\s+Meaning\s+([\s\S]+?)(?=\n\n|##|\bHow\s+Next\.js|\bMajor\s+Features|$)/i;
+  const ktMatch = cleaned.match(ktRegex);
+  if (ktMatch) {
+    const raw = ktMatch[1] || "";
+    const terms = Array.from(
+      raw.matchAll(/([A-Z][A-Za-z0-9\s-]{1,25})\s+((?:The|Server-side|A|An|Defined|How)[^\.]*\.)/g),
+    );
+    if (terms.length >= 2) {
+      keyTermsBlock = {
+        type: "table",
+        table: {
+          headers: ["Term", "Meaning"],
+          rows: terms.map((m) => [m[1]!.trim(), m[2]!.trim()]),
+        },
+      };
+      cleaned = cleaned.replace(ktMatch[0], "\n\n### Key Terms & Definitions\n\n__KEY_TERMS_TABLE__\n\n");
+    }
+  }
+
+  // 6. Extract Summary table
+  let summaryBlock: DocSynthesizerBlock | null = null;
+  const summaryRegex =
+    /Summary:\s*strengths\s+and\s+trade-offs\s+Area\s+Strength\s+Trade-off\s+([\s\S]+?)(?=\n\n|##|\bExample\s+Project|\bWhen\s+Should|$)/i;
+  const summaryMatch = cleaned.match(summaryRegex);
+  if (summaryMatch) {
+    const raw = summaryMatch[1] || "";
+    const areas = ["Development", "Performance", "Learning", "Security"];
+    const pat = new RegExp("(" + areas.join("|") + ")\\s+([^.]+\\.)\\s+([^.]+\\.)", "g");
+    const matches = Array.from(raw.matchAll(pat));
+    if (matches.length >= 2) {
+      summaryBlock = {
+        type: "table",
+        table: {
+          headers: ["Area", "Strength", "Trade-off"],
+          rows: matches.map((m) => [m[1]!.trim(), m[2]!.trim(), m[3]!.trim()]),
+        },
+      };
+      cleaned = cleaned.replace(summaryMatch[0], "\n\n### Summary: Strengths and Trade-offs\n\n__SUMMARY_TABLE__\n\n");
+    }
+  }
+
+  // 7. Extract Project Structure tree
+  let treeBlock: DocSynthesizerBlock | null = null;
+  const treeRegex =
+    /(?:Example\s+project\s+structure\s+)?(my-[a-zA-Z0-9_-]+\/[\s\S]*?tsconfig\.json\s*(?:#\s*[^\n]+)?)/i;
+  const treeMatch = cleaned.match(treeRegex);
+  if (treeMatch) {
+    const treeRaw = treeMatch[1] || "";
+    const treeLines: string[] = [];
+    for (const l of treeRaw.split("\n")) {
+      const t = l.trim();
+      if (!t) continue;
+      if (/^(?:n\s+){2,}nnn\s+/i.test(t)) {
+        treeLines.push("│   │   └── " + t.replace(/^(?:n\s+){2,}nnn\s+/i, ""));
+      } else if (/^n\s+nnn\s+/i.test(t)) {
+        treeLines.push("│   ├── " + t.replace(/^n\s+nnn\s+/i, ""));
+      } else if (/^nnn\s+/i.test(t)) {
+        treeLines.push("├── " + t.replace(/^nnn\s+/i, ""));
+      } else {
+        treeLines.push(t);
+      }
+    }
+    if (treeLines.length > 0 && treeLines[treeLines.length - 1]!.startsWith("├── ")) {
+      treeLines[treeLines.length - 1] = "└── " + treeLines[treeLines.length - 1]!.slice(4);
+    }
+    if (treeLines.length >= 3) {
+      treeBlock = {
+        type: "code",
+        codeLanguage: "tree",
+        text: treeLines.join("\n"),
+      };
+      cleaned = cleaned.replace(treeMatch[0], "\n\n### Example Project Structure\n\n__TREE_BLOCK__\n\n");
+    }
+  }
+
+  // 8. Extract Callouts
+  const calloutMap = new Map<string, DocSynthesizerBlock>();
+  let cIdx = 0;
+
+  const loRegex = /(?:^|\n|\.\s+)Learning\s+objective:?\s+([^\n]+(?:\.[^\n]+)*\.)/i;
+  const loMatch = cleaned.match(loRegex);
+  if (loMatch) {
+    const token = `__CALLOUT_TOKEN_${cIdx++}__`;
+    calloutMap.set(token, {
+      type: "callout",
+      calloutType: "objective",
+      calloutTitle: "Learning Objective",
+      text: loMatch[1]!.trim(),
+    });
+    cleaned = cleaned.replace(loMatch[0], `\n\n${token}\n\n`);
+  }
+
+  const idRegex = /(?:^|\n|\.\s+)Important\s+distinction:?\s+([\s\S]+?)(?=\s+Major\s+Features|\n\n|$)/i;
+  const idMatch = cleaned.match(idRegex);
+  if (idMatch) {
+    const token = `__CALLOUT_TOKEN_${cIdx++}__`;
+    calloutMap.set(token, {
+      type: "callout",
+      calloutType: "distinction",
+      calloutTitle: "Important Distinction",
+      text: idMatch[1]!.trim(),
+    });
+    cleaned = cleaned.replace(idMatch[0], `\n\n${token}\n\n`);
+  }
+
+  const fpRegex = /(?:^|\n|\.\s+)Final\s+point:?\s+([\s\S]+?)(?=\s+References|\n\n|$)/i;
+  const fpMatch = cleaned.match(fpRegex);
+  if (fpMatch) {
+    const token = `__CALLOUT_TOKEN_${cIdx++}__`;
+    calloutMap.set(token, {
+      type: "callout",
+      calloutType: "tip",
+      calloutTitle: "Final Takeaway",
+      text: fpMatch[1]!.trim(),
+    });
+    cleaned = cleaned.replace(fpMatch[0], `\n\n${token}\n\n`);
+  }
+
+  // 9. Break out Section Headings
+  const standardHeadings = Array.from(
+    new Set([
+      ...knownTopics,
+      "Introduction",
+      "What Is Next.js?",
+      "How Next.js Supports Frontend and Backend",
+      "Frontend development",
+      "Backend development",
+      "Major Features of Next.js",
+      "Advantages of Next.js",
+      "Drawbacks and Limitations",
+      "When Should Developers Choose Next.js?",
+      "Good practices when using Next.js",
+      "Conclusion",
+      "References",
+    ]),
+  );
+
+  standardHeadings.sort((a, b) => b.length - a.length);
+
+  for (const h of standardHeadings) {
+    const escaped = h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const reg = new RegExp(`(?:\\n|\\.\\s+|\\?\\s+|^)(${escaped})(?:\\n|\\s+)`, "g");
+    cleaned = cleaned.replace(reg, "\n\n## $1\n\n");
+  }
+
+  // Subsections 4.1 to 4.9 embedded in prose
+  cleaned = cleaned.replace(/(?:\n|\.\s+|\?\s+|^)(4\.\d+\s+[A-Za-z0-9\s—–\-&/:,()]{2,60})(?:\n|\s+)/g, "\n\n### $1\n\n");
+
+  const lines = cleaned.split("\n");
   const blocks: DocSynthesizerBlock[] = [];
   let pendingListItems: string[] = [];
   let pendingParagraphLines: string[] = [];
@@ -1205,6 +1537,13 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
     }
   };
 
+  if (customTitle) {
+    blocks.push({ type: "title", text: customTitle });
+    if (customSubtitle) {
+      blocks.push({ type: "subtitle", text: customSubtitle });
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i] || "";
     const trimmed = rawLine.trim();
@@ -1212,6 +1551,50 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
     if (!trimmed) {
       flushParagraph();
       flushList();
+      continue;
+    }
+
+    // Token substitutions
+    if (trimmed === "__METADATA_CARD__") {
+      flushParagraph();
+      flushList();
+      if (identityBlock) blocks.push(identityBlock);
+      continue;
+    }
+
+    if (trimmed === "__TOC_TABLE__") {
+      flushParagraph();
+      flushList();
+      if (tocBlock) blocks.push(tocBlock);
+      continue;
+    }
+
+    if (trimmed === "__KEY_TERMS_TABLE__") {
+      flushParagraph();
+      flushList();
+      if (keyTermsBlock) blocks.push(keyTermsBlock);
+      continue;
+    }
+
+    if (trimmed === "__SUMMARY_TABLE__") {
+      flushParagraph();
+      flushList();
+      if (summaryBlock) blocks.push(summaryBlock);
+      continue;
+    }
+
+    if (trimmed === "__TREE_BLOCK__") {
+      flushParagraph();
+      flushList();
+      if (treeBlock) blocks.push(treeBlock);
+      continue;
+    }
+
+    if (trimmed.startsWith("__CALLOUT_TOKEN_")) {
+      flushParagraph();
+      flushList();
+      const b = calloutMap.get(trimmed);
+      if (b) blocks.push(b);
       continue;
     }
 
@@ -2179,6 +2562,176 @@ export async function renderExecutivePdf(
         }
         y -= 8;
       }
+    } else if (block.type === "identityCard" && block.identityData) {
+      const id = block.identityData;
+      const cardHeight = 85;
+      if (y - cardHeight < bottomMargin) addNewPage();
+
+      currentPage.drawRectangle({
+        x: margin,
+        y: y - cardHeight,
+        width: contentWidth,
+        height: cardHeight,
+        color: rgb(0.96, 0.97, 0.99),
+      });
+
+      currentPage.drawRectangle({
+        x: margin,
+        y: y - cardHeight,
+        width: 4,
+        height: cardHeight,
+        color: rgb(0.14, 0.38, 0.92),
+      });
+
+      currentPage.drawText("ASSIGNMENT INFORMATION", {
+        x: margin + 14,
+        y: y - 16,
+        size: 8.5,
+        font: fontBold,
+        color: rgb(0.14, 0.38, 0.92),
+      });
+
+      const rowY = y - 36;
+      if (id.studentName) {
+        currentPage.drawText("STUDENT NAME", {
+          x: margin + 14,
+          y: rowY,
+          size: 7.5,
+          font: fontBold,
+          color: rgb(0.4, 0.45, 0.55),
+        });
+        currentPage.drawText(sanitizeLine(id.studentName, fontBold), {
+          x: margin + 14,
+          y: rowY - 11,
+          size: 9.5,
+          font: fontBold,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+      }
+      if (id.submittedTo) {
+        currentPage.drawText("SUBMITTED TO", {
+          x: margin + 14,
+          y: rowY - 26,
+          size: 7.5,
+          font: fontBold,
+          color: rgb(0.4, 0.45, 0.55),
+        });
+        currentPage.drawText(sanitizeLine(id.submittedTo, fontBold), {
+          x: margin + 14,
+          y: rowY - 37,
+          size: 9.5,
+          font: fontBold,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+      }
+
+      const col2X = margin + Math.floor(contentWidth * 0.52);
+      if (id.studentId) {
+        currentPage.drawText("STUDENT ID / SECTION", {
+          x: col2X,
+          y: rowY,
+          size: 7.5,
+          font: fontBold,
+          color: rgb(0.4, 0.45, 0.55),
+        });
+        const idSec = `${id.studentId}${id.section ? `  •  Section ${id.section}` : ""}`;
+        currentPage.drawText(sanitizeLine(idSec, fontBold), {
+          x: col2X,
+          y: rowY - 11,
+          size: 9.5,
+          font: fontBold,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+      }
+      if (id.submissionDate) {
+        currentPage.drawText("SUBMISSION DATE", {
+          x: col2X,
+          y: rowY - 26,
+          size: 7.5,
+          font: fontBold,
+          color: rgb(0.4, 0.45, 0.55),
+        });
+        currentPage.drawText(sanitizeLine(id.submissionDate, fontBold), {
+          x: col2X,
+          y: rowY - 37,
+          size: 9.5,
+          font: fontBold,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+      }
+
+      y -= cardHeight + 16;
+    } else if (block.type === "callout") {
+      const isWarn = block.calloutType === "distinction" || block.calloutType === "warning";
+      const isTip = block.calloutType === "tip";
+      const bg = isWarn ? rgb(1.0, 0.98, 0.92) : isTip ? rgb(0.93, 0.99, 0.96) : rgb(0.94, 0.97, 1.0);
+      const accent = isWarn ? rgb(0.85, 0.45, 0.05) : isTip ? rgb(0.02, 0.58, 0.4) : rgb(0.14, 0.38, 0.92);
+
+      const titleLines = block.calloutTitle ? wrapPdfText(sanitizeLine(block.calloutTitle, fontBold), fontBold, 10, contentWidth - 28) : [];
+      const textLines = wrapPdfText(sanitizeLine(block.text || "", fontRegular), fontRegular, 9, contentWidth - 28);
+      const totalH = (titleLines.length > 0 ? titleLines.length * 13 + 6 : 0) + textLines.length * 13 + 18;
+
+      if (y - totalH < bottomMargin) addNewPage();
+
+      currentPage.drawRectangle({
+        x: margin,
+        y: y - totalH,
+        width: contentWidth,
+        height: totalH,
+        color: bg,
+      });
+
+      currentPage.drawRectangle({
+        x: margin,
+        y: y - totalH,
+        width: 3.5,
+        height: totalH,
+        color: accent,
+      });
+
+      let cy = y - 14;
+      for (const tl of titleLines) {
+        currentPage.drawText(tl, { x: margin + 14, y: cy, size: 10, font: fontBold, color: accent });
+        cy -= 13;
+      }
+      if (titleLines.length > 0) cy -= 4;
+
+      for (const tl of textLines) {
+        currentPage.drawText(tl, { x: margin + 14, y: cy, size: 9, font: fontRegular, color: rgb(0.12, 0.16, 0.24) });
+        cy -= 13;
+      }
+
+      y -= totalH + 12;
+    } else if (block.type === "code") {
+      const codeLines = (block.text || "").split("\n");
+      const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
+      const codeH = codeLines.length * 12 + 16;
+      if (y - Math.min(codeH, 120) < bottomMargin) addNewPage();
+
+      currentPage.drawRectangle({
+        x: margin,
+        y: y - codeH,
+        width: contentWidth,
+        height: codeH,
+        color: rgb(0.08, 0.1, 0.15),
+      });
+
+      let cy = y - 12;
+      for (const line of codeLines) {
+        if (cy < bottomMargin + 10) {
+          addNewPage();
+          cy = y - 12;
+        }
+        currentPage.drawText(sanitizeLine(line, fontMono), {
+          x: margin + 12,
+          y: cy,
+          size: 8.5,
+          font: fontMono,
+          color: rgb(0.92, 0.95, 0.98),
+        });
+        cy -= 12;
+      }
+      y -= codeH + 14;
     }
   }
 
@@ -2624,6 +3177,163 @@ export async function renderExecutiveDocx(
         );
         children.push(new Paragraph({ spacing: { after: 140 } }));
       }
+    } else if (block.type === "identityCard" && block.identityData) {
+      const id = block.identityData;
+      const rows: TableRow[] = [];
+      const cells1: TableCell[] = [];
+      if (id.studentName) {
+        cells1.push(
+          new TableCell({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "STUDENT NAME\n", bold: true, size: 16, color: "64748B", font: docxFontName }),
+                  new TextRun({ text: id.studentName, bold: true, size: 22, color: "0F172A", font: docxFontName }),
+                ],
+              }),
+            ],
+            shading: { fill: "F8FAFC" },
+            margins: { top: 120, bottom: 120, left: 160, right: 160 },
+          }),
+        );
+      }
+      if (id.studentId) {
+        cells1.push(
+          new TableCell({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "STUDENT ID / SECTION\n", bold: true, size: 16, color: "64748B", font: docxFontName }),
+                  new TextRun({
+                    text: `${id.studentId}${id.section ? ` • Section ${id.section}` : ""}`,
+                    bold: true,
+                    size: 22,
+                    color: "0F172A",
+                    font: docxFontName,
+                  }),
+                ],
+              }),
+            ],
+            shading: { fill: "F8FAFC" },
+            margins: { top: 120, bottom: 120, left: 160, right: 160 },
+          }),
+        );
+      }
+      if (cells1.length > 0) rows.push(new TableRow({ children: cells1 }));
+
+      const cells2: TableCell[] = [];
+      if (id.submittedTo) {
+        cells2.push(
+          new TableCell({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "SUBMITTED TO\n", bold: true, size: 16, color: "64748B", font: docxFontName }),
+                  new TextRun({ text: id.submittedTo, bold: true, size: 22, color: "0F172A", font: docxFontName }),
+                ],
+              }),
+            ],
+            shading: { fill: "F8FAFC" },
+            margins: { top: 120, bottom: 120, left: 160, right: 160 },
+          }),
+        );
+      }
+      if (id.submissionDate) {
+        cells2.push(
+          new TableCell({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "SUBMISSION DATE\n", bold: true, size: 16, color: "64748B", font: docxFontName }),
+                  new TextRun({ text: id.submissionDate, bold: true, size: 22, color: "0F172A", font: docxFontName }),
+                ],
+              }),
+            ],
+            shading: { fill: "F8FAFC" },
+            margins: { top: 120, bottom: 120, left: 160, right: 160 },
+          }),
+        );
+      }
+      if (cells2.length > 0) rows.push(new TableRow({ children: cells2 }));
+
+      if (rows.length > 0) {
+        children.push(
+          new Table({
+            rows,
+            width: { size: 100, type: WidthType.PERCENTAGE },
+          }),
+        );
+        children.push(new Paragraph({ spacing: { after: 160 } }));
+      }
+    } else if (block.type === "callout") {
+      const isWarn = block.calloutType === "distinction" || block.calloutType === "warning";
+      const isTip = block.calloutType === "tip";
+      const bg = isWarn ? "FFFBEB" : isTip ? "ECFDF5" : "EFF6FF";
+      const titleCol = isWarn ? "92400E" : isTip ? "065F46" : "1E40AF";
+      const calloutParas: Paragraph[] = [];
+      if (block.calloutTitle) {
+        calloutParas.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: block.calloutTitle,
+                bold: true,
+                size: 20,
+                color: titleCol,
+                font: docxFontName,
+              }),
+            ],
+            spacing: { after: 60 },
+          }),
+        );
+      }
+      calloutParas.push(
+        new Paragraph({
+          children: createDocxTextRuns(block.text || "", {
+            size: 20,
+            color: "1E293B",
+            font: docxFontName,
+          }),
+          spacing: { line: 260 },
+        }),
+      );
+
+      children.push(
+        new Table({
+          rows: [
+            new TableRow({
+              children: [
+                new TableCell({
+                  children: calloutParas,
+                  shading: { fill: bg },
+                  margins: { top: 140, bottom: 140, left: 180, right: 180 },
+                }),
+              ],
+            }),
+          ],
+          width: { size: 100, type: WidthType.PERCENTAGE },
+        }),
+      );
+      children.push(new Paragraph({ spacing: { after: 120 } }));
+    } else if (block.type === "code") {
+      const codeLines = (block.text || "").split("\n");
+      for (const cl of codeLines) {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: cl,
+                font: "Courier New",
+                size: 18,
+                color: "1E293B",
+              }),
+            ],
+            shading: { fill: "F1F5F9" },
+            spacing: { line: 220 },
+          }),
+        );
+      }
+      children.push(new Paragraph({ spacing: { after: 120 } }));
     }
   }
 

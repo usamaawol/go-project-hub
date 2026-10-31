@@ -2,6 +2,7 @@ import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { getAdminSettings } from "./adminSettings.service";
 import { cleanAndFormatOcrText } from "../../src/lib/ocr-cleaner";
+import { cleanDocumentPageNoise } from "../../src/lib/document-synthesizer";
 
 export interface ExtractionResult {
   text: string;
@@ -170,7 +171,7 @@ export async function extractTextFromBuffer(
       await parser.load();
       const parsed = await parser.getText();
       let text = (parsed.text || "").trim();
-      text = text.replace(/--\s*\d+\s*of\s*\d+\s*--/gi, "").trim();
+      text = cleanDocumentPageNoise(text);
 
       if (text.length === 0) {
         return {

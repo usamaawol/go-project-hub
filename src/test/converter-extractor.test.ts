@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { convertDocumentBuffer } from "../../server/services/converter.service";
 import { extractTextFromBuffer } from "../../server/services/extractor.service";
-import { parsePlainTextToBlocks, renderExecutivePdf } from "../lib/document-synthesizer";
+import {
+  parsePlainTextToBlocks,
+  renderExecutivePdf,
+  renderExecutiveDocx,
+  cleanDocumentPageNoise,
+} from "../lib/document-synthesizer";
+import { convertBlocksToA4Html } from "../routes/converter";
 import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 
@@ -629,6 +635,176 @@ Zero permanent storage of sensitive documents.
       expect(docxBlob).toBeDefined();
       const docxSize = (docxBlob as any).size ?? (docxBlob as any).byteLength;
       expect(docxSize).toBeGreaterThan(1000);
+    });
+  });
+
+  // ----------------------------------------------------
+  // Test Suite 6: Intelligent Document Beautification & Executive Structural Reconstruction
+  // ----------------------------------------------------
+  describe("Intelligent Document Beautification & Executive Structural Reconstruction", () => {
+    const rawMessyDoc = `INTERNET
+PROGRAMMING II
+FULL-STACK WEB DEVELOPMENT
+A detailed study of Next.js for frontend and backend development
+ASSIGNMENT SUBMISSION
+Student Name Solomon Zewdu Student ID 3086/17 Section A Submission Date October 22, 2026 Submitted To Mr. Firomsa K. Selected technology: Next.js Next.js is a React-based web framework that supports user interfaces and server-side application features in one project. Prepared for academic purposes • Internet Programming II
+INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu • 3086/17 • Section A Page 2
+Contents This assignment introduces Next.js, explains how it supports frontend and backend development, and evaluates its main features, benefits, limitations, and appropriate use cases.
+Section Topic 1 Introduction 2 What Is Next.js? 3 How Next.js Supports Frontend and Backend 4 Major Features 5 Advantages 6 Drawbacks and Limitations 7 Example Project Structure 8 When Should Developers Choose Next.js? 9 Conclusion 10 References
+Learning objective To understand one modern framework that can be used to create both the visible part of a website (frontend) and server-side functionality (backend), while recognizing the trade-offs involved.
+INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu • 3086/17 • Section A Page 3
+Introduction Web applications commonly have two major parts: the frontend, which users see and interact with, and the backend, which processes requests, applies business rules, and communicates with data sources. Full-stack frameworks can bring many of these tasks into one organized project. What Is Next.js? Next.js is an open-source web development framework built on top of React. React is primarily used to create user interfaces; Next.js adds conventions and capabilities for routing, rendering, server-side code, and production deployment.
+Key terms Term Meaning Frontend The part of an application users see and interact with, such as pages, menus, forms, and buttons. Backend Server-side logic that handles requests, checks permissions, validates data, and communicates with databases or services. React A JavaScript library for building interfaces from reusable components. Rendering The process of preparing interface content for display. It can happen in the browser or on the server. API A defined way for parts of software to communicate, such as a browser sending data to a server.
+INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu • 3086/17 • Section A Page 4
+How Next.js Supports Frontend and Backend Next.js allows developers to keep interface code and many server-side features in one project.
+Frontend development
+Pages and layouts: Developers create routes and shared page structures.
+React components: Reusable components help keep buttons and forms consistent.
+Backend development
+Route Handlers: Server-side files can respond to HTTP methods.
+Database access: The server-side application can use a database driver or an ORM.
+Authentication and authorization: Next.js can be integrated with authentication libraries or identity optimized_Internet_Programming_II_Nextjs_Assignmen
+providers. The application must still check permissions on protected operations.
+Important distinction Next.js can provide both frontend and backend capabilities, but it is not itself a database. A real application may still need PostgreSQL, MySQL, MongoDB, or another data store, plus hosting and security configuration.
+Major Features of Next.js
+4.1 File-based routing
+The folder and file structure can define application routes.
+4.2 Server-side rendering
+A page can be rendered on the server for a request.
+INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu • 3086/17 • Section A Page 6
+Advantages of Next.js
+One project for many tasks: Developers can build the interface and server endpoints in one codebase.
+Flexible rendering: The framework supports different rendering approaches.
+Drawbacks and Limitations
+Learning curve: Developers must learn React and Next.js concepts.
+Summary: strengths and trade-offs Area Strength Trade-off Development Frontend and server features can share one project. The codebase still needs clear boundaries and organization. Performance Static output and server rendering can improve delivery. Poor data fetching or caching decisions can reduce performance. Learning Strong documentation and ecosystem. Several rendering concepts require practice. Security Server-side code can keep secrets out of the browser. Developers must implement and verify authorization and validation.
+Example Project Structure
+my-next-app/
+nnn app/
+n nnn layout.tsx # Shared page layout
+n nnn page.tsx # Main landing page
+nnn components/
+nnn Header.tsx # Navigation header
+nnn package.json # Project scripts and dependencies
+nnn tsconfig.json # TypeScript configuration
+When Should Developers Choose Next.js? Next.js is a strong option when a project needs a modern user interface, multiple pages, and some backend functionality.
+Good practices when using Next.js
+Keep secret keys and privileged database operations on the server; never expose them in browser-delivered optimized_Internet_Programming_II_Nextjs_Assignmen
+code. Validate all data received from users on the server, even if the form also validates it in the browser. Check authorization on every protected operation.
+Conclusion Next.js is a modern full-stack web framework built on React. Final point: Next.js provides the framework for the application, but a successful system still depends on sound programming practices, secure data handling, appropriate database design, testing, and maintenance.
+References The following official documentation pages provide further information about Next.js.
+Next.js Documentation https://nextjs.org/docs
+React Documentation https://react.dev/learn
+TypeScript Documentation https://www.typescriptlang.org/docs/
+INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu • 3086/17 • Section A Page 10`;
+
+    it("cleans document page noise, running footers, and heals severed sentences verbatim", () => {
+      const cleaned = cleanDocumentPageNoise(rawMessyDoc);
+
+      // Verify running headers and footers are eradicated
+      expect(cleaned).not.toContain("optimized_Internet_Programming_II_Nextjs_Assignmen");
+      expect(cleaned).not.toContain("INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK");
+      expect(cleaned).not.toContain("Section A Page 2");
+      expect(cleaned).not.toContain("Section A Page 3");
+      expect(cleaned).not.toContain("Section A Page 10");
+
+      // Verify severed sentences were healed seamlessly
+      expect(cleaned).toContain("identity providers.");
+      expect(cleaned).toContain("browser-delivered code.");
+    });
+
+    it("parses academic metadata card, structured tables, code trees, and callouts into executive blocks", () => {
+      const blocks = parsePlainTextToBlocks(rawMessyDoc);
+
+      // 1. Identity Card
+      const idBlock = blocks.find((b) => b.type === "identityCard");
+      expect(idBlock).toBeDefined();
+      expect(idBlock!.identityData?.studentName).toBe("Solomon Zewdu");
+      expect(idBlock!.identityData?.studentId).toBe("3086/17");
+      expect(idBlock!.identityData?.section).toBe("A");
+      expect(idBlock!.identityData?.submittedTo).toBe("Mr. Firomsa K.");
+      expect(idBlock!.identityData?.technology).toBe("Next.js");
+
+      // 2. Table of Contents Table
+      const tables = blocks.filter((b) => b.type === "table");
+      expect(tables.length).toBeGreaterThanOrEqual(3);
+      const tocTable = tables.find((t) => t.table?.headers?.[0] === "Section" && t.table?.headers?.[1] === "Topic");
+      expect(tocTable).toBeDefined();
+      expect(tocTable!.table!.rows.length).toBe(10);
+      expect(tocTable!.table!.rows[0]).toEqual(["1", "Introduction"]);
+      expect(tocTable!.table!.rows[9]).toEqual(["10", "References"]);
+
+      // 3. Key Terms Table
+      const ktTable = tables.find((t) => t.table?.headers?.[0] === "Term" && t.table?.headers?.[1] === "Meaning");
+      expect(ktTable).toBeDefined();
+      expect(ktTable!.table!.rows.some((r) => r[0] === "Frontend")).toBe(true);
+      expect(ktTable!.table!.rows.some((r) => r[0] === "Backend")).toBe(true);
+
+      // 4. Summary Table
+      const sumTable = tables.find((t) => t.table?.headers?.includes("Trade-off"));
+      expect(sumTable).toBeDefined();
+      expect(sumTable!.table!.headers).toEqual(["Area", "Strength", "Trade-off"]);
+      expect(sumTable!.table!.rows.some((r) => r[0] === "Development")).toBe(true);
+      expect(sumTable!.table!.rows.some((r) => r[0] === "Security")).toBe(true);
+
+      // 5. Code Block (Directory Tree)
+      const codeBlock = blocks.find((b) => b.type === "code");
+      expect(codeBlock).toBeDefined();
+      expect(codeBlock!.text).toContain("my-next-app/");
+      expect(codeBlock!.text).toContain("├── app/");
+      expect(codeBlock!.text).toContain("└── tsconfig.json");
+      expect(codeBlock!.text).not.toContain("nnn");
+
+      // 6. Callout Boxes
+      const callouts = blocks.filter((b) => b.type === "callout");
+      expect(callouts.length).toBeGreaterThanOrEqual(2);
+      const objectiveCallout = callouts.find((c) => c.calloutTitle === "Learning Objective");
+      expect(objectiveCallout).toBeDefined();
+      expect(objectiveCallout!.text).toContain("To understand one modern framework");
+
+      const distinctionCallout = callouts.find((c) => c.calloutTitle === "Important Distinction");
+      expect(distinctionCallout).toBeDefined();
+      expect(distinctionCallout!.text).toContain("Next.js can provide both frontend and backend capabilities");
+
+      // 7. Headings breakout
+      const headings = blocks.filter((b) => b.type === "heading1" || b.type === "heading2" || b.type === "heading3");
+      const headingTitles = headings.map((h) => h.text);
+      expect(headingTitles).toContain("Introduction");
+      expect(headingTitles).toContain("What Is Next.js?");
+      expect(headingTitles).toContain("Advantages of Next.js");
+      expect(headingTitles).toContain("Drawbacks and Limitations");
+      expect(headingTitles).toContain("Conclusion");
+      expect(headingTitles).toContain("References");
+    });
+
+    it("renders executive HTML, PDF, and DOCX without divider lines or rendering glitches", async () => {
+      const blocks = parsePlainTextToBlocks(rawMessyDoc);
+
+      // 1. A4 HTML Rendering
+      const html = convertBlocksToA4Html(blocks);
+      expect(html).toContain("class=\"identity-card\"");
+      expect(html).toContain("Solomon Zewdu");
+      expect(html).toContain("3086/17");
+      expect(html).toContain("class=\"callout-card\"");
+      expect(html).toContain("Learning Objective");
+      expect(html).toContain("Important Distinction");
+      expect(html).toContain("class=\"code-card\"");
+      expect(html).toContain("my-next-app/");
+      expect(html).not.toContain("<hr");
+      expect(html).not.toContain("optimized_Internet_Programming_II_Nextjs_Assignmen");
+
+      // 2. Executive PDF Generation
+      const pdfBytes = await renderExecutivePdf(blocks, "Next.js Assignment", { removeDividers: true });
+      expect(pdfBytes).toBeDefined();
+      expect(pdfBytes.length).toBeGreaterThan(2000);
+      const pdf = await PDFDocument.load(pdfBytes);
+      expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1);
+
+      // 3. Executive DOCX Generation
+      const docxData = await renderExecutiveDocx(blocks, "Next.js Assignment", { removeDividers: true });
+      expect(docxData).toBeDefined();
+      const docxSize = (docxData as any).size ?? (docxData as any).byteLength;
+      expect(docxSize).toBeGreaterThan(2000);
     });
   });
 });
