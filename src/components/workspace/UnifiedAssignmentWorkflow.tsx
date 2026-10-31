@@ -192,7 +192,7 @@ export function UnifiedAssignmentWorkflow({
   // Content upload state
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
   const [rawContent, setRawContent] = useState<string>(initialContent);
-  const [contentTab, setContentTab] = useState<"upload" | "paste">("upload");
+  const [contentTab, setContentTab] = useState<"upload" | "paste">("paste");
   const [isExtractingFile, setIsExtractingFile] = useState<boolean>(false);
   const contentFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -741,6 +741,40 @@ export function UnifiedAssignmentWorkflow({
     toast.success("Applied detected assignment information!");
   };
 
+  // Direct paste handler in Stage 1 with automatic metadata detection
+  const handleStage1Paste = (text: string) => {
+    setRawContent(text);
+    if (!text.trim()) return;
+
+    try {
+      const suggestions = extractAssignmentMetadataFromText(text);
+      if (suggestions.hasSuggestions) {
+        setMetadata((prev) => ({
+          ...prev,
+          studentName: suggestions.studentName || prev.studentName,
+          studentId: suggestions.studentId || prev.studentId,
+          courseName: suggestions.courseName || prev.courseName,
+          courseCode: suggestions.courseCode || prev.courseCode,
+          instructorName: suggestions.instructorName || prev.instructorName,
+          universityName: suggestions.universityName || prev.universityName,
+          department: suggestions.department || prev.department,
+          assignmentTitle: suggestions.assignmentTitle || prev.assignmentTitle,
+          assignmentType:
+            suggestions.groupMembers && suggestions.groupMembers.length > 1
+              ? "group"
+              : prev.assignmentType,
+          groupMembers:
+            suggestions.groupMembers && suggestions.groupMembers.length > 0
+              ? suggestions.groupMembers
+              : prev.groupMembers,
+        }));
+        setExtractedSuggestions(suggestions);
+      }
+    } catch {
+      // Non-blocking parse
+    }
+  };
+
   // Stage 5 Trigger: Execute AI Processing
   const handleExecuteAiProcessing = async () => {
     if (!rawContent.trim()) {
@@ -1073,10 +1107,79 @@ export function UnifiedAssignmentWorkflow({
                 Stage 1 — Collect Assignment Information
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Specify whether this is an individual or group submission and provide your academic details.
+                Paste your content or specify whether this is an individual or group submission.
               </p>
             </div>
             <span className="text-[11px] font-mono text-destructive font-bold">* Required Fields</span>
+          </div>
+
+          {/* Quick Paste Content / Draft Box in Stage 1 */}
+          <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ClipboardPaste className="h-4 w-4 text-primary" />
+                <h4 className="text-xs font-bold text-foreground">
+                  Paste Assignment Content / Draft Directly
+                </h4>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/15 text-primary font-bold">
+                  Quick Start
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const clipText = await navigator.clipboard.readText();
+                      if (clipText?.trim()) {
+                        handleStage1Paste(clipText);
+                        toast.success("Pasted assignment content from clipboard!");
+                      } else {
+                        toast.error("Clipboard is empty.");
+                      }
+                    } catch {
+                      toast.error("Please paste with Ctrl+V / Cmd+V into the text box.");
+                    }
+                  }}
+                  className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
+                >
+                  <ClipboardPaste className="h-3 w-3" /> Paste from Clipboard
+                </button>
+                {rawContent && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRawContent("");
+                      toast.info("Cleared pasted content.");
+                    }}
+                    className="text-xs text-muted-foreground hover:text-destructive font-semibold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              Have your assignment questions, essay draft, or notes ready? Paste them below. DocuMind will automatically detect your course, title, and student details to prefill the fields!
+            </p>
+
+            <textarea
+              rows={4}
+              value={rawContent}
+              onChange={(e) => handleStage1Paste(e.target.value)}
+              placeholder="Paste your assignment text, essay draft, questions, or syllabus here..."
+              className="w-full p-3 text-xs font-mono rounded-lg border border-border bg-background text-foreground focus:ring-2 focus:ring-primary/40 focus:outline-none"
+            />
+
+            {rawContent.trim() && (
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40">
+                <span className="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <Check className="h-3 w-3" /> {rawContent.length} characters ready for AI formatting
+                </span>
+                <span>~{rawContent.split(/\s+/).filter(Boolean).length} words</span>
+              </div>
+            )}
           </div>
 
           {/* Individual vs Group Mode Toggle */}

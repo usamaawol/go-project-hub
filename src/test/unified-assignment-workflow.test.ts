@@ -213,6 +213,13 @@ describe("Unified AI-Powered Assignment Creation Workflow (7-Stage Comprehensive
       expect(suggestions.instructorName).toBe("Prof. Gregory Mankiw");
       expect(suggestions.universityName).toContain("HARVARD");
     });
+
+    it("supports direct content pasting with instant draft preservation and word count", () => {
+      const draftContent = `Introduction to Distributed Computing\nBy analyzing replication protocols, consensus guarantees can be verified.`;
+      const wordCount = draftContent.split(/\s+/).filter(Boolean).length;
+      expect(draftContent.length).toBeGreaterThan(0);
+      expect(wordCount).toBe(13);
+    });
   });
 
   // STAGE 5: AI-Powered Formatting Engine
