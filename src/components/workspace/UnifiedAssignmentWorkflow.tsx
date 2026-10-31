@@ -141,6 +141,39 @@ const ACCENT_PALETTE = [
   { name: "Terracotta Orange", hex: "#C2410C" },
 ];
 
+export const THEME_PRESETS = [
+  {
+    id: "corporate-clean",
+    label: "🎓 Executive Ivory",
+    colors: { primary: "#1E3A8A", accent: "#3B82F6", bg: "#FFFFFF" },
+    accent: "#3B82F6",
+  },
+  {
+    id: "obsidian-cyber",
+    label: "🌌 Obsidian Slate",
+    colors: { primary: "#38BDF8", accent: "#0284C7", bg: "#0F172A" },
+    accent: "#38BDF8",
+  },
+  {
+    id: "nordic-emerald",
+    label: "🌿 Emerald Nordic",
+    colors: { primary: "#064E3B", accent: "#059669", bg: "#F8FAFC" },
+    accent: "#059669",
+  },
+  {
+    id: "modern-amber",
+    label: "⚡ Vibrant Amber",
+    colors: { primary: "#1E3A8A", accent: "#D97706", bg: "#FFFFFF" },
+    accent: "#D97706",
+  },
+  {
+    id: "midnight-purple",
+    label: "🔮 Royal Midnight",
+    colors: { primary: "#A855F7", accent: "#7C3AED", bg: "#18181B" },
+    accent: "#A855F7",
+  },
+];
+
 const TEMPLATE_CATEGORIES = [
   "All",
   "Academic",
@@ -237,6 +270,21 @@ export function UnifiedAssignmentWorkflow({
   const [presentationSession, setPresentationSession] = useState<PresentationSessionData | null>(null);
   const [currentSlideIdx, setCurrentSlideIdx] = useState<number>(0);
   const [showNotesDrawer, setShowNotesDrawer] = useState<boolean>(false);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+
+  const handleApplyThemePreset = (preset: (typeof THEME_PRESETS)[0]) => {
+    if (presentationSession) {
+      const updatedTheme = {
+        ...presentationSession.theme,
+        id: preset.id,
+        name: preset.label,
+        colors: preset.colors,
+      };
+      setPresentationSession((prev) => (prev ? { ...prev, theme: updatedTheme } : null));
+    }
+    updateMetaField("accentColor", preset.accent);
+    toast.success(`Theme set to ${preset.label}!`);
+  };
 
   const updateCurrentSlide = (fields: Partial<SlidePreviewItem>) => {
     if (!presentationSession) return;
@@ -2389,6 +2437,7 @@ export function UnifiedAssignmentWorkflow({
             <div className="space-y-4">
               {/* Word Processing Formatting Toolbar */}
               <DocumentWordToolbar
+                editorRef={editorRef}
                 currentLineSpacing={formattingConfig.lineSpacing}
                 onLineSpacingChange={(sp) =>
                   setFormattingConfig((prev) => ({ ...prev, lineSpacing: sp }))
@@ -2453,6 +2502,7 @@ export function UnifiedAssignmentWorkflow({
                         <span className="text-[11px] text-muted-foreground">Changes automatically update exported files</span>
                       </div>
                       <div
+                        ref={editorRef}
                         contentEditable
                         suppressContentEditableWarning
                         onBlur={(e) => {
@@ -2470,11 +2520,194 @@ export function UnifiedAssignmentWorkflow({
 
                 if (documentViewMode === "cover") {
                   return (
-                    <div className="w-full max-w-xl mx-auto aspect-[1/1.414] rounded-2xl border border-border bg-white shadow-paper overflow-hidden p-2">
-                      <AssignmentCoverRenderer
-                        metadata={metadata}
-                        aspectRatio="a4"
-                      />
+                    <div className="space-y-4">
+                      {/* Document Studio Cover Page Customization Bar */}
+                      <div className="p-3 rounded-2xl border border-border bg-card shadow-xs flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-mono font-bold uppercase text-muted-foreground flex items-center gap-1.5 mr-1">
+                            <Layers className="h-3.5 w-3.5 text-primary" /> Template:
+                          </span>
+                          <select
+                            value={metadata.coverTemplateId}
+                            onChange={(e) => {
+                              const newTplId = e.target.value;
+                              const tpl = COVER_TEMPLATES.find((t) => t.id === newTplId);
+                              const newAccent = tpl?.defaultAccent || metadata.accentColor;
+                              setMetadata((prev) => ({
+                                ...prev,
+                                coverTemplateId: newTplId,
+                                accentColor: newAccent,
+                              }));
+                              toast.success(`Applied ${tpl?.name || newTplId} template!`);
+                            }}
+                            className="h-8 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[170px]"
+                          >
+                            {COVER_TEMPLATES.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Cover Font Family Selector */}
+                          <select
+                            value={metadata.coverFontFamily || "Inter, sans-serif"}
+                            onChange={(e) => {
+                              updateMetaField("coverFontFamily", e.target.value);
+                              toast.success("Updated cover font family!");
+                            }}
+                            className="h-8 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[150px]"
+                          >
+                            <option value="Inter, sans-serif">Inter (Modern)</option>
+                            <option value="'Playfair Display', serif">Playfair (Editorial)</option>
+                            <option value="Georgia, serif">Georgia (Academic)</option>
+                            <option value="Montserrat, sans-serif">Montserrat (Geometric)</option>
+                            <option value="Roboto, sans-serif">Roboto (Clean)</option>
+                            <option value="Merriweather, serif">Merriweather (Heritage)</option>
+                          </select>
+
+                          {/* Alignment Selector */}
+                          <div className="flex items-center gap-0.5 bg-surface-2/60 p-0.5 rounded-lg border border-border">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("coverTitleAlignment", "left");
+                                toast.success("Aligned title left");
+                              }}
+                              className={`p-1.5 rounded text-xs transition-all ${
+                                (metadata.coverTitleAlignment || "left") === "left"
+                                  ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Align Left"
+                            >
+                              <AlignLeft className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("coverTitleAlignment", "center");
+                                toast.success("Aligned title center");
+                              }}
+                              className={`p-1.5 rounded text-xs transition-all ${
+                                metadata.coverTitleAlignment === "center"
+                                  ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Align Center"
+                            >
+                              <AlignCenter className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("coverTitleAlignment", "right");
+                                toast.success("Aligned title right");
+                              }}
+                              className={`p-1.5 rounded text-xs transition-all ${
+                                metadata.coverTitleAlignment === "right"
+                                  ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Align Right"
+                            >
+                              <AlignRight className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Title Position Selector */}
+                          <select
+                            value={metadata.coverTitlePosition || "middle"}
+                            onChange={(e) => {
+                              updateMetaField("coverTitlePosition", e.target.value as "top" | "middle" | "lower");
+                              toast.success(`Title positioned ${e.target.value}`);
+                            }}
+                            className="h-8 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[125px]"
+                          >
+                            <option value="top">Pos: Top</option>
+                            <option value="middle">Pos: Centered</option>
+                            <option value="lower">Pos: Lower</option>
+                          </select>
+
+                          {/* Bold Toggle for Title */}
+                          <button
+                            type="button"
+                            onClick={handleToggleBold}
+                            className={`p-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              metadata.coverTitleBold !== false
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:bg-surface-2"
+                            }`}
+                            title="Toggle Title Bold"
+                          >
+                            <Bold className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Title Font Size A- / A+ Controls */}
+                          <div className="flex items-center gap-1 bg-surface-2/60 p-0.5 rounded-lg border border-border">
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustFontSize(-2)}
+                              className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                              title="Decrease title size"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="font-mono text-[11px] font-bold px-1.5 text-foreground min-w-[42px] text-center">
+                              {metadata.coverTitleFontSize || 32} pt
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleAdjustFontSize(2)}
+                              className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-2"
+                              title="Increase title size"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+
+                          {/* Launch Canva Canvas Cover Editor */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsCanvasEditorOpen(true)}
+                            className="h-8 text-xs gap-1.5 hover:text-primary"
+                          >
+                            <Sliders className="h-3.5 w-3.5 text-primary" />
+                            <span>Canva Editor</span>
+                          </Button>
+                        </div>
+
+                        {/* Accent Swatches */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-mono text-muted-foreground uppercase mr-1">Accent:</span>
+                          {ACCENT_PALETTE.map((swatch) => (
+                            <button
+                              key={swatch.hex}
+                              type="button"
+                              onClick={() => {
+                                updateMetaField("accentColor", swatch.hex);
+                                toast.success(`Accent color set to ${swatch.name}`);
+                              }}
+                              title={swatch.name}
+                              style={{ backgroundColor: swatch.hex }}
+                              className={`h-5 w-5 rounded-full border transition-transform ${
+                                (metadata.accentColor || "#1E3A8A") === swatch.hex
+                                  ? "ring-2 ring-primary ring-offset-2 scale-110"
+                                  : "hover:scale-105 opacity-80"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="w-full max-w-xl mx-auto aspect-[1/1.414] rounded-2xl border border-border bg-white shadow-paper overflow-hidden p-2">
+                        <AssignmentCoverRenderer
+                          metadata={metadata}
+                          aspectRatio="a4"
+                        />
+                      </div>
                     </div>
                   );
                 }
@@ -2506,21 +2739,41 @@ export function UnifiedAssignmentWorkflow({
                           }}
                         >
                           {/* Running Header */}
-                          <div className="pb-3 mb-4 border-b border-slate-200 flex items-center justify-between text-[11px] font-mono text-slate-500">
-                            <span className="truncate max-w-[70%]">
-                              {metadata.assignmentTitle || metadata.courseName}
+                          <div className="pb-3 mb-5 border-b border-slate-200 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                            <div className="flex items-center gap-2 truncate max-w-[75%]">
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ backgroundColor: metadata.accentColor || "#1E3A8A" }}
+                              />
+                              <span className="font-bold uppercase tracking-wider text-slate-700 truncate">
+                                {metadata.assignmentTitle || metadata.courseName}
+                              </span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold text-slate-600 shrink-0">
+                              A4 Page {p.pageNumber}
                             </span>
-                            <span>A4 Page {p.pageNumber}</span>
                           </div>
 
                           {/* Page Sections */}
-                          <div className="flex-1 space-y-4">
+                          <div className="flex-1 space-y-5">
                             {p.sections.map((sec, sIdx) => (
-                              <div key={sIdx} className="space-y-2">
-                                <h3 className="font-bold text-slate-900 text-base border-b border-slate-100 pb-1">
-                                  {sec.numberStr} {sec.title}
-                                </h3>
-                                <div className="text-slate-800 text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">
+                              <div key={sIdx} className="space-y-2.5">
+                                <div
+                                  className="flex items-center gap-2 border-b pb-1.5"
+                                  style={{ borderColor: `${metadata.accentColor || "#1E3A8A"}25` }}
+                                >
+                                  <span
+                                    className="h-4 w-1 rounded-full shrink-0"
+                                    style={{ backgroundColor: metadata.accentColor || "#1E3A8A" }}
+                                  />
+                                  <h3
+                                    className="font-bold text-slate-900 text-base tracking-tight"
+                                    style={{ fontFamily: formattingConfig.fontFamily === "academic" ? "Georgia, serif" : "Inter, sans-serif" }}
+                                  >
+                                    {sec.numberStr} {sec.title}
+                                  </h3>
+                                </div>
+                                <div className="text-slate-800 text-xs sm:text-sm whitespace-pre-wrap leading-relaxed pl-3 border-l-2 border-transparent">
                                   {sec.rawContent}
                                 </div>
                               </div>
@@ -2529,8 +2782,10 @@ export function UnifiedAssignmentWorkflow({
 
                           {/* Running Footer */}
                           <div className="pt-3 mt-6 border-t border-slate-200 flex items-center justify-between text-[11px] font-mono text-slate-500">
-                            <span>{metadata.universityName || metadata.courseName}</span>
-                            <span>Page {p.pageNumber} of {p.totalPages}</span>
+                            <span className="font-semibold text-slate-600">
+                              {metadata.universityName || metadata.courseName || "Academic Assignment"}
+                            </span>
+                            <span className="text-slate-400">Page {p.pageNumber} of {p.totalPages}</span>
                           </div>
                         </div>
                       ))}
@@ -2719,26 +2974,51 @@ export function UnifiedAssignmentWorkflow({
                           </Button>
                         </div>
 
-                        {/* Accent Swatches for Cover */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-mono text-muted-foreground uppercase mr-1">Accent:</span>
-                          {ACCENT_PALETTE.map((swatch) => (
-                            <button
-                              key={swatch.hex}
-                              type="button"
-                              onClick={() => {
-                                updateMetaField("accentColor", swatch.hex);
-                                toast.success(`Accent color set to ${swatch.name}`);
+                        {/* Theme Vibe Preset Switcher & Accent Swatches */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-mono font-bold uppercase text-muted-foreground flex items-center gap-1">
+                              <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Vibe:
+                            </span>
+                            <select
+                              value={presentationSession?.theme?.id || "corporate-clean"}
+                              onChange={(e) => {
+                                const found = THEME_PRESETS.find((p) => p.id === e.target.value);
+                                if (found) handleApplyThemePreset(found);
                               }}
-                              title={swatch.name}
-                              style={{ backgroundColor: swatch.hex }}
-                              className={`h-5 w-5 rounded-full border transition-transform ${
-                                (metadata.accentColor || "#1E3A8A") === swatch.hex
-                                  ? "ring-2 ring-primary ring-offset-2 scale-110"
-                                  : "hover:scale-105 opacity-80"
-                              }`}
-                            />
-                          ))}
+                              className="h-8 text-xs px-2.5 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[155px]"
+                            >
+                              {THEME_PRESETS.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="h-4 w-px bg-border mx-1" />
+
+                          {/* Accent Swatches for Cover */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase mr-1">Accent:</span>
+                            {ACCENT_PALETTE.map((swatch) => (
+                              <button
+                                key={swatch.hex}
+                                type="button"
+                                onClick={() => {
+                                  updateMetaField("accentColor", swatch.hex);
+                                  toast.success(`Accent color set to ${swatch.name}`);
+                                }}
+                                title={swatch.name}
+                                style={{ backgroundColor: swatch.hex }}
+                                className={`h-5 w-5 rounded-full border transition-transform ${
+                                  (metadata.accentColor || "#1E3A8A") === swatch.hex
+                                    ? "ring-2 ring-primary ring-offset-2 scale-110"
+                                    : "hover:scale-105 opacity-80"
+                                }`}
+                              />
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -2847,6 +3127,29 @@ export function UnifiedAssignmentWorkflow({
                               <option value="metrics">Telemetry & Stats</option>
                               <option value="quote">Quote / Key Takeaway</option>
                               <option value="conclusion">Synthesis Checklist</option>
+                            </select>
+                          </div>
+
+                          <div className="h-4 w-px bg-border mx-1" />
+
+                          {/* Theme Vibe Preset Switcher */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1">
+                              <Sparkles className="h-3 w-3 text-amber-500" /> Vibe:
+                            </span>
+                            <select
+                              value={presentationSession?.theme?.id || "corporate-clean"}
+                              onChange={(e) => {
+                                const found = THEME_PRESETS.find((p) => p.id === e.target.value);
+                                if (found) handleApplyThemePreset(found);
+                              }}
+                              className="h-7 text-xs px-2 rounded-lg border border-border bg-surface-2/40 text-foreground font-semibold outline-none focus:border-primary max-w-[150px]"
+                            >
+                              {THEME_PRESETS.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label}
+                                </option>
+                              ))}
                             </select>
                           </div>
                         </div>
@@ -2993,6 +3296,9 @@ export function UnifiedAssignmentWorkflow({
                         className="w-full aspect-[16/9] rounded-2xl border border-border shadow-lift flex flex-col justify-between overflow-hidden relative select-text transition-all"
                         style={{
                           backgroundColor: tokens.bg,
+                          backgroundImage: tokens.isDark
+                            ? "radial-gradient(circle at 85% 15%, rgba(56, 189, 248, 0.08), transparent 45%), radial-gradient(circle at 15% 85%, rgba(168, 85, 247, 0.06), transparent 50%)"
+                            : "radial-gradient(circle at 90% 10%, rgba(59, 130, 246, 0.04), transparent 45%), radial-gradient(circle at 10% 90%, rgba(217, 119, 6, 0.03), transparent 50%)",
                           color: tokens.textPrimary,
                           fontFamily: tokens.fontBody,
                         }}
@@ -3416,9 +3722,10 @@ export function UnifiedAssignmentWorkflow({
                                       {cards.map((card, cIdx) => (
                                         <div
                                           key={cIdx}
-                                          className="group/card rounded-xl border p-3.5 flex flex-col justify-between space-y-2 relative shadow-xs"
+                                          className="group/card rounded-xl border p-3.5 flex flex-col justify-between space-y-2 relative shadow-xs hover:shadow-md transition-all"
                                           style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
                                         >
+                                          <div className="h-1 w-full rounded-full shrink-0 -mt-1 mb-1.5 opacity-80" style={{ backgroundColor: tokens.accent }} />
                                           <div className="space-y-1">
                                             <div className="flex items-center justify-between">
                                               <input
@@ -3503,9 +3810,10 @@ export function UnifiedAssignmentWorkflow({
                                       {timeline.map((item, tIdx) => (
                                         <div
                                           key={tIdx}
-                                          className="group/tl rounded-xl border p-3 flex flex-col justify-between space-y-1.5 relative shadow-xs"
+                                          className="group/tl rounded-xl border p-3 flex flex-col justify-between space-y-1.5 relative shadow-xs hover:shadow-md transition-all"
                                           style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
                                         >
+                                          <div className="h-1 w-full rounded-full shrink-0 -mt-0.5 mb-1.5 opacity-80" style={{ backgroundColor: tokens.accent }} />
                                           <div className="flex items-center justify-between">
                                             <input
                                               type="text"
@@ -3585,9 +3893,10 @@ export function UnifiedAssignmentWorkflow({
                                       {steps.map((st, sIdx) => (
                                         <div
                                           key={sIdx}
-                                          className="group/proc rounded-xl border p-3 flex flex-col justify-between space-y-1.5 relative shadow-xs"
+                                          className="group/proc rounded-xl border p-3 flex flex-col justify-between space-y-1.5 relative shadow-xs hover:shadow-md transition-all"
                                           style={{ backgroundColor: tokens.cardBg, borderColor: tokens.cardBorder }}
                                         >
+                                          <div className="h-1 w-full rounded-full shrink-0 -mt-0.5 mb-1.5 opacity-80" style={{ backgroundColor: tokens.accent }} />
                                           <div className="flex items-center justify-between">
                                             <span
                                               className="h-5 w-5 rounded-full flex items-center justify-center font-mono text-[9px] font-bold text-white"

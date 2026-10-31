@@ -241,7 +241,11 @@ function postProcessCoverElements(
   const courseInfoEl = processed.find(
     (e) =>
       e.type === "text" &&
-      (e.id?.includes("meta-course") || e.id?.includes("student-id") || e.id?.includes("group-members")),
+      (e.id?.includes("meta-course") ||
+        e.id?.includes("student-id") ||
+        e.id?.includes("meta-id") ||
+        e.id?.includes("salford-meta") ||
+        e.id?.includes("group-members")),
   );
 
   const instructorEl = processed.find(
@@ -362,7 +366,7 @@ function postProcessCoverElements(
     let startY: number;
 
     if (position === "top") {
-      startY = is169 ? (leadTagEl ? 95 : 120) : (leadTagEl ? 105 : 135);
+      startY = is169 ? (leadTagEl ? 85 : 105) : leadTagEl ? 95 : 125;
     } else if (position === "lower") {
       startY = Math.max(is169 ? 150 : 180, pageH - totalStackHeight - (is169 ? 85 : 105));
     } else {
@@ -381,7 +385,97 @@ function postProcessCoverElements(
       currY += item.el.height + item.gapAfter;
     }
 
-    // H. Position Footer & Notes Below the Stack
+    // H. Formatted Executive Showcase Card for Metadata
+    if (authorNameEl) {
+      const metaEls = [
+        metaLabelEl,
+        authorNameEl,
+        courseInfoEl,
+        instructorEl,
+        institutionInfoEl && institutionInfoEl.y > 200 ? institutionInfoEl : null,
+      ].filter(Boolean) as CanvasCoverElement[];
+
+      if (metaEls.length >= 2) {
+        const firstMeta = metaEls[0]!;
+        const lastMeta = metaEls[metaEls.length - 1]!;
+        const cardTop = firstMeta.y - (is169 ? 14 : 10);
+        const cardBottom = lastMeta.y + lastMeta.height + (is169 ? 14 : 10);
+        const cardH = cardBottom - cardTop;
+        const cardW = is169 ? Math.min(stackW, 720) : stackW;
+        const cardX = alignment === "center" ? Math.round((pageW - cardW) / 2) : stackX;
+
+        const bgShape = processed.find(
+          (e) => e.type === "shape" && e.width >= pageW * 0.9 && e.height >= pageH * 0.9,
+        );
+        const isDarkBg = Boolean(
+          bgShape &&
+            bgShape.fillColor &&
+            (bgShape.fillColor.startsWith("#0") ||
+              bgShape.fillColor.startsWith("#1") ||
+              bgShape.fillColor.startsWith("#2") ||
+              bgShape.fillColor.includes("15, 23, 42") ||
+              bgShape.fillColor.toLowerCase().includes("black")),
+        );
+
+        const cardFill = isDarkBg ? "#1E293B" : "#F8FAFC";
+        const cardBorder = isDarkBg ? "#334155" : "#E2E8F0";
+
+        const existingCardIdx = processed.findIndex((e) => e.id === "cover-credentials-card");
+        const credentialsCard: CanvasCoverElement = {
+          id: "cover-credentials-card",
+          type: "shape",
+          name: "Executive Credentials Card",
+          shapeType: "rectangle",
+          x: cardX,
+          y: cardTop,
+          width: cardW,
+          height: Math.max(cardH, 110),
+          fillColor: cardFill,
+          borderColor: cardBorder,
+          borderWidth: 1.5,
+          borderRadius: 16,
+          zIndex: 4,
+        };
+
+        if (existingCardIdx >= 0) {
+          processed[existingCardIdx] = credentialsCard;
+        } else {
+          processed.push(credentialsCard);
+        }
+
+        // Elevate metadata elements above the card
+        for (const mEl of metaEls) {
+          mEl.zIndex = Math.max(mEl.zIndex || 1, 8);
+          mEl.x = cardX;
+          mEl.width = cardW;
+        }
+      }
+    }
+
+    // I. Ambient Matrix Dots for 16:9 presentations
+    if (is169 && !processed.some((e) => e.id?.includes("matrix") || e.id?.includes("dots"))) {
+      processed.push({
+        id: "cover-ambient-matrix",
+        type: "shape",
+        name: "Ambient Matrix Dots",
+        shapeType: "svg",
+        x: pageW - 130,
+        y: 110,
+        width: 60,
+        height: 40,
+        svgContent: `<svg viewBox="0 0 60 40" width="100%" height="100%">
+          <circle cx="10" cy="10" r="2.5" fill="#3B82F6" opacity="0.25"/>
+          <circle cx="30" cy="10" r="2.5" fill="#3B82F6" opacity="0.25"/>
+          <circle cx="50" cy="10" r="2.5" fill="#3B82F6" opacity="0.25"/>
+          <circle cx="10" cy="25" r="2.5" fill="#3B82F6" opacity="0.25"/>
+          <circle cx="30" cy="25" r="2.5" fill="#3B82F6" opacity="0.25"/>
+          <circle cx="50" cy="25" r="2.5" fill="#3B82F6" opacity="0.25"/>
+        </svg>`,
+        zIndex: 2,
+      });
+    }
+
+    // J. Position Footer & Notes Below the Stack
     if (footerEl) {
       footerEl.x = stackX;
       footerEl.width = stackW;
@@ -1117,6 +1211,7 @@ export function generateCanvaSalfordWave(
   const elements: CanvasCoverElement[] = [];
   let zIndex = 1;
 
+  const is169 = pageH <= 800;
   const navy = meta.accentColor || "#1B365D";
   const yellow = "#F59E0B";
   const isGroup = meta.assignmentType === "group";
@@ -1128,6 +1223,19 @@ export function generateCanvaSalfordWave(
   const title = meta.assignmentTitle || "Project Proposal";
   const year = meta.academicYear || "2026";
   const subtitle = meta.courseName || meta.courseCode || "Delivering innovative solutions for modern infrastructure";
+
+  const displayTitle =
+    title === "Project Proposal" && year === "2026"
+      ? "Project Proposal 2026"
+      : title;
+
+  const yearTag = meta.academicYear
+    ? (/^\d{4}$/.test(meta.academicYear.trim())
+        ? meta.academicYear.trim()
+        : meta.academicYear.toUpperCase().includes("YEAR")
+          ? meta.academicYear.toUpperCase()
+          : `${meta.academicYear.toUpperCase()} ACADEMIC YEAR`)
+    : "2026";
 
   // 1. Crisp White Background
   elements.push({
@@ -1145,7 +1253,9 @@ export function generateCanvaSalfordWave(
     zIndex: zIndex++,
   });
 
-  // 2. Top-Left Yellow Wave Underlay Ribbon
+  // 2. Top-Left Yellow Wave Underlay Ribbon (Sized for 16:9 clear space)
+  const topYellowW = is169 ? 380 : 480;
+  const topYellowH = is169 ? 130 : 220;
   elements.push({
     id: "salford-top-yellow",
     type: "shape",
@@ -1153,14 +1263,16 @@ export function generateCanvaSalfordWave(
     shapeType: "svg",
     x: 0,
     y: 0,
-    width: 480,
-    height: 220,
+    width: topYellowW,
+    height: topYellowH,
     fillColor: yellow,
-    svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${yellow}" opacity="0.9" /></svg>`,
+    svgContent: `<svg viewBox="0 0 ${topYellowW} ${topYellowH}" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L ${topYellowW},0 C ${topYellowW * 0.8},${topYellowH * 0.45} ${topYellowW * 0.58},${topYellowH * 0.82} ${topYellowW * 0.33},${topYellowH * 0.82} C ${topYellowW * 0.18},${topYellowH * 0.82} ${topYellowW * 0.06},${topYellowH * 0.91} 0,${topYellowH} Z" fill="${yellow}" opacity="0.9" /></svg>`,
     zIndex: zIndex++,
   });
 
   // 3. Top-Left Deep Navy Fluid Wave Header
+  const topNavyW = is169 ? 350 : 450;
+  const topNavyH = is169 ? 112 : 195;
   elements.push({
     id: "salford-top-navy",
     type: "shape",
@@ -1168,10 +1280,10 @@ export function generateCanvaSalfordWave(
     shapeType: "svg",
     x: 0,
     y: 0,
-    width: 450,
-    height: 195,
+    width: topNavyW,
+    height: topNavyH,
     fillColor: navy,
-    svgContent: `<svg viewBox="0 0 450 195" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 450,0 C 370,85 260,160 140,160 C 80,160 25,180 0,195 Z" fill="${navy}" /></svg>`,
+    svgContent: `<svg viewBox="0 0 ${topNavyW} ${topNavyH}" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L ${topNavyW},0 C ${topNavyW * 0.82},${topNavyH * 0.44} ${topNavyW * 0.58},${topNavyH * 0.82} ${topNavyW * 0.31},${topNavyH * 0.82} C ${topNavyW * 0.18},${topNavyH * 0.82} ${topNavyW * 0.05},${topNavyH * 0.92} 0,${topNavyH} Z" fill="${navy}" /></svg>`,
     zIndex: zIndex++,
   });
 
@@ -1208,16 +1320,35 @@ export function generateCanvaSalfordWave(
     zIndex: zIndex++,
   });
 
-  // 5. Title Area
+  // 5. Category / Academic Year Lead Tag
+  elements.push({
+    id: "salford-title-year",
+    type: "text",
+    name: "Year / Category Lead",
+    x: 80,
+    y: is169 ? 150 : 230,
+    width: 520,
+    height: 22,
+    text: yearTag,
+    fontFamily: "Inter, Montserrat, sans-serif",
+    fontSize: 12,
+    fontWeight: "700",
+    textColor: "#D97706",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    zIndex: zIndex++,
+  });
+
+  // 6. Proposal Title (Clean title without awkward concatenated year)
   elements.push({
     id: "salford-title-main",
     type: "text",
     name: "Proposal Title",
     x: 80,
-    y: 280,
-    width: pageW - 160,
-    height: 110,
-    text: `${title} ${year}`,
+    y: is169 ? 180 : 260,
+    width: is169 ? 640 : pageW - 160,
+    height: 72,
+    text: displayTitle,
     fontFamily: "Inter, Montserrat, sans-serif",
     fontSize: 48,
     fontWeight: "800",
@@ -1228,15 +1359,15 @@ export function generateCanvaSalfordWave(
     zIndex: zIndex++,
   });
 
-  // 6. Subtitle / Course Description
+  // 7. Subtitle / Course Description
   elements.push({
     id: "salford-subtitle",
     type: "text",
     name: "Proposal Subtitle",
     x: 80,
-    y: 400,
-    width: pageW - 160,
-    height: 40,
+    y: is169 ? 260 : 340,
+    width: is169 ? 640 : pageW - 160,
+    height: 32,
     text: subtitle,
     fontFamily: "Inter, sans-serif",
     fontSize: 14,
@@ -1245,19 +1376,19 @@ export function generateCanvaSalfordWave(
     zIndex: zIndex++,
   });
 
-  // 7. Prepared by Metadata
+  // 8. Prepared by Metadata
   elements.push({
     id: "salford-meta-label",
     type: "text",
     name: "Prepared by Label",
     x: 80,
-    y: 480,
-    width: 320,
+    y: is169 ? 315 : 400,
+    width: 480,
     height: 20,
-    text: "Prepared by :",
+    text: isGroup ? "GROUP RESEARCH DIRECTORY" : "Prepared by :",
     fontFamily: "Inter, sans-serif",
-    fontSize: 13,
-    fontWeight: "500",
+    fontSize: 12,
+    fontWeight: "600",
     textColor: "#64748B",
     zIndex: zIndex++,
   });
@@ -1267,9 +1398,9 @@ export function generateCanvaSalfordWave(
     type: "text",
     name: "Author Name",
     x: 80,
-    y: 505,
-    width: 360,
-    height: 32,
+    y: is169 ? 340 : 425,
+    width: 480,
+    height: 30,
     text: author,
     fontFamily: "Inter, Montserrat, sans-serif",
     fontSize: 20,
@@ -1279,19 +1410,19 @@ export function generateCanvaSalfordWave(
     zIndex: zIndex++,
   });
 
-  if (meta.studentId) {
+  if (meta.studentId || meta.courseName) {
     elements.push({
-      id: "salford-meta-id",
+      id: "salford-meta-course",
       type: "text",
-      name: "Student ID",
+      name: "Student ID & Course",
       x: 80,
-      y: 540,
-      width: 320,
-      height: 22,
-      text: `Student ID: ${meta.studentId}`,
-      fontFamily: "monospace",
+      y: is169 ? 375 : 465,
+      width: 480,
+      height: 24,
+      text: [meta.courseName, meta.studentId ? `Student ID: ${meta.studentId}` : ""].filter(Boolean).join("  •  "),
+      fontFamily: "Inter, sans-serif",
       fontSize: 12,
-      fontWeight: "600",
+      fontWeight: "500",
       textColor: "#64748B",
       isMetadataField: "studentId",
       zIndex: zIndex++,
@@ -1304,64 +1435,67 @@ export function generateCanvaSalfordWave(
       type: "text",
       name: "Submitted To Instructor",
       x: 80,
-      y: meta.studentId ? 566 : 542,
-      width: 360,
+      y: is169 ? 405 : 495,
+      width: 480,
       height: 24,
       text: `Submitted to: ${meta.instructorName}`,
       fontFamily: "Inter, sans-serif",
       fontSize: 12,
-      fontWeight: "600",
-      textColor: "#475569",
+      fontWeight: "500",
+      textColor: "#64748B",
       isMetadataField: "instructorName",
       zIndex: zIndex++,
     });
   }
 
-  // 8. Bottom-Right Yellow Underlay Ribbon
+  // 9. Bottom-Right Yellow Underlay Ribbon
+  const brYellowW = is169 ? 280 : 380;
+  const brYellowH = is169 ? 160 : 250;
   elements.push({
     id: "salford-br-yellow",
     type: "shape",
     name: "Bottom-Right Yellow Wave",
     shapeType: "svg",
-    x: pageW - 380,
-    y: pageH - 250,
-    width: 380,
-    height: 250,
+    x: pageW - brYellowW,
+    y: pageH - brYellowH,
+    width: brYellowW,
+    height: brYellowH,
     fillColor: yellow,
-    svgContent: `<svg viewBox="0 0 380 250" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,250 C 130,250 210,160 380,80 L 380,250 Z" fill="${yellow}" opacity="0.9" /></svg>`,
+    svgContent: `<svg viewBox="0 0 ${brYellowW} ${brYellowH}" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,${brYellowH} C ${brYellowW * 0.34},${brYellowH} ${brYellowW * 0.55},${brYellowH * 0.64} ${brYellowW},${brYellowH * 0.32} L ${brYellowW},${brYellowH} Z" fill="${yellow}" opacity="0.9" /></svg>`,
     zIndex: zIndex++,
   });
 
-  // 9. Bottom-Right Deep Navy Fluid Curve
+  // 10. Bottom-Right Deep Navy Fluid Curve
+  const brNavyW = is169 ? 250 : 350;
+  const brNavyH = is169 ? 135 : 220;
   elements.push({
     id: "salford-br-navy",
     type: "shape",
     name: "Bottom-Right Navy Fluid Curve",
     shapeType: "svg",
-    x: pageW - 350,
-    y: pageH - 220,
-    width: 350,
-    height: 220,
+    x: pageW - brNavyW,
+    y: pageH - brNavyH,
+    width: brNavyW,
+    height: brNavyH,
     fillColor: navy,
-    svgContent: `<svg viewBox="0 0 350 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,220 C 120,220 200,140 350,70 L 350,220 Z" fill="${navy}" /></svg>`,
+    svgContent: `<svg viewBox="0 0 ${brNavyW} ${brNavyH}" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,${brNavyH} C ${brNavyW * 0.34},${brNavyH} ${brNavyW * 0.57},${brNavyH * 0.64} ${brNavyW},${brNavyH * 0.32} L ${brNavyW},${brNavyH} Z" fill="${navy}" /></svg>`,
     zIndex: zIndex++,
   });
 
-  // 10. Footer Coordinates
+  // 11. Footer Coordinates
   elements.push({
     id: "salford-footer-contact",
     type: "text",
     name: "Contact Information",
     x: 80,
-    y: pageH - 120,
-    width: 360,
-    height: 55,
-    text: "📞 +123-456-7890\n✉️ hello@reallygreatsite.com\n🌐 www.reallygreatsite.com",
+    y: pageH - (is169 ? 75 : 120),
+    width: 480,
+    height: 36,
+    text: [meta.universityName || brand, meta.department, meta.submissionDate ? `Date: ${meta.submissionDate}` : ""].filter(Boolean).join("  •  ") || "Academic Project Submission • Verified & Reviewed",
     fontFamily: "Inter, sans-serif",
     fontSize: 11,
     fontWeight: "500",
     textColor: "#64748B",
-    lineHeight: 1.5,
     zIndex: zIndex++,
   });
 
