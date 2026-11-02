@@ -3,10 +3,12 @@ import { convertDocumentBuffer } from "../../server/services/converter.service";
 import { extractTextFromBuffer } from "../../server/services/extractor.service";
 import {
   parsePlainTextToBlocks,
+  parseHtmlToBlocks,
   renderExecutivePdf,
   renderExecutiveDocx,
   cleanDocumentPageNoise,
 } from "../lib/document-synthesizer";
+import { generateClientDocx } from "../lib/document-converter";
 import { convertBlocksToA4Html } from "../routes/converter";
 import { PDFDocument } from "pdf-lib";
 import fs from "fs";
@@ -805,6 +807,71 @@ INTERNET PROGRAMMING II NEXT.JS FULL-STACK FRAMEWORK Solomon Zewdu â€¢ 3086/17 â
       expect(docxData).toBeDefined();
       const docxSize = (docxData as any).size ?? (docxData as any).byteLength;
       expect(docxSize).toBeGreaterThan(2000);
+    });
+
+    it("guarantees HTML-to-DOCX download preserves identity cards, tables, and eliminates raw filename headers", async () => {
+      const blocks = parsePlainTextToBlocks(rawMessyDoc);
+      const html = convertBlocksToA4Html(blocks);
+
+      // 1. Verify HTML parsing roundtrip preserves identity card block
+      const domBlocks = parseHtmlToBlocks(html);
+      const idBlock = domBlocks.find((b) => b.type === "identityCard");
+      expect(idBlock).toBeDefined();
+      expect(idBlock!.identityData?.studentName).toBe("Solomon Zewdu");
+      expect(idBlock!.identityData?.studentId).toBe("3086/17");
+      expect(idBlock!.identityData?.section).toBe("A");
+      expect(idBlock!.identityData?.submittedTo).toBe("Mr. Firomsa K.");
+      expect(idBlock!.identityData?.submissionDate).toBe("October 22, 2026");
+      expect(idBlock!.identityData?.technology).toBe("Next.js");
+
+      // 2. Verify Table of Contents is preserved as a table
+      const tocTable = domBlocks.find((b) => b.type === "table" && b.table?.headers?.[0] === "Section");
+      expect(tocTable).toBeDefined();
+      expect(tocTable!.table!.rows.length).toBe(10);
+
+      // 3. Generate DOCX from HTML using a file-like raw name
+      const rawFilename = "optimized_Internet_Programming_II_Nextjs_Assignmen";
+      const docxData = await generateClientDocx(html, rawFilename, { removeDividers: true });
+      expect(docxData).toBeDefined();
+
+      // Convert result to Buffer to extract text
+      const docxBuffer = Buffer.isBuffer(docxData)
+        ? docxData
+        : docxData instanceof Uint8Array
+          ? Buffer.from(docxData)
+          : Buffer.from(await (docxData as any).arrayBuffer());
+
+      const extracted = await extractTextFromBuffer(
+        docxBuffer,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "output.docx",
+      );
+
+      // Verify all student metadata is preserved cleanly in the downloaded DOCX
+      expect(extracted.text).toContain("Solomon Zewdu");
+      expect(extracted.text).toContain("3086/17");
+      expect(extracted.text).toContain("Mr. Firomsa K.");
+      expect(extracted.text).toContain("October 22, 2026");
+
+      // Verify raw filename header was eliminated from the DOCX
+      expect(extracted.text).not.toContain("optimized_Internet_Programming_II_Nextjs_Assignmen");
+
+      // 4. Verify live user edit inside the identity card is preserved on download
+      const editedHtml = html.replaceAll("Solomon Zewdu", "Abebe Bikila");
+      const editedDocxData = await generateClientDocx(editedHtml, rawFilename, { removeDividers: true });
+      const editedDocxBuffer = Buffer.isBuffer(editedDocxData)
+        ? editedDocxData
+        : editedDocxData instanceof Uint8Array
+          ? Buffer.from(editedDocxData)
+          : Buffer.from(await (editedDocxData as any).arrayBuffer());
+
+      const editedExtracted = await extractTextFromBuffer(
+        editedDocxBuffer,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "edited.docx",
+      );
+      expect(editedExtracted.text).toContain("Abebe Bikila");
+      expect(editedExtracted.text).not.toContain("Solomon Zewdu");
     });
   });
 });

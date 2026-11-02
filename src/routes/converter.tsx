@@ -157,10 +157,22 @@ export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
     .filter((b) => b.type !== "divider") // Strictly remove all horizontal lines!
     .map((b) => {
       if (b.type === "title") {
-        return `<h1 style="font-size: 1.85em; font-weight: 800; margin-bottom: 0.6em; line-height: 1.25; color: inherit;">${escapeHtml(b.text || "")}</h1>`;
+        const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
+        const runsHtml = b.runs && b.runs.length > 0 ? b.runs.map(r => {
+          let t = escapeHtml(r.text);
+          if (r.color) t = `<span style="color: #${r.color.replace("#", "")};">${t}</span>`;
+          return t;
+        }).join("") : escapeHtml(b.text || "");
+        return `<h1 class="document-title" data-block-type="title" style="font-size: 1.85em; font-weight: 800; margin-bottom: 0.6em; line-height: 1.25; color: inherit;${alignStyle}">${runsHtml}</h1>`;
       }
       if (b.type === "subtitle") {
-        return `<p style="font-size: 1.1em; font-weight: 500; opacity: 0.85; margin-bottom: 0.8em; color: inherit;">${escapeHtml(b.text || "")}</p>`;
+        const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
+        const runsHtml = b.runs && b.runs.length > 0 ? b.runs.map(r => {
+          let t = escapeHtml(r.text);
+          if (r.color) t = `<span style="color: #${r.color.replace("#", "")};">${t}</span>`;
+          return t;
+        }).join("") : escapeHtml(b.text || "");
+        return `<p class="document-subtitle" data-block-type="subtitle" style="font-size: 1.1em; font-weight: 500; opacity: 0.85; margin-bottom: 0.8em; color: inherit;${alignStyle}">${runsHtml}</p>`;
       }
       if (b.type === "heading1") {
         const alignStyle = b.alignment ? ` text-align: ${b.alignment};` : "";
@@ -191,14 +203,24 @@ export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
       }
       if (b.type === "identityCard" && b.identityData) {
         const id = b.identityData;
-        return `<div class="identity-card" style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; border-radius: 8px; padding: 18px 22px; margin: 1.5em 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        return `<div class="identity-card"
+  data-block-type="identityCard"
+  data-student-name="${escapeHtml(id.studentName || '')}"
+  data-student-id="${escapeHtml(id.studentId || '')}"
+  data-section="${escapeHtml(id.section || '')}"
+  data-submitted-to="${escapeHtml(id.submittedTo || '')}"
+  data-submission-date="${escapeHtml(id.submissionDate || '')}"
+  data-technology="${escapeHtml(id.technology || '')}"
+  ${id.assignmentTitle ? `data-assignment-title="${escapeHtml(id.assignmentTitle)}"` : ''}
+  ${id.courseName ? `data-course-name="${escapeHtml(id.courseName)}"` : ''}
+  style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; border-radius: 8px; padding: 18px 22px; margin: 1.5em 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
   <div style="font-size: 0.72em; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #2563eb; margin-bottom: 12px;">Assignment Information</div>
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; font-size: 0.9em;">
-    ${id.studentName ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Student Name</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.studentName)}</strong></div>` : ""}
-    ${id.studentId ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Student ID / Section</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.studentId)}${id.section ? ` • Section ${escapeHtml(id.section)}` : ""}</strong></div>` : ""}
-    ${id.submittedTo ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Submitted To</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.submittedTo)}</strong></div>` : ""}
-    ${id.submissionDate ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Submission Date</span><strong style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.submissionDate)}</strong></div>` : ""}
-    ${id.technology ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Technology</span><span style="display: inline-block; background: #e0e7ff; color: #3730a3; font-weight: 700; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">${escapeHtml(id.technology)}</span></div>` : ""}
+    ${id.studentName ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Student Name</span><strong data-field="studentName" style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.studentName)}</strong></div>` : ""}
+    ${id.studentId ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Student ID / Section</span><strong data-field="studentId" style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.studentId)}${id.section ? ` • Section ${escapeHtml(id.section)}` : ""}</strong></div>` : ""}
+    ${id.submittedTo ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Submitted To</span><strong data-field="submittedTo" style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.submittedTo)}</strong></div>` : ""}
+    ${id.submissionDate ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Submission Date</span><strong data-field="submissionDate" style="color: #0f172a; font-size: 1.05em;">${escapeHtml(id.submissionDate)}</strong></div>` : ""}
+    ${id.technology ? `<div><span style="font-size: 0.76em; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 2px;">Technology</span><span data-field="technology" style="display: inline-block; background: #e0e7ff; color: #3730a3; font-weight: 700; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">${escapeHtml(id.technology)}</span></div>` : ""}
   </div>
 </div>`;
       }
@@ -209,13 +231,13 @@ export function convertBlocksToA4Html(blocks: DocSynthesizerBlock[]): string {
         const bgCol = isDistinction ? "#fffbeb" : isTip ? "#ecfdf5" : "#eff6ff";
         const titleCol = isDistinction ? "#92400e" : isTip ? "#065f46" : "#1e40af";
         const icon = isDistinction ? "⚠️ " : isTip ? "✨ " : "💡 ";
-        return `<div class="callout-card" style="margin: 1.25em 0; padding: 14px 18px; border-left: 4px solid ${borderCol}; background-color: ${bgCol}; border-radius: 0 8px 8px 0; color: #1e293b;">
+        return `<div class="callout-card" data-block-type="callout" data-callout-type="${b.calloutType || 'info'}" ${b.calloutTitle ? `data-callout-title="${escapeHtml(b.calloutTitle)}"` : ''} style="margin: 1.25em 0; padding: 14px 18px; border-left: 4px solid ${borderCol}; background-color: ${bgCol}; border-radius: 0 8px 8px 0; color: #1e293b;">
   ${b.calloutTitle ? `<div class="callout-title" style="font-weight: 700; color: ${titleCol}; margin-bottom: 6px; font-size: 0.95em;">${icon}${escapeHtml(b.calloutTitle)}</div>` : ""}
-  <div style="font-size: 0.93em; line-height: 1.55;">${escapeHtml(b.text || "")}</div>
+  <div class="callout-body" style="font-size: 0.93em; line-height: 1.55;">${escapeHtml(b.text || "")}</div>
 </div>`;
       }
       if (b.type === "code") {
-        return `<pre class="code-card" style="background: #0f172a; color: #f1f5f9; padding: 16px 20px; border-radius: 8px; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; font-size: 0.86em; line-height: 1.5; overflow-x: auto; margin: 1.25em 0; border: 1px solid #1e293b; box-shadow: 0 2px 4px rgba(0,0,0,0.15);"><code>${escapeHtml(b.text || "")}</code></pre>`;
+        return `<pre class="code-card" data-block-type="code" style="background: #0f172a; color: #f1f5f9; padding: 16px 20px; border-radius: 8px; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; font-size: 0.86em; line-height: 1.5; overflow-x: auto; margin: 1.25em 0; border: 1px solid #1e293b; box-shadow: 0 2px 4px rgba(0,0,0,0.15);"><code>${escapeHtml(b.text || "")}</code></pre>`;
       }
       if (b.type === "list" && b.items) {
         return `<ul style="margin: 0.6em 0; padding-left: 1.6em; list-style-type: disc;">\n${b.items
