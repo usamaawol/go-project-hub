@@ -1765,46 +1765,59 @@ export function PresentationPreviewPage() {
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6 items-center pt-2">
+                        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-5 items-stretch pt-2">
                           {currentSlide.bullets && (
-                            <ul className="space-y-3 text-sm sm:text-base">
+                            <div className="flex flex-col justify-between gap-3 h-full">
                               {currentSlide.bullets.map((b, idx) => (
-                                <li
+                                <div
                                   key={idx}
-                                  className="flex items-start gap-3"
+                                  className="rounded-2xl border p-4 sm:p-5 flex items-start gap-3.5 shadow-2xs transition-all flex-1"
+                                  style={{
+                                    backgroundColor: tokens.cardBg,
+                                    borderColor: tokens.cardBorder,
+                                  }}
                                 >
                                   <span
-                                    className="h-2 w-2 rounded-full mt-2 shrink-0"
+                                    className="flex h-6 w-6 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-lg text-xs font-mono font-bold text-white mt-0.5 shadow-xs"
                                     style={{ backgroundColor: tokens.accent }}
-                                  />
-                                  {renderBulletWithAnchor(b, tokens.textPrimary)}
-                                </li>
+                                  >
+                                    0{idx + 1}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    {renderBulletWithAnchor(b, tokens.cardText)}
+                                  </div>
+                                </div>
                               ))}
-                            </ul>
+                            </div>
                           )}
 
                           {/* Contextual Visual Asset Box */}
                           {(() => {
-                            const visualData = currentSlide.visual?.imageUrl
-                              ? {
-                                  imageUrl: currentSlide.visual.imageUrl,
-                                  svgContent: currentSlide.visual.svgContent,
-                                  type: currentSlide.visual.type || "diagram",
-                                  concept: currentSlide.visual.concept || currentSlide.title,
-                                  caption: currentSlide.visual.caption || currentSlide.subtitle,
-                                }
-                              : buildContextualVisual({
-                                  title: currentSlide.title,
-                                  subtitle: currentSlide.subtitle,
-                                  bullets: currentSlide.bullets,
-                                  concept: currentSlide.title,
-                                  accentColor: tokens.accent,
-                                  isDark: tokens.isDark,
-                                });
+                            const visualData = (() => {
+                              const isCustomUpload = currentSlide.visual?.imageUrl && !currentSlide.visual.imageUrl.startsWith("data:image/svg");
+                              if (isCustomUpload) {
+                                return {
+                                  imageUrl: currentSlide.visual!.imageUrl,
+                                  svgContent: currentSlide.visual!.svgContent,
+                                  type: currentSlide.visual!.type || "picture",
+                                  concept: currentSlide.visual!.concept || currentSlide.title,
+                                  caption: currentSlide.visual!.caption || currentSlide.subtitle,
+                                };
+                              }
+                              // Always synthesize clean, theme-matched SVG matching current tokens
+                              return buildContextualVisual({
+                                title: currentSlide.title,
+                                subtitle: currentSlide.subtitle,
+                                bullets: currentSlide.bullets,
+                                concept: currentSlide.visual?.concept || currentSlide.title,
+                                accentColor: tokens.accent,
+                                isDark: tokens.isDark,
+                              });
+                            })();
 
                             return (
                               <div
-                                className="rounded-2xl border p-3.5 flex flex-col items-center justify-center gap-2.5 shadow-xs transition-all"
+                                className="rounded-2xl border p-4 flex flex-col justify-between gap-3 shadow-xs transition-all h-full"
                                 style={{
                                   backgroundColor: tokens.cardBg,
                                   borderColor: tokens.cardBorder,
@@ -1874,7 +1887,7 @@ export function PresentationPreviewPage() {
                                   className="w-full rounded-xl overflow-hidden border flex items-center justify-center p-2 min-h-[190px] max-h-[250px]"
                                   style={{
                                     borderColor: tokens.cardBorder,
-                                    backgroundColor: tokens.isDark ? "#0F172A" : "#F8FAFC",
+                                    backgroundColor: tokens.cardBg,
                                   }}
                                 >
                                   {visualData.svgContent ? (

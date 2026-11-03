@@ -57,6 +57,27 @@ export function buildContextualVisual(params: {
     combined.includes("algorithm") ||
     combined.includes("inference")
   ) {
+    const bullets = params.bullets || [];
+    const getBulletPoint = (bIdx: number, subIdx: number, fallback: string) => {
+      const b = bullets[bIdx];
+      if (!b) return fallback;
+      const clean = b.replace(/^[✓✔︎•*\d.\s]+/, "").trim();
+      const parts = clean.split(/[:.,;]|\s+and\s+/i).map(p => p.trim()).filter(p => p.length > 2);
+      return escapeXml(parts[subIdx] ? parts[subIdx]!.slice(0, 24) : fallback);
+    };
+
+    const in1 = getBulletPoint(0, 0, "Input Ingestion");
+    const in2 = getBulletPoint(0, 1, "Context Mapping");
+    const in3 = getBulletPoint(0, 2, "Token Vectors");
+
+    const proc1 = getBulletPoint(1, 0, "Neural Processing");
+    const proc2 = getBulletPoint(1, 1, "Attention Weights");
+    const proc3 = getBulletPoint(1, 2, "Latent Dimensions");
+
+    const out1 = getBulletPoint(2, 0, "Synthesized Insights");
+    const out2 = getBulletPoint(2, 1, "Structured Assets");
+    const out3 = getBulletPoint(2, 2, "Executable Output");
+
     type = "diagram";
     svg = `<svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -89,9 +110,9 @@ export function buildContextualVisual(params: {
   <circle cx="100" cy="187" r="6" fill="#3B82F6" />
   <text x="115" y="192" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#2563EB">01. INGESTION</text>
   <text x="80" y="230" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Data &amp; Inputs</text>
-  <text x="80" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Text &amp; Documents</text>
-  <text x="80" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Images &amp; Sensor Feeds</text>
-  <text x="80" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• User Queries &amp; Prompts</text>
+  <text x="80" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${in1}</text>
+  <text x="80" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${in2}</text>
+  <text x="80" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${in3}</text>
   <text x="80" y="345" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#3B82F6">TOKENIZATION / EMBED</text>
 
   <!-- Flow 1 -> 2 -->
@@ -104,9 +125,9 @@ export function buildContextualVisual(params: {
   <circle cx="355" cy="177" r="6" fill="${accent}" />
   <text x="370" y="182" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="${accent}">02. PROCESSING</text>
   <text x="335" y="220" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="${textPrimary}">Model / AI Core</text>
-  <text x="335" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Deep Neural Weights</text>
-  <text x="335" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Multi-Head Attention</text>
-  <text x="335" y="300" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Latent Feature Matrix</text>
+  <text x="335" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${proc1}</text>
+  <text x="335" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${proc2}</text>
+  <text x="335" y="300" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${proc3}</text>
   <rect x="335" y="330" width="170" height="34" rx="8" fill="${cardBg}" stroke="${accent}" stroke-width="1" />
   <text x="420" y="352" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="${accent}">TRANSFORMER CORE</text>
 
@@ -120,9 +141,9 @@ export function buildContextualVisual(params: {
   <circle cx="620" cy="187" r="6" fill="#10B981" />
   <text x="635" y="192" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#059669">03. GENERATION</text>
   <text x="600" y="230" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">Output &amp; Action</text>
-  <text x="600" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Synthesized Insights</text>
-  <text x="600" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Structured Answers</text>
-  <text x="600" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Executable Workflows</text>
+  <text x="600" y="260" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${out1}</text>
+  <text x="600" y="285" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${out2}</text>
+  <text x="600" y="310" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• ${out3}</text>
   <text x="600" y="345" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#10B981">DECISION SYNTHESIS</text>
 </svg>`;
   }
@@ -255,47 +276,110 @@ export function buildContextualVisual(params: {
 </svg>`;
   } else {
     type = "diagram";
-    const bulletLabels = (params.bullets || []).map((b) => {
-      const clean = b.replace(/^[✓✔︎•*\d.\s]+/, "").trim();
-      const colonIdx = clean.indexOf(":");
-      if (colonIdx > 0 && colonIdx < 25) {
-        return clean.slice(0, colonIdx);
+    const bullets = params.bullets || [];
+    
+    // Helper to extract clean title and detailed sub-points from each bullet
+    const extractBoxContent = (rawBullet?: string, defaultLabel = "Core Pillar", defaultSub1 = "Strategic Setup", defaultSub2 = "Execution Criteria") => {
+      if (!rawBullet) {
+        return {
+          title: defaultLabel,
+          sub1: defaultSub1,
+          sub2: defaultSub2,
+        };
       }
-      return clean.slice(0, 18);
-    });
+      const clean = rawBullet.replace(/^[✓✔︎•*\d.\s]+/, "").trim();
+      const colonIdx = clean.indexOf(":");
+      let title = defaultLabel;
+      let remainder = clean;
+      if (colonIdx > 0 && colonIdx < 30) {
+        title = clean.slice(0, colonIdx).trim();
+        remainder = clean.slice(colonIdx + 1).trim();
+      } else {
+        const words = clean.split(/\s+/);
+        title = words.slice(0, 3).join(" ");
+        remainder = words.slice(3).join(" ") || clean;
+      }
 
-    const step1Title = escapeXml(bulletLabels[0] || "Foundations");
-    const step2Title = escapeXml(bulletLabels[1] || "Execution");
-    const step3Title = escapeXml(bulletLabels[2] || "Verification");
+      // Split remainder into 2 concise sub-points
+      const clauses = remainder
+        .split(/[,.;]|\s+and\s+|\s+with\s+/i)
+        .map((c) => c.trim())
+        .filter((c) => c.length > 3);
+
+      const sub1 = clauses[0] ? clauses[0].slice(0, 24) : defaultSub1;
+      const sub2 = clauses[1] ? clauses[1].slice(0, 24) : (clauses[0] && clauses[0].length > 24 ? clauses[0].slice(24, 48) : defaultSub2);
+
+      return {
+        title: title.slice(0, 22),
+        sub1: sub1.charAt(0).toUpperCase() + sub1.slice(1),
+        sub2: sub2.charAt(0).toUpperCase() + sub2.slice(1),
+      };
+    };
+
+    const box1 = extractBoxContent(bullets[0], "Architecture", "System Foundation", "Configuration Gates");
+    const box2 = extractBoxContent(bullets[1], "Operational Flow", "Pipeline Execution", "Quality Guardrails");
+    const box3 = extractBoxContent(bullets[2] || bullets[0], "Validation", "Automated Testing", "Release Readiness");
+
+    const step1Title = escapeXml(box1.title);
+    const step1Sub1 = escapeXml(box1.sub1);
+    const step1Sub2 = escapeXml(box1.sub2);
+
+    const step2Title = escapeXml(box2.title);
+    const step2Sub1 = escapeXml(box2.sub1);
+    const step2Sub2 = escapeXml(box2.sub2);
+
+    const step3Title = escapeXml(box3.title);
+    const step3Sub1 = escapeXml(box3.sub1);
+    const step3Sub2 = escapeXml(box3.sub2);
 
     svg = `<svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
-  <rect width="800" height="480" rx="20" fill="${bg}" stroke="${accent}" stroke-opacity="0.3" stroke-width="2"/>
-  <text x="60" y="65" font-family="system-ui, sans-serif" font-size="15" font-weight="800" fill="${textPrimary}" letter-spacing="1">
-    ${safeConcept} // TOPOLOGY &amp; WORKFLOW
+  <defs>
+    <linearGradient id="c_diag_bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${bg}" />
+      <stop offset="100%" stop-color="${cardBg}" />
+    </linearGradient>
+    <linearGradient id="c_diag_flow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="${accent}" />
+      <stop offset="100%" stop-color="${accent}" stop-opacity="0.6" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="480" rx="20" fill="url(#c_diag_bg)" stroke="${accent}" stroke-opacity="0.25" stroke-width="1.5"/>
+  <text x="60" y="65" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="800" fill="${textPrimary}" letter-spacing="1">
+    ${safeConcept} // SYSTEM TOPOLOGY &amp; WORKFLOW
   </text>
-  <text x="60" y="90" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">${safeCaption}</text>
-  <rect x="60" y="170" width="180" height="150" rx="16" fill="${cardBg}" stroke="${accent}" stroke-width="1.5" />
-  <circle cx="95" cy="205" r="14" fill="${accent}" />
-  <text x="95" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">01</text>
-  <text x="120" y="210" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${textPrimary}">${step1Title}</text>
-  <text x="80" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Architecture Setup</text>
-  <text x="80" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Operational Mandate</text>
-  <path d="M 240 245 L 295 245" stroke="${accent}" stroke-width="3" stroke-dasharray="4,4" />
-  <polygon points="300,245 290,239 290,251" fill="${accent}" />
-  <rect x="310" y="170" width="180" height="150" rx="16" fill="${cardBg}" stroke="${accent}" stroke-width="2" />
-  <circle cx="345" cy="205" r="14" fill="${accent}" />
-  <text x="345" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">02</text>
-  <text x="370" y="210" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${textPrimary}">${step2Title}</text>
-  <text x="330" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Implementation Guardrails</text>
-  <text x="330" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• System Alignment</text>
-  <path d="M 490 245 L 545 245" stroke="${accent}" stroke-width="3" stroke-dasharray="4,4" />
-  <polygon points="550,245 540,239 540,251" fill="${accent}" />
-  <rect x="560" y="170" width="180" height="150" rx="16" fill="${cardBg}" stroke="${accent}" stroke-width="1.5" />
-  <circle cx="595" cy="205" r="14" fill="${accent}" />
-  <text x="595" y="210" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">03</text>
-  <text x="620" y="210" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${textPrimary}">${step3Title}</text>
-  <text x="580" y="250" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• End-to-End Testing</text>
-  <text x="580" y="275" font-family="system-ui, sans-serif" font-size="11" fill="${textMuted}">• Release Validation</text>
+  <text x="60" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${textMuted}">${safeCaption}</text>
+  
+  <!-- Box 01 -->
+  <rect x="60" y="160" width="195" height="180" rx="16" fill="${cardBg}" stroke="${accent}" stroke-opacity="0.4" stroke-width="1.5" />
+  <rect x="80" y="180" width="36" height="24" rx="6" fill="${accent}" fill-opacity="0.2" />
+  <text x="98" y="196" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" fill="${accent}">01</text>
+  <text x="80" y="235" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">${step1Title}</text>
+  <text x="80" y="270" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${textMuted}">• ${step1Sub1}</text>
+  <text x="80" y="295" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${textMuted}">• ${step1Sub2}</text>
+  
+  <!-- Connector 1 -> 2 -->
+  <path d="M 255 250 L 300 250" stroke="url(#c_diag_flow)" stroke-width="3" stroke-dasharray="5,4" />
+  <polygon points="305,250 295,244 295,256" fill="${accent}" />
+  
+  <!-- Box 02 -->
+  <rect x="305" y="150" width="200" height="200" rx="18" fill="${cardBg}" stroke="${accent}" stroke-width="2" />
+  <rect x="325" y="170" width="36" height="24" rx="6" fill="${accent}" />
+  <text x="343" y="186" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">02</text>
+  <text x="325" y="225" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">${step2Title}</text>
+  <text x="325" y="265" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${textMuted}">• ${step2Sub1}</text>
+  <text x="325" y="290" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${textMuted}">• ${step2Sub2}</text>
+  
+  <!-- Connector 2 -> 3 -->
+  <path d="M 505 250 L 550 250" stroke="url(#c_diag_flow)" stroke-width="3" stroke-dasharray="5,4" />
+  <polygon points="555,250 545,244 545,256" fill="${accent}" />
+  
+  <!-- Box 03 -->
+  <rect x="555" y="160" width="195" height="180" rx="16" fill="${cardBg}" stroke="${accent}" stroke-opacity="0.4" stroke-width="1.5" />
+  <rect x="575" y="180" width="36" height="24" rx="6" fill="${accent}" fill-opacity="0.2" />
+  <text x="593" y="196" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" fill="${accent}">03</text>
+  <text x="575" y="235" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="${textPrimary}">${step3Title}</text>
+  <text x="575" y="270" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${textMuted}">• ${step3Sub1}</text>
+  <text x="575" y="295" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${textMuted}">• ${step3Sub2}</text>
 </svg>`;
   }
 

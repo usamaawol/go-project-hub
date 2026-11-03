@@ -1203,22 +1203,77 @@ export async function renderSlideDeckToPptx(
         const leftW = 5.8;
         const rightW = 5.0;
 
-        // Left Text Block
+        // Left Structured Content Cards (fills vertical height with modern card primitives)
         if (s.bullets && s.bullets.length > 0) {
-          const bulletItems = s.bullets.map((b) => ({
-            text: b,
-            options: { breakLine: true },
-          }));
-          slide.addText(bulletItems, {
-            x: 1.0,
-            y: startY + 0.1,
-            w: leftW,
-            h: cardH - 0.2,
-            fontSize: sizes.body,
-            color: tokens.textPrimaryHex,
-            bullet: true,
-            lineSpacing: 26,
-            fontFace: fontBody,
+          const count = Math.min(4, s.bullets.length);
+          const gap = 0.2;
+          const itemH = (cardH - (count - 1) * gap) / count;
+
+          s.bullets.slice(0, count).forEach((b, bIdx) => {
+            const itemY = startY + bIdx * (itemH + gap);
+
+            // Card background container
+            slide.addShape(pptx.ShapeType.roundRect, {
+              x: 1.0,
+              y: itemY,
+              w: leftW,
+              h: itemH,
+              fill: { color: tokens.cardBgHex },
+              line: { color: tokens.cardBorderHex, width: 1 },
+            });
+
+            // Accent indicator / badge
+            slide.addShape(pptx.ShapeType.roundRect, {
+              x: 1.2,
+              y: itemY + Math.max(0.12, (itemH - 0.35) / 2),
+              w: 0.5,
+              h: 0.35,
+              fill: { color: tokens.accentHex },
+              line: { color: tokens.accentHex, width: 0 },
+            });
+
+            slide.addText(`0${bIdx + 1}`, {
+              x: 1.2,
+              y: itemY + Math.max(0.12, (itemH - 0.35) / 2),
+              w: 0.5,
+              h: 0.35,
+              fontSize: 10,
+              bold: true,
+              color: "FFFFFF",
+              align: "center",
+              valign: "middle",
+              fontFace: fontTitle,
+            });
+
+            // Formatted text
+            const parts = b.split(/:\s*(.+)/);
+            if (parts.length > 1 && parts[0] && parts[1]) {
+              slide.addText(
+                [
+                  { text: parts[0] + ": ", options: { bold: true, color: tokens.accentHex, fontSize: sizes.body } },
+                  { text: parts[1], options: { bold: false, color: tokens.cardTextHex, fontSize: sizes.body } },
+                ],
+                {
+                  x: 1.85,
+                  y: itemY + 0.1,
+                  w: leftW - 1.05,
+                  h: itemH - 0.2,
+                  valign: "middle",
+                  fontFace: fontBody,
+                },
+              );
+            } else {
+              slide.addText(b, {
+                x: 1.85,
+                y: itemY + 0.1,
+                w: leftW - 1.05,
+                h: itemH - 0.2,
+                fontSize: sizes.body,
+                color: tokens.cardTextHex,
+                valign: "middle",
+                fontFace: fontBody,
+              });
+            }
           });
         }
 

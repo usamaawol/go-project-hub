@@ -293,4 +293,66 @@ Pillar 4: Continuous Audit Telemetry
     expect(buffer).toBeDefined();
     expect(Buffer.isBuffer(buffer) ? buffer.length : (buffer as ArrayBuffer).byteLength).toBeGreaterThan(2000);
   });
+
+  it("Case 6: Eliminates tautological duplicate bullets, robotic filler, and empty voids across large slide requests", async () => {
+    const userPromptContent = `
+# DocuMind — Upgrade File Converter and PDF Compressor with Full Image Support
+
+Implementation Requirements
+- Modular Flutter Architecture
+- Separate responsibilities
+
+Test
+- Image generation.
+- Image placement.
+- Layout diversity.
+- Slide content organization.
+
+Definition of Done
+- Complete verification and deliverable sign-off
+`;
+
+    const session = await createPresentationSession({
+      title: "DocuMind System Upgrade",
+      content: userPromptContent,
+      purpose: "Business Strategy & Operations",
+      density: "balanced",
+      presentationType: "standard",
+      theme: {
+        id: "slidesgo-argumentative-fallacy",
+        name: "Argumentative Fallacy",
+        category: "Minimal",
+        kind: "minimal",
+        colors: { primary: "#F8FAFC", accent: "#EAB308", bg: "#0F172A" },
+        fonts: "Plus Jakarta + Inter",
+        tier: "free",
+      },
+      slideCount: 8,
+    });
+
+    expect(session).toBeDefined();
+    expect(session.slides.length).toBe(8);
+
+    // Verify all bullets across all slides
+    for (const slide of session.slides) {
+      // 1. Must NOT contain repetitive subtitle
+      if (slide.subtitle) {
+        expect(slide.subtitle).not.toContain("Strategic Analysis & Core Dimensions");
+      }
+
+      // 2. Must NOT contain tautological anchors or robotic filler
+      if (slide.bullets) {
+        for (const bullet of slide.bullets) {
+          expect(bullet).not.toMatch(/^([A-Za-z\s]+):\s*\1$/i);
+          expect(bullet).not.toContain("Definition Of Done: Definition of Done");
+          expect(bullet).not.toContain("Image Generation.: Image generation.");
+          expect(bullet).not.toContain("Image Placement.: Image placement.");
+          expect(bullet).not.toContain("Layout Diversity.: Layout diversity.");
+          expect(bullet).not.toContain("Detailed breakdown and evaluation of");
+          // Verify that bullets have substantive length and real content
+          expect(bullet.length).toBeGreaterThan(15);
+        }
+      }
+    }
+  });
 });

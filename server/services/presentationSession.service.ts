@@ -270,7 +270,7 @@ Respond in JSON adhering strictly to this schema:
   ]
 }`;
 
-    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : 14000;
+    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : Math.max(35000, slideCount * 1200);
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
       {
@@ -516,8 +516,33 @@ export async function createPresentationSession(
           assignmentMetadata: input.assignmentMetadata,
         },
       );
-      if (aiSlides && aiSlides.length === slideCount) {
-        slides = aiSlides;
+      if (aiSlides && aiSlides.length >= 3) {
+        if (aiSlides.length === slideCount) {
+          slides = aiSlides;
+        } else if (aiSlides.length > slideCount) {
+          slides = aiSlides.slice(0, slideCount);
+        } else {
+          // If Gemini generated slightly fewer slides than requested (e.g. 35/50), pad intelligently using local semantic engine
+          const needed = slideCount - aiSlides.length;
+          const fallbackDeck = buildSlideDeckContent(
+            input.title,
+            input.content,
+            slideCount,
+            density,
+            purpose,
+            input.assignmentMetadata,
+          );
+          const midFillers = fallbackDeck.slice(2, 2 + needed);
+          slides = [
+            ...aiSlides.slice(0, -1),
+            ...midFillers,
+            aiSlides[aiSlides.length - 1]!,
+          ].slice(0, slideCount).map((s, idx) => ({
+            ...s,
+            id: `slide-${idx + 1}`,
+            slideNumber: idx + 1,
+          }));
+        }
       }
     }
     if (slides.length === 0) {
