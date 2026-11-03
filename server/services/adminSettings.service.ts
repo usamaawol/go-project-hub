@@ -55,7 +55,7 @@ const DEFAULT_SETTINGS: AdminSystemSettings = {
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   openaiModel: "gpt-4o-mini",
   aiEngineMode: "full",
-  maxSlideCount: 20,
+  maxSlideCount: 50,
   aiTimeoutSeconds: 15,
   temperature: 0.7,
   maintenanceMode: false,
@@ -314,7 +314,7 @@ export function updateAdminSettings(
     activeSettings.openaiModel = updates.openaiModel;
   }
   if (typeof updates.maxSlideCount === "number") {
-    activeSettings.maxSlideCount = Math.max(3, Math.min(25, updates.maxSlideCount));
+    activeSettings.maxSlideCount = Math.max(3, Math.min(60, updates.maxSlideCount));
   }
   if (typeof updates.aiTimeoutSeconds === "number") {
     activeSettings.aiTimeoutSeconds = Math.max(5, Math.min(60, updates.aiTimeoutSeconds));

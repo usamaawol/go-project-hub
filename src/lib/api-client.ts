@@ -1130,7 +1130,7 @@ export async function createPresentationSessionApi(input: {
       ? crypto.randomUUID()
       : `pres_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-  const slideCount = Math.min(20, Math.max(3, input.slideCount || 8));
+  const slideCount = Math.min(60, Math.max(3, input.slideCount || 8));
   const density = input.density || "balanced";
   const purpose = input.purpose || "Business & Strategy";
   const fontFamily = input.typography?.fontFamily || "Inter";

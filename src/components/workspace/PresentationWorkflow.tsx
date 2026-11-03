@@ -1471,8 +1471,8 @@ export function PresentationWorkflow({
                 </p>
               </div>
 
-              {/* Slide Count Buttons: 5, 8, 10, 15, 20 */}
-              <div className="flex flex-wrap gap-2">
+              {/* Slide Count Buttons: 5, 8, 10, 15, 20, 25, 30, 35, 40, 50 */}
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 {SLIDE_COUNT_PRESETS.map((count) => {
                   const isOptimal = count === slideRecommendation.optimalCount;
                   const isSelected = slideCount === count;
@@ -1484,7 +1484,7 @@ export function PresentationWorkflow({
                         setSlideCount(count);
                         setUserLockedSlideCount(true);
                       }}
-                      className={`relative rounded-xl border px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs font-bold transition-all min-h-[46px] flex flex-col items-center justify-center gap-0.5 ${
+                      className={`relative rounded-xl border px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold transition-all min-h-[44px] flex flex-col items-center justify-center gap-0.5 ${
                         isSelected
                           ? "border-primary bg-primary text-primary-foreground shadow-xs ring-1 ring-primary"
                           : "border-border bg-surface-2 text-muted-foreground hover:text-foreground hover:border-border/80"
@@ -1492,7 +1492,7 @@ export function PresentationWorkflow({
                     >
                       {isOptimal && (
                         <span
-                          className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.2 rounded font-extrabold ${
+                          className={`text-[8px] font-mono uppercase tracking-wider px-1 py-0.1 rounded font-extrabold ${
                             isSelected
                               ? "bg-primary-foreground/20 text-primary-foreground"
                               : "bg-primary/10 text-primary"
@@ -1505,6 +1505,49 @@ export function PresentationWorkflow({
                     </button>
                   );
                 })}
+
+                {/* Custom Fine-Tuning Stepper (3-50) */}
+                <div className="flex items-center gap-1.5 bg-surface-2 border border-border rounded-xl px-2.5 py-1 min-h-[44px]">
+                  <span className="text-[10px] font-mono text-muted-foreground uppercase mr-1">Custom:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSlideCount((prev) => Math.max(3, prev - 1));
+                      setUserLockedSlideCount(true);
+                    }}
+                    disabled={slideCount <= 3}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-background border border-border text-foreground hover:bg-muted font-bold text-xs disabled:opacity-40"
+                    title="Decrease slides"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min={3}
+                    max={50}
+                    value={slideCount}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) {
+                        setSlideCount(Math.max(3, Math.min(50, val)));
+                        setUserLockedSlideCount(true);
+                      }
+                    }}
+                    className="w-12 h-7 text-center rounded-lg bg-background border border-border text-xs font-mono font-bold text-foreground focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSlideCount((prev) => Math.min(50, prev + 1));
+                      setUserLockedSlideCount(true);
+                    }}
+                    disabled={slideCount >= 50}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-background border border-border text-foreground hover:bg-muted font-bold text-xs disabled:opacity-40"
+                    title="Increase slides"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
 

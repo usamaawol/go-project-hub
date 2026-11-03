@@ -51,7 +51,7 @@ export function AdminLimitsTab({
       return;
     }
     const defaults: Partial<AdminSystemSettingsState> = {
-      maxSlideCount: 20,
+      maxSlideCount: 50,
       aiTimeoutSeconds: 15,
       temperature: 0.7,
       aiEngineMode: "full",
@@ -110,10 +110,10 @@ export function AdminLimitsTab({
             <input
               type="number"
               min={3}
-              max={50}
+              max={60}
               value={form.maxSlideCount}
               onChange={(e) =>
-                setForm({ ...form, maxSlideCount: parseInt(e.target.value) || 20 })
+                setForm({ ...form, maxSlideCount: parseInt(e.target.value) || 50 })
               }
               className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
             />

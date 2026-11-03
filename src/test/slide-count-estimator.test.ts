@@ -6,8 +6,8 @@ import {
 import { buildSlideDeckContent } from "../lib/presentation-session-client";
 
 describe("DocuMind Slide Count Estimator & Blank Slide Prevention", () => {
-  it("enforces the exact slide count presets: 5, 8, 10, 15, and 20", () => {
-    expect(SLIDE_COUNT_PRESETS).toEqual([5, 8, 10, 15, 20]);
+  it("enforces the exact slide count presets: 5, 8, 10, 15, 20, 25, 30, 35, 40, and 50", () => {
+    expect(SLIDE_COUNT_PRESETS).toEqual([5, 8, 10, 15, 20, 25, 30, 35, 40, 50]);
   });
 
   it("recommends 5 slides for short/concise inputs (< 140 words)", () => {
@@ -52,12 +52,76 @@ describe("DocuMind Slide Count Estimator & Blank Slide Prevention", () => {
     expect(rec.getAdvisory(15).level).toBe("optimal");
   });
 
-  it("recommends 20 slides for comprehensive materials (> 1500 words)", () => {
+  it("recommends 20 slides for comprehensive materials (1500 - 2200 words)", () => {
     const paragraph = "Deep academic chapter covering full literature review, empirical methods, hypothesis verification, multi-factor regression analysis, control variables, quantitative sampling frameworks, and statistical significance validation. ";
     const text = paragraph.repeat(70); // ~1600 words
     const rec = estimateOptimalSlideCount(text);
     expect(rec.optimalCount).toBe(20);
     expect(rec.getAdvisory(20).level).toBe("optimal");
+  });
+
+  it("recommends 25 slides for extensive materials (2200 - 3000 words)", () => {
+    const paragraph = "Chapter examining distributed ledger scalability, Byzantine fault-tolerant consensus mechanisms, zero-knowledge proofs, recursive SNARK verification, cross-chain atomic swaps, and decentralization security primitives. ";
+    const text = paragraph.repeat(110); // ~2400 words
+    const rec = estimateOptimalSlideCount(text);
+    expect(rec.optimalCount).toBe(25);
+    expect(rec.options.find((o) => o.count === 25)?.isOptimal).toBe(true);
+    expect(rec.getAdvisory(25).level).toBe("optimal");
+  });
+
+  it("recommends 30 slides for long-form multi-chapter content (3000 - 3800 words)", () => {
+    const paragraph = "Module detailing neural network architecture, self-attention multi-head projection, gradient accumulation strategies, mixed precision float16 execution, rotary positional embeddings, and distributed parameter sharding. ";
+    const text = paragraph.repeat(150); // ~3300 words
+    const rec = estimateOptimalSlideCount(text);
+    expect(rec.optimalCount).toBe(30);
+    expect(rec.options.find((o) => o.count === 30)?.isOptimal).toBe(true);
+    expect(rec.getAdvisory(30).level).toBe("optimal");
+  });
+
+  it("recommends 40 slides for comprehensive syllabus (4600 - 5600 words)", () => {
+    const paragraph = "Curriculum unit covering operating system kernel virtualization, page table translation, interrupt descriptor dispatching, real-time preemptive thread scheduling, asynchronous epoll event loops, and lock-free ring buffers. ";
+    const text = paragraph.repeat(190); // ~4940 words
+    const rec = estimateOptimalSlideCount(text);
+    expect(rec.optimalCount).toBe(40);
+    expect(rec.options.find((o) => o.count === 40)?.isOptimal).toBe(true);
+    expect(rec.getAdvisory(40).level).toBe("optimal");
+  });
+
+  it("recommends 50 slides for massive manuscripts (> 5600 words)", () => {
+    const paragraph = "Volume section detailing global telecommunications protocol stacks, packet fragmentation over asynchronous transport lanes, congestion window backoff algorithms, multi-path TCP routing, and low-latency forward error correction. ";
+    const text = paragraph.repeat(280); // ~6160 words
+    const rec = estimateOptimalSlideCount(text);
+    expect(rec.optimalCount).toBe(50);
+    expect(rec.options.find((o) => o.count === 50)?.isOptimal).toBe(true);
+    expect(rec.getAdvisory(50).level).toBe("optimal");
+  });
+
+  it("generates large decks (25, 30, and 50 slides) with strictly correct sequential indices and content", () => {
+    const baseContent = Array.from({ length: 45 }, (_, i) => 
+      `Chapter ${i + 1}: Strategic Operations and Analytical Metrics\nDetailed operational analysis covering telemetry, automated validation gates, system throughput, and organizational outcomes.`
+    ).join("\n\n");
+
+    for (const targetCount of [25, 30, 50]) {
+      const slides = buildSlideDeckContent(
+        "Master Enterprise Architecture",
+        baseContent,
+        targetCount,
+        "balanced",
+        "Executive Review",
+      );
+
+      expect(slides.length).toBe(targetCount);
+      expect(slides[0]!.layout).toBe("title");
+      expect(slides[1]!.layout).toBe("agenda");
+      expect(slides[targetCount - 1]!.layout).toBe("conclusion");
+
+      // Verify every slide is sequentially numbered 1..targetCount
+      slides.forEach((s, idx) => {
+        expect(s.slideNumber).toBe(idx + 1);
+        expect(s.id).toBe(`slide-${idx + 1}`);
+        expect(s.title.trim().length).toBeGreaterThan(0);
+      });
+    }
   });
 
   it("guarantees no slide is blank or empty even when 20 slides is generated for dense numbered lists", () => {

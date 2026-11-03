@@ -126,26 +126,33 @@ async function generatePptxFile(session: PresentationSession, destPath: string):
 }
 
 /**
- * Summarizes long source documents into an outline brief if document exceeds 8,000 characters
+ * Summarizes long source documents into an outline brief if document exceeds capacity,
+ * dynamically scaling character limits and coverage according to target slide count.
  */
-function prepareDocumentBrief(content: string): string {
-  if (content.length <= 8000) return content;
+function prepareDocumentBrief(content: string, targetSlideCount: number = 8): string {
+  const maxChars = targetSlideCount > 20 ? Math.min(45000, targetSlideCount * 1200) : 10000;
+  if (content.length <= maxChars) return content;
 
   // Split into chunks across sections or paragraphs
   const chunks = content.split(/\n\s*\n/).filter((c) => c.trim().length > 0);
   if (chunks.length <= 4) {
-    return content.slice(0, 8000);
+    return content.slice(0, maxChars);
   }
 
-  // Preserve introduction, intermediate sections, and conclusion
-  const intro = chunks.slice(0, 2).join("\n\n");
+  // Preserve introduction, intermediate sections, and conclusion proportionally
+  const introCount = Math.max(2, Math.floor(targetSlideCount / 5));
+  const intro = chunks.slice(0, introCount).join("\n\n");
   const middleIndices = Math.floor(chunks.length / 2);
-  const middle = chunks.slice(middleIndices - 1, middleIndices + 2).join("\n\n");
-  const conclusion = chunks.slice(-2).join("\n\n");
+  const middleSpan = Math.max(3, Math.floor(targetSlideCount / 4));
+  const middleStart = Math.max(introCount, middleIndices - Math.floor(middleSpan / 2));
+  const middleEnd = Math.min(chunks.length - 2, middleStart + middleSpan);
+  const middle = chunks.slice(middleStart, middleEnd).join("\n\n");
+  const conclusionCount = Math.max(2, Math.floor(targetSlideCount / 8));
+  const conclusion = chunks.slice(-conclusionCount).join("\n\n");
 
   return `EXECUTIVE SUMMARY & INTRO:\n${intro}\n\nCORE BODY & ANALYSIS:\n${middle}\n\nCONCLUSIONS & METRICS:\n${conclusion}`.slice(
     0,
-    9000,
+    maxChars,
   );
 }
 
@@ -164,7 +171,7 @@ async function generateSlidesWithGemini(
   if (!activeKey || !content || content.trim().length < 20) return null;
 
   try {
-    const documentBrief = prepareDocumentBrief(content);
+    const documentBrief = prepareDocumentBrief(content, slideCount);
 
     const prompt = `You are DocuMind's elite presentation engine.
 Analyze the following source document/notes and generate a cohesive, professional presentation of exactly ${slideCount} slides with purpose "${purpose}" and content density "${density}".
@@ -317,7 +324,7 @@ async function generateSlidesWithOpenAI(
 ): Promise<SlideData[] | null> {
   if (!apiKey || apiKey.length < 8) return null;
   try {
-    const brief = prepareDocumentBrief(content);
+    const brief = prepareDocumentBrief(content, slideCount);
     const prompt = `You are a world-class presentation architect for DocuMind.
 Convert the source text into a structured presentation deck of exactly ${slideCount} slides.
 Output must strictly be valid JSON format:
@@ -398,7 +405,7 @@ export async function createPresentationSession(
 
   fs.mkdirSync(sessionDir, { recursive: true });
 
-  const slideCount = Math.min(20, Math.max(3, input.slideCount || 8));
+  const slideCount = Math.min(60, Math.max(3, input.slideCount || 8));
   const density = input.density || "balanced";
   const purpose = input.purpose || "Business & Strategy";
   const fontFamily = input.typography?.fontFamily || "Inter";

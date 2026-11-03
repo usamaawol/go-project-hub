@@ -141,7 +141,7 @@ function AdminPage() {
     geminiModel: "gemini-2.5-flash",
     imagenModel: "imagen-3.0-generate-002",
     aiEngineMode: "full",
-    maxSlideCount: 20,
+    maxSlideCount: 50,
     aiTimeoutSeconds: 15,
     temperature: 0.7,
     maintenanceMode: false,

@@ -401,6 +401,20 @@ function parseContentIntoSections(
     }
   }
 
+  // If still fewer than targetCount, add structured analytical dimensions based on source title
+  let expandIdx = 1;
+  while (rawSections.length < targetCount) {
+    rawSections.push({
+      header: `${defaultTitle} — Dimension 0${expandIdx}`,
+      items: [
+        `Key dimensions and operational considerations for ${defaultTitle}`,
+        `Analysis of implementation factors and performance milestones`,
+        `Risk mitigation strategies and future deployment roadmap`,
+      ],
+    });
+    expandIdx++;
+  }
+
   // When rawSections exceed targetCount, cluster them evenly so no single slide gets overloaded with a wall of text
   if (rawSections.length > targetCount) {
     const clusteredSections: Array<{ header: string; items: string[] }> = [];
@@ -894,7 +908,7 @@ export function buildSlideDeckContent(
     });
   }
 
-  const totalSlots = Math.min(20, Math.max(3, slideCount));
+  const totalSlots = Math.min(60, Math.max(3, slideCount));
   const hasConclusion = totalSlots >= 4;
   const contentSlotCount = Math.max(1, totalSlots - (hasConclusion ? 3 : 2));
 
@@ -1075,7 +1089,11 @@ export function buildSlideDeckContent(
     });
   }
 
-  return slides;
+  return slides.slice(0, totalSlots).map((s, idx) => ({
+    ...s,
+    slideNumber: idx + 1,
+    id: `slide-${idx + 1}`,
+  }));
 }
 
 // In-memory fallback if sessionStorage is unavailable
