@@ -30,6 +30,8 @@ import {
   EyeOff,
   Save,
   ShieldCheck,
+  Languages,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
@@ -196,6 +198,9 @@ export function PresentationWorkflow({
   });
   const [purpose, setPurpose] = useState(PURPOSES[0]!);
   const [density, setDensity] = useState<"concise" | "balanced" | "detailed">("balanced");
+  const [audience, setAudience] = useState("Executive Leadership & Stakeholders");
+  const [language, setLanguage] = useState("English");
+  const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
   const [pastedText, setPastedText] = useState(() => {
     try {
@@ -688,6 +693,10 @@ export function PresentationWorkflow({
         content: contentToUse,
         purpose,
         density,
+        audience: !assignmentMode ? audience : undefined,
+        language: !assignmentMode ? language : undefined,
+        additionalInstructions: !assignmentMode ? additionalInstructions : undefined,
+        presentationType: assignmentMode ? "assignment" : "standard",
         assignmentMetadata: assignmentMode
           ? { ...assignmentMetadata, isAssignment: true }
           : undefined,
@@ -927,10 +936,90 @@ export function PresentationWorkflow({
       </div>
 
       {/* ================================================================= */}
-      {/* STEP A — ADD CONTENT & TOPIC                                      */}
+      {/* STEP A — CHOOSE TYPE & PROVIDE CONTENT                            */}
       {/* ================================================================= */}
       {currentStep === "content" && (
         <div className="space-y-6">
+          {/* Step 1: Presentation Type Selector */}
+          <div className="rounded-3xl border border-border bg-card p-5 sm:p-6 shadow-paper space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono uppercase tracking-wider text-primary font-bold">
+                Step 1 — Choose Presentation Type
+              </span>
+              <span className="text-[11px] text-muted-foreground font-mono">
+                {assignmentMode ? "Academic Mode" : "Standard AI Mode"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <button
+                type="button"
+                onClick={() => setAssignmentMode(false)}
+                className={`rounded-2xl border p-4 sm:p-5 text-left transition-all relative overflow-hidden flex items-start gap-4 cursor-pointer ${
+                  !assignmentMode
+                    ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary"
+                    : "border-border bg-surface-2 hover:border-border/80 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span
+                  className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${
+                    !assignmentMode
+                      ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <Sparkles className="h-5 w-5" />
+                </span>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    Standard Presentation
+                    {!assignmentMode && (
+                      <span className="text-[9px] font-mono uppercase bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-bold">
+                        Selected
+                      </span>
+                    )}
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    AI analyzes your topic, documents, or notes and creates a modern, visually rich presentation deck with tailored diagrams and layouts.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAssignmentMode(true)}
+                className={`rounded-2xl border p-4 sm:p-5 text-left transition-all relative overflow-hidden flex items-start gap-4 cursor-pointer ${
+                  assignmentMode
+                    ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary"
+                    : "border-border bg-surface-2 hover:border-border/80 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span
+                  className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${
+                    assignmentMode
+                      ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <GraduationCap className="h-5 w-5" />
+                </span>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    Assignment Presentation
+                    {assignmentMode && (
+                      <span className="text-[9px] font-mono uppercase bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-bold">
+                        Selected
+                      </span>
+                    )}
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Academic presentation with official student & course details, verified university cover styles, and department branding.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Academic Assignment Form & Cover Gallery (Shown when Assignment Mode is Active) */}
           {assignmentMode && (
             <div className="space-y-6">
@@ -962,6 +1051,10 @@ export function PresentationWorkflow({
           )}
 
           <div className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-paper space-y-6">
+            <span className="text-xs font-mono uppercase tracking-wider text-primary font-bold block">
+              Step 2 — Provide Content & Presentation Directives
+            </span>
+
             {/* Topic Input */}
             <div data-tour="tour-topic" className="space-y-2">
               <div className="flex items-center justify-between">
@@ -1034,6 +1127,65 @@ export function PresentationWorkflow({
                 </div>
               </div>
             </div>
+
+            {/* Target Audience & Presentation Language (For Standard Mode) */}
+            {!assignmentMode && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div className="space-y-2">
+                  <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5 text-primary" /> Target Audience (Optional)
+                  </label>
+                  <select
+                    value={audience}
+                    onChange={(e) => setAudience(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs sm:text-sm font-medium text-foreground focus:border-primary focus:outline-hidden min-h-[46px]"
+                  >
+                    <option value="Executive Leadership & Stakeholders">Executive Leadership & Stakeholders</option>
+                    <option value="Technical Developers & Engineers">Technical Developers & Engineers</option>
+                    <option value="Clients, Investors & Partners">Clients, Investors & Partners</option>
+                    <option value="Students, Faculty & Academics">Students, Faculty & Academics</option>
+                    <option value="General Public & Consumers">General Public & Consumers</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold flex items-center gap-1.5">
+                    <Languages className="h-3.5 w-3.5 text-primary" /> Presentation Language (Optional)
+                  </label>
+                  <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs sm:text-sm font-medium text-foreground focus:border-primary focus:outline-hidden min-h-[46px]"
+                  >
+                    <option value="English">English</option>
+                    <option value="Spanish">Spanish (Español)</option>
+                    <option value="French">French (Français)</option>
+                    <option value="German">German (Deutsch)</option>
+                    <option value="Arabic">Arabic (العربية)</option>
+                    <option value="Portuguese">Portuguese (Português)</option>
+                    <option value="Chinese">Chinese (中文)</option>
+                    <option value="Japanese">Japanese (日本語)</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Additional AI Directives (Optional) */}
+            {!assignmentMode && (
+              <div className="space-y-2 pt-1">
+                <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold flex items-center justify-between">
+                  <span>Additional AI Instructions / Design Directives (Optional)</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">Custom styling & focal points</span>
+                </label>
+                <textarea
+                  value={additionalInstructions}
+                  onChange={(e) => setAdditionalInstructions(e.target.value)}
+                  placeholder="e.g. Focus on technical architecture, highlight distributed telemetry benchmarks, use a high-contrast style, include process diagrams..."
+                  rows={2}
+                  className="w-full rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-xs text-foreground focus:border-primary focus:outline-hidden resize-none"
+                />
+              </div>
+            )}
 
             {/* Content Input Mode Switcher (Paste vs Upload) */}
             <div className="space-y-3 pt-2 border-t border-border">

@@ -45,6 +45,10 @@ import {
   fetchPresentationPreviewApi,
   updatePresentationSlideApi,
   regeneratePresentationSlideVisualApi,
+  regeneratePresentationSlideAIApi,
+  reorderPresentationSlidesApi,
+  addPresentationSlideApi,
+  deletePresentationSlideApi,
   type PresentationSessionData,
   type SlidePreviewItem,
 } from "@/lib/api-client";
@@ -366,6 +370,98 @@ export function PresentationPreviewPage() {
       await updatePresentationSlideApi(sessionId, slideIdx, { layout: "content" });
     } catch {}
     toast.success("Visual removed and layout converted to standard content.");
+  };
+
+  const [isRegeneratingWithAI, setIsRegeneratingWithAI] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [showAiAssistant, setShowAiAssistant] = useState(true);
+
+  const handleRegenerateSlideWithAI = async (customInstruction?: string) => {
+    if (!session || !session.slides[currentSlideIdx]) return;
+    const instruction = (customInstruction || aiInstruction).trim();
+    if (!instruction) {
+      toast.info("Please enter a design prompt or click a suggested AI action.");
+      return;
+    }
+
+    setIsRegeneratingWithAI(true);
+    toast.loading(`AI is redesigning Slide ${currentSlideIdx + 1}...`, { id: "ai-redesign" });
+    try {
+      const res = await regeneratePresentationSlideAIApi(session.id, currentSlideIdx, instruction);
+      if (res && res.success && res.data) {
+        setSession(res.data);
+        saveClientSession(res.data);
+        toast.success(`Slide ${currentSlideIdx + 1} redesigned successfully!`, { id: "ai-redesign" });
+        setAiInstruction("");
+      } else {
+        toast.error("Could not redesign slide with AI", { id: "ai-redesign" });
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to redesign slide", { id: "ai-redesign" });
+    } finally {
+      setIsRegeneratingWithAI(false);
+    }
+  };
+
+  const handleMoveSlide = async (direction: "up" | "down") => {
+    if (!session || session.slides.length <= 1) return;
+    const targetIdx = direction === "up" ? currentSlideIdx - 1 : currentSlideIdx + 1;
+    if (targetIdx < 0 || targetIdx >= session.slides.length) return;
+
+    const order = session.slides.map((_, i) => i);
+    const temp = order[currentSlideIdx]!;
+    order[currentSlideIdx] = order[targetIdx]!;
+    order[targetIdx] = temp;
+
+    toast.loading("Reordering presentation slides...", { id: "reorder" });
+    try {
+      const res = await reorderPresentationSlidesApi(session.id, order);
+      if (res && res.success && res.data) {
+        setSession(res.data);
+        saveClientSession(res.data);
+        setCurrentSlideIdx(targetIdx);
+        toast.success("Slides reordered successfully!", { id: "reorder" });
+      }
+    } catch {
+      toast.error("Failed to reorder slides", { id: "reorder" });
+    }
+  };
+
+  const handleAddNewSlide = async () => {
+    if (!session) return;
+    toast.loading("Adding new slide to deck...", { id: "add-slide" });
+    try {
+      const res = await addPresentationSlideApi(session.id, currentSlideIdx);
+      if (res && res.success && res.data) {
+        setSession(res.data);
+        saveClientSession(res.data);
+        setCurrentSlideIdx(currentSlideIdx + 1);
+        toast.success("New slide added!", { id: "add-slide" });
+      }
+    } catch {
+      toast.error("Failed to add slide", { id: "add-slide" });
+    }
+  };
+
+  const handleDeleteCurrentSlide = async () => {
+    if (!session || session.slides.length <= 2) {
+      toast.warning("Presentations must contain at least 2 slides.");
+      return;
+    }
+    if (!window.confirm(`Delete Slide ${currentSlideIdx + 1}?`)) return;
+
+    toast.loading("Deleting slide...", { id: "del-slide" });
+    try {
+      const res = await deletePresentationSlideApi(session.id, currentSlideIdx);
+      if (res && res.success && res.data) {
+        setSession(res.data);
+        saveClientSession(res.data);
+        setCurrentSlideIdx(Math.max(0, currentSlideIdx - 1));
+        toast.success("Slide deleted", { id: "del-slide" });
+      }
+    } catch {
+      toast.error("Failed to delete slide", { id: "del-slide" });
+    }
   };
 
   // Load session from API
@@ -774,6 +870,130 @@ export function PresentationPreviewPage() {
 
             {/* Slide Presentation Viewport */}
             <div className="order-1 lg:order-2 flex flex-col gap-4">
+              {/* AI Slide Assistant & Quick Actions Bar */}
+              <div className="rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-background to-accent/10 p-3.5 sm:p-4 shadow-xs space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="h-7 w-7 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                      <Sparkles className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        AI Slide Designer & Assistant
+                        <span className="text-[9px] font-mono font-normal px-1.5 py-0.2 bg-primary/15 text-primary rounded-full">
+                          Active
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-muted-foreground">
+                        Ask AI to redesign Slide {currentSlideIdx + 1} with custom styling, diagrams, or modern layouts.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Slide Management Buttons: Move Up, Move Down, Add, Delete */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={() => handleMoveSlide("up")}
+                      disabled={currentSlideIdx === 0}
+                      className="h-8 px-2 text-[11px]"
+                      title="Move slide earlier in deck"
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={() => handleMoveSlide("down")}
+                      disabled={currentSlideIdx === session.slides.length - 1}
+                      className="h-8 px-2 text-[11px]"
+                      title="Move slide later in deck"
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={handleAddNewSlide}
+                      className="h-8 px-2.5 text-[11px]"
+                      title="Add a new slide"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Add Slide
+                    </Button>
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={handleDeleteCurrentSlide}
+                      disabled={session.slides.length <= 2}
+                      className="h-8 px-2 text-[11px] text-destructive hover:bg-destructive/10"
+                      title="Delete this slide"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Quick AI Improvement Pills */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[10px] font-mono text-muted-foreground mr-1 hidden md:inline">Quick Actions:</span>
+                  {[
+                    { label: "✨ Make More Attractive", prompt: "Make this slide more visually attractive and modern" },
+                    { label: "📐 4-Card Bento Grid", prompt: "Convert this slide into a modern 4-card bento grid" },
+                    { label: "⚡ Hero Split Screen", prompt: "Convert this slide into a bold high-impact hero split screen" },
+                    { label: "📊 Add Architecture Diagram", prompt: "Add a conceptual architecture diagram explaining this topic" },
+                    { label: "🔄 Process Workflow", prompt: "Format this content as a step-by-step process workflow" },
+                    { label: "⚖️ Comparative Matrix", prompt: "Format as an in-scope vs out-of-scope comparative analysis" },
+                  ].map((action, aIdx) => (
+                    <button
+                      key={aIdx}
+                      type="button"
+                      disabled={isRegeneratingWithAI}
+                      onClick={() => handleRegenerateSlideWithAI(action.prompt)}
+                      className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-surface-2 border border-border hover:border-primary/40 text-foreground hover:bg-primary/5 transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Freeform Prompt Input */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={aiInstruction}
+                    onChange={(e) => setAiInstruction(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !isRegeneratingWithAI) {
+                        handleRegenerateSlideWithAI();
+                      }
+                    }}
+                    placeholder="Ask AI: e.g. 'Add a cloud topology diagram', 'Reduce text and use modern 4 cards', 'Highlight key metrics'..."
+                    disabled={isRegeneratingWithAI}
+                    className="flex-1 h-9 rounded-xl border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                  />
+                  <Button
+                    variant="hero"
+                    size="sm"
+                    disabled={isRegeneratingWithAI || !aiInstruction.trim()}
+                    onClick={() => handleRegenerateSlideWithAI()}
+                    className="h-9 px-4 text-xs font-semibold shrink-0"
+                  >
+                    {isRegeneratingWithAI ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                        Redesigning...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                        Redesign Slide
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
               {/* Canvas Container with ref for Fullscreen */}
               <div
                 ref={canvasContainerRef}
@@ -1094,6 +1314,263 @@ export function PresentationPreviewPage() {
                               </ul>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HERO-SPLIT (High-impact editorial split screen) */}
+                    {currentSlide.layout === "hero-split" && (
+                      <div className="space-y-4 h-full flex flex-col justify-between">
+                        {renderSlideHeader(currentSlide)}
+                        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.3fr] gap-6 items-stretch pt-2 flex-1">
+                          {/* Left Hero Box */}
+                          <div
+                            className="rounded-2xl border p-6 sm:p-7 flex flex-col justify-between relative overflow-hidden shadow-xs"
+                            style={{
+                              backgroundColor: tokens.isDark ? "#1E293B" : "#F1F5F9",
+                              borderColor: tokens.accent,
+                              borderWidth: "1.5px",
+                            }}
+                          >
+                            <div
+                              className="absolute top-0 left-0 bottom-0 w-2"
+                              style={{ backgroundColor: tokens.accent }}
+                            />
+                            <div className="space-y-3">
+                              <span
+                                className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold text-white uppercase"
+                                style={{ backgroundColor: tokens.accent }}
+                              >
+                                {currentSlide.categoryTag || "STRATEGIC IMPERATIVE"}
+                              </span>
+                              <h3
+                                className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight leading-snug"
+                                style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                              >
+                                {currentSlide.heroSplit?.headline || currentSlide.title}
+                              </h3>
+                            </div>
+                            <p
+                              className="text-xs sm:text-sm leading-relaxed italic mt-4 pt-4 border-t"
+                              style={{
+                                color: tokens.textSecondary,
+                                fontFamily: tokens.fontBody,
+                                borderColor: tokens.dividerColor,
+                              }}
+                            >
+                              {currentSlide.heroSplit?.highlight || currentSlide.subtitle || currentSlide.bullets?.[0]}
+                            </p>
+                          </div>
+
+                          {/* Right Detail Cards */}
+                          <div className="flex flex-col justify-between gap-3">
+                            {(currentSlide.heroSplit?.details || currentSlide.bullets?.slice(0, 3) || [
+                              "Operational validation across execution checkpoints.",
+                              "Targeted architectural framework supporting end-to-end deliverables.",
+                            ]).map((detail, dIdx) => (
+                              <div
+                                key={dIdx}
+                                className="rounded-2xl border p-4 sm:p-5 flex items-start gap-4 shadow-2xs"
+                                style={{
+                                  backgroundColor: tokens.cardBg,
+                                  borderColor: tokens.cardBorder,
+                                }}
+                              >
+                                <span
+                                  className="h-7 w-7 rounded-lg text-white font-mono text-xs font-bold flex items-center justify-center shrink-0 mt-0.5"
+                                  style={{ backgroundColor: tokens.accent }}
+                                >
+                                  0{dIdx + 1}
+                                </span>
+                                <p
+                                  className="text-xs sm:text-sm font-medium leading-relaxed"
+                                  style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                                >
+                                  {detail}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* BENTO-GRID (4 Quadrants / Feature Matrix) */}
+                    {currentSlide.layout === "bento-grid" && (
+                      <div className="space-y-4">
+                        {renderSlideHeader(currentSlide)}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                          {(currentSlide.bentoGrid || [
+                            { title: "Core Architecture", description: currentSlide.bullets?.[0] || "Foundational operational service layer and interface boundaries.", tag: "FOUNDATION" },
+                            { title: "Strategic Workflow", description: currentSlide.bullets?.[1] || "Continuous integration pipeline and automated verification gates.", tag: "WORKFLOW" },
+                            { title: "Telemetry & Metrics", description: currentSlide.bullets?.[2] || "Real-time indicators tracking throughput and operational thresholds.", tag: "TELEMETRY" },
+                            { title: "Target Deliverable", description: currentSlide.bullets?.[3] || "Production validation benchmarks and milestone release readiness.", tag: "DELIVERABLE" },
+                          ]).slice(0, 4).map((bento, bIdx) => (
+                            <div
+                              key={bIdx}
+                              className="rounded-2xl border p-5 space-y-2.5 relative overflow-hidden shadow-2xs"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.cardBorder,
+                              }}
+                            >
+                              <div
+                                className="absolute top-0 left-0 right-0 h-1"
+                                style={{ backgroundColor: tokens.accent }}
+                              />
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+                                  style={{ backgroundColor: `${tokens.accent}15`, color: tokens.accent }}
+                                >
+                                  {bento.tag || `PILLAR 0${bIdx + 1}`}
+                                </span>
+                              </div>
+                              <h4
+                                className="text-base font-bold"
+                                style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                              >
+                                {bento.title}
+                              </h4>
+                              <p
+                                className="text-xs leading-relaxed"
+                                style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
+                              >
+                                {bento.description}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HEADLINE-HERO (Big Statement + Supporting Takeaways) */}
+                    {currentSlide.layout === "headline-hero" && (
+                      <div className="space-y-4">
+                        {renderSlideHeader(currentSlide)}
+                        {/* Top Banner */}
+                        <div
+                          className="rounded-2xl border p-6 sm:p-7 space-y-2 relative overflow-hidden shadow-xs"
+                          style={{
+                            backgroundColor: tokens.cardBg,
+                            borderColor: tokens.accent,
+                            borderWidth: "1.5px",
+                          }}
+                        >
+                          <div
+                            className="absolute top-0 left-0 bottom-0 w-2"
+                            style={{ backgroundColor: tokens.accent }}
+                          />
+                          <h3
+                            className="text-2xl sm:text-3xl font-extrabold tracking-tight"
+                            style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                          >
+                            {currentSlide.statCallout?.stat || currentSlide.title}
+                          </h3>
+                          <p
+                            className="text-xs sm:text-sm leading-relaxed"
+                            style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                          >
+                            {currentSlide.statCallout?.context || currentSlide.subtitle || currentSlide.bullets?.[0]}
+                          </p>
+                        </div>
+
+                        {/* Bottom Row Takeaways */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                          {(currentSlide.statCallout?.bullets || currentSlide.bullets?.slice(1, 4) || [
+                            "Strategic requirement validated by telemetry benchmarks.",
+                            "Target milestone readiness confirmed for release gates.",
+                            "Scalable deployment verified across target environments.",
+                          ]).map((bItem, bIdx) => (
+                            <div
+                              key={bIdx}
+                              className="rounded-xl border p-4 space-y-1.5 shadow-2xs"
+                              style={{
+                                backgroundColor: tokens.cardBg,
+                                borderColor: tokens.cardBorder,
+                              }}
+                            >
+                              <span
+                                className="h-1.5 w-6 rounded-full block mb-2"
+                                style={{ backgroundColor: tokens.accent }}
+                              />
+                              <p
+                                className="text-xs font-medium leading-relaxed"
+                                style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                              >
+                                {bItem}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* DIAGRAM-EXPLAINER (Architecture / Deep Technical Specification) */}
+                    {currentSlide.layout === "diagram-explainer" && (
+                      <div className="space-y-4">
+                        {renderSlideHeader(currentSlide)}
+                        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-5 items-stretch pt-2">
+                          <div
+                            className="rounded-2xl border p-5 space-y-3 flex flex-col justify-between"
+                            style={{
+                              backgroundColor: tokens.cardBg,
+                              borderColor: tokens.cardBorder,
+                            }}
+                          >
+                            <div className="space-y-3">
+                              <span
+                                className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold text-white uppercase"
+                                style={{ backgroundColor: tokens.accent }}
+                              >
+                                TECHNICAL SPECIFICATION
+                              </span>
+                              <ul className="space-y-2.5 text-xs sm:text-sm">
+                                {(currentSlide.bullets || ["System architecture verified for enterprise deployment."]).map((b, idx) => (
+                                  <li key={idx} className="flex items-start gap-2.5">
+                                    <span
+                                      className="h-2 w-2 rounded-full mt-1.5 shrink-0"
+                                      style={{ backgroundColor: tokens.accent }}
+                                    />
+                                    {renderBulletWithAnchor(b, tokens.cardText)}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <p
+                              className="text-[11px] italic pt-3 border-t"
+                              style={{ color: tokens.cardMuted, borderColor: tokens.cardBorder }}
+                            >
+                              {currentSlide.visual?.caption || "Architecture topology & interface boundaries"}
+                            </p>
+                          </div>
+
+                          {/* Right Diagram Image Box */}
+                          <div
+                            className="rounded-2xl border p-4 flex flex-col items-center justify-center relative overflow-hidden min-h-[260px]"
+                            style={{
+                              backgroundColor: tokens.cardBg,
+                              borderColor: tokens.cardBorder,
+                            }}
+                          >
+                            {(() => {
+                              const vImg = currentSlide.visual?.imageUrl || buildContextualVisual({
+                                title: currentSlide.title,
+                                subtitle: currentSlide.subtitle,
+                                bullets: currentSlide.bullets,
+                                accentColor: tokens.accent,
+                                isDark: tokens.isDark,
+                                concept: currentSlide.visual?.concept || currentSlide.title,
+                              }).imageUrl;
+                              return (
+                                <img
+                                  src={vImg}
+                                  alt={currentSlide.title}
+                                  className="max-h-[280px] w-auto max-w-full object-contain rounded-lg"
+                                />
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1541,6 +2018,69 @@ export function PresentationPreviewPage() {
                                   </li>
                                 ))}
                               </ul>
+                            </div>
+                          ) : currentSlide.bullets.length >= 4 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                              {/* Left Column */}
+                              <div
+                                className="rounded-2xl border p-5 space-y-3 relative overflow-hidden shadow-2xs"
+                                style={{
+                                  backgroundColor: tokens.cardBg,
+                                  borderColor: tokens.cardBorder,
+                                }}
+                              >
+                                <div
+                                  className="absolute top-0 left-0 bottom-0 w-1.5"
+                                  style={{ backgroundColor: tokens.accent }}
+                                />
+                                <span
+                                  className="text-[10px] font-mono uppercase font-bold tracking-wider text-muted-foreground block"
+                                  style={{ color: tokens.accent }}
+                                >
+                                  STRATEGIC FRAMEWORK
+                                </span>
+                                <ul className="space-y-2.5 text-xs sm:text-sm">
+                                  {currentSlide.bullets.slice(0, Math.ceil(currentSlide.bullets.length / 2)).map((bullet, idx) => (
+                                    <li key={idx} className="flex items-start gap-2.5">
+                                      <span
+                                        className="h-2 w-2 rounded-full mt-1.5 shrink-0"
+                                        style={{ backgroundColor: tokens.accent }}
+                                      />
+                                      {renderBulletWithAnchor(bullet, tokens.cardText)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              {/* Right Column */}
+                              <div
+                                className="rounded-2xl border p-5 space-y-3 relative overflow-hidden shadow-2xs"
+                                style={{
+                                  backgroundColor: tokens.cardBg,
+                                  borderColor: tokens.cardBorder,
+                                }}
+                              >
+                                <div
+                                  className="absolute top-0 left-0 bottom-0 w-1.5"
+                                  style={{ backgroundColor: tokens.accent }}
+                                />
+                                <span
+                                  className="text-[10px] font-mono uppercase font-bold tracking-wider text-muted-foreground block"
+                                  style={{ color: tokens.accent }}
+                                >
+                                  OPERATIONAL IMPACT
+                                </span>
+                                <ul className="space-y-2.5 text-xs sm:text-sm">
+                                  {currentSlide.bullets.slice(Math.ceil(currentSlide.bullets.length / 2), 6).map((bullet, idx) => (
+                                    <li key={idx} className="flex items-start gap-2.5">
+                                      <span
+                                        className="h-2 w-2 rounded-full mt-1.5 shrink-0"
+                                        style={{ backgroundColor: tokens.accent }}
+                                      />
+                                      {renderBulletWithAnchor(bullet, tokens.cardText)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
                             </div>
                           ) : (
                             <ul className="space-y-3.5 pt-2 text-sm sm:text-base">

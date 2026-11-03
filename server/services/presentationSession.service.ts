@@ -24,6 +24,7 @@ import type { AssignmentMetadata } from "../../src/lib/assignment-types";
 
 export type { SlideLayoutType };
 export type SlideData = SlidePreviewItem;
+export type SlideItem = SlidePreviewItem;
 
 export interface PresentationSession {
   id: string;
@@ -61,6 +62,10 @@ export interface CreatePresentationSessionInput {
   content: string;
   purpose?: string;
   density?: "concise" | "balanced" | "detailed";
+  audience?: string;
+  language?: string;
+  additionalInstructions?: string;
+  presentationType?: "standard" | "assignment";
   theme: {
     id: string;
     name: string;
@@ -157,7 +162,8 @@ function prepareDocumentBrief(content: string, targetSlideCount: number = 8): st
 }
 
 /**
- * Synthesizes dynamic slide content using Gemini Flash if API key is provided
+ * Synthesizes dynamic AI presentation slide design using Gemini 2.5 Flash
+ * with deep content analysis and rich, unconstrained layout orchestration.
  */
 async function generateSlidesWithGemini(
   title: string,
@@ -166,21 +172,87 @@ async function generateSlidesWithGemini(
   density: "concise" | "balanced" | "detailed",
   purpose: string,
   apiKey?: string,
+  options?: {
+    audience?: string;
+    language?: string;
+    additionalInstructions?: string;
+    assignmentMetadata?: AssignmentMetadata;
+  },
 ): Promise<SlideData[] | null> {
   const activeKey = apiKey || ENV.GEMINI_API_KEY;
   if (!activeKey || !content || content.trim().length < 20) return null;
 
   try {
     const documentBrief = prepareDocumentBrief(content, slideCount);
+    const isAssignment = Boolean(options?.assignmentMetadata?.isAssignment);
+    const audience =
+      options?.audience ||
+      (isAssignment
+        ? "Academic Professors, Evaluators & Department Faculty"
+        : "Executive Decision Makers, Clients & Stakeholders");
+    const language = options?.language || "English";
+    const additionalInstructions = options?.additionalInstructions || "";
 
-    const prompt = `You are DocuMind's elite presentation engine.
-Analyze the following source document/notes and generate a cohesive, professional presentation of exactly ${slideCount} slides with purpose "${purpose}" and content density "${density}".
-The user's requested title is "${title || "Detect best title from text"}".
+    const prompt = `You are DocuMind's Senior Presentation Architect & Elite Creative Director.
+Your task is to transform the provided source document into a visually compelling, professionally designed, modern ${slideCount}-slide presentation deck.
 
-SOURCE TEXT:
+PRESENTATION PARAMETERS:
+- Requested Title: "${title || "Detect optimal executive title from source"}"
+- Target Slide Count: Exactly ${slideCount} slides
+- Presentation Type: ${isAssignment ? "ACADEMIC ASSIGNMENT PRESENTATION" : "STANDARD MODERN PRESENTATION"}
+- Primary Purpose: "${purpose}"
+- Target Audience: "${audience}"
+- Presentation Language: "${language}"
+- Content Density: "${density}"
+${additionalInstructions ? `- User Design & Content Directives: "${additionalInstructions}"` : ""}
+
+${
+  isAssignment
+    ? `ACADEMIC ASSIGNMENT RIGOR:
+- Maintain academic precision, theoretical models, methodology, and citations if present.
+- Follow logical academic progression: Problem Statement/Thesis, Literature Context, Methodology, Empirical Data & Analysis, Critical Discussion, Key Conclusions & Recommendations.
+- Respect course and subject boundaries without inventing false empirical data.`
+    : `STANDARD PRESENTATION NARRATIVE:
+- Create a compelling narrative arc: Executive Opening, Problem Landscape, Core Architecture/Pillars, Deep Dives, Strategic Telemetry/Milestones, Synthesis & Call to Action.
+- Focus on clarity, punchy articulation, modern typography, and information design.`
+}
+
+SOURCE MATERIAL TO ANALYZE AND TRANSFORM:
 """
 ${documentBrief}
 """
+
+DESIGN INSTRUCTIONS — NO BORING OR REPETITIVE SLIDES:
+1. NEVER use the same layout consecutively. Produce a dynamic, varied visual rhythm.
+2. Select the optimal layout for each individual slide from this rich palette:
+   - "title": Presentation hero cover (Slide 1).
+   - "agenda": Structural roadmap (Slide 2).
+   - "hero-split": Modern split-screen layout with a prominent left hero container (bold headline + highlight) and 2-3 structured right takeaway cards. Best for decisive mandates or architectural foundations.
+   - "bento-grid": 4-quadrant feature matrix (2x2 grid) with distinct titles, tags, and concise descriptions. Fills the slide perfectly with zero empty space. Best for 4 pillars or modular systems.
+   - "headline-hero": Large high-impact statement banner + 2-3 supporting takeaway cards below. Best for central insights, key facts, or major takeaways.
+   - "two-column": Comparative analysis (In-scope vs out-of-scope, Before vs After, Pros vs Cons).
+   - "three-card": 3 distinct vertical pillar cards with tags and descriptions.
+   - "metrics": KPI telemetry and quantitative performance indicators with numeric values and labels.
+   - "timeline": Chronological phases, milestones, or evolution steps.
+   - "process": Sequential numbered workflow steps.
+   - "quote": Powerful executive takeaway or decisive quote.
+   - "diagram-explainer": Deep technical specification with labeled components and side explanation.
+   - "text-visual": Content combined with an AI-generated image or vector diagram.
+   - "image-led": High-impact visual-first slide with image prompt.
+   - "conclusion": Final synthesis and forward roadmap (Last slide).
+3. INTELLIGENT WHITESPACE USAGE:
+   - Eliminate accidental, empty, or unbalanced whitespace.
+   - Distribute content into structured cards, metrics, or split-screen layouts rather than leaving vast blank areas.
+4. AI VISUAL ASSET GENERATION:
+   - Identify at least one slide (and up to 3 slides for longer decks) that would strongly benefit from visual explanation (e.g. diagrams, illustrations, charts, topology).
+   - For these slides, use layout "text-visual", "diagram-explainer", or "image-led", and provide a vivid "imagePrompt" in the "visual" field:
+     "visual": {
+       "type": "picture"|"diagram"|"chart",
+       "concept": "concise concept title",
+       "caption": "explanatory caption",
+       "imagePrompt": "Detailed prompt describing a clean, modern, professional 16:9 presentation visual asset: minimal aesthetic, vibrant accents, studio lighting, no text watermarks."
+     }
+5. Return exactly ${slideCount} slides with slide numbers from 1 to ${slideCount}.
 
 Respond in JSON adhering strictly to this schema:
 {
@@ -189,44 +261,14 @@ Respond in JSON adhering strictly to this schema:
     {
       "slideNumber": 1,
       "layout": "title",
-      "title": "string (under 50 chars)",
-      "subtitle": "string (under 75 chars)",
+      "title": "string",
+      "subtitle": "string",
       "categoryTag": "string",
       "notes": "string"
     },
-    {
-      "slideNumber": 2,
-      "layout": "agenda",
-      "title": "Agenda & Structural Roadmap",
-      "subtitle": "Core topics and analytical checkpoints",
-      "categoryTag": "AGENDA",
-      "bullets": ["topic 1", "topic 2", "topic 3"]
-    },
-    ... (intermediate slides using varied layouts: "two-column", "three-card", "metrics", "timeline", "process", "quote", "text-visual", or "image-led")
-    {
-      "slideNumber": ${slideCount},
-      "layout": "conclusion",
-      "title": "Key Takeaways & Conclusion",
-      "subtitle": "Synthesis and forward actions",
-      "categoryTag": "CONCLUSION",
-      "bullets": ["takeaway 1", "takeaway 2", "takeaway 3", "action item"]
-    }
+    ...
   ]
-}
-
-STRICT REQUIREMENTS FOR MODERN SLIDE DECKS:
-1. Every slide title, bullet point, metric, comparison, and pillar MUST be derived directly from the source text.
-2. DO NOT use generic corporate filler or repeated "Core Analysis" bullet points.
-3. Modern Layout Variety: Never repeat the same layout consecutively.
-4. For visual concepts, creative directions, brand identities, or scientific processes:
-   - Use layout "text-visual" or "image-led".
-   - Include a "visual" object: { "type": "picture"|"graph"|"diagram"|"chart", "concept": "short title", "caption": "brief explanation", "imagePrompt": "vivid detailed prompt describing the picture or vector graph to generate" }.
-5. For scope, boundaries, frontend-only rules, or comparisons: Use layout "two-column" with "leftColumn" (In-Scope) and "rightColumn" (Out-of-Scope / Constraints).
-6. For multi-concept choices or 3 pillars: Use layout "three-card" with "cards" array.
-7. For metrics or numbers: Use layout "metrics" with "metrics" array.
-8. For workflows or milestones: Use layout "timeline" or "process".
-9. Keep slide titles punchy and under 48 characters to prevent text overflow and overlapping.
-10. Return exactly ${slideCount} slides with slide numbers from 1 to ${slideCount}.`;
+}`;
 
     const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : 14000;
     const res = await fetch(
@@ -248,6 +290,9 @@ STRICT REQUIREMENTS FOR MODERN SLIDE DECKS:
       subtitle?: string;
       categoryTag?: string;
       bullets?: string[];
+      heroSplit?: { headline: string; highlight: string; details: string[] };
+      bentoGrid?: Array<{ title: string; description: string; tag?: string }>;
+      statCallout?: { stat: string; label: string; context: string; bullets?: string[] };
       leftColumn?: { title: string; bullets: string[] };
       rightColumn?: { title: string; bullets: string[] };
       cards?: Array<{ title: string; description: string; tag?: string }>;
@@ -289,6 +334,9 @@ STRICT REQUIREMENTS FOR MODERN SLIDE DECKS:
             subtitle: s.subtitle,
             categoryTag: s.categoryTag || purpose,
             bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+            heroSplit: s.heroSplit,
+            bentoGrid: s.bentoGrid,
+            statCallout: s.statCallout,
             leftColumn: s.leftColumn,
             rightColumn: s.rightColumn,
             cards: s.cards,
@@ -461,6 +509,12 @@ export async function createPresentationSession(
         density,
         purpose,
         effectiveApiKey,
+        {
+          audience: input.audience,
+          language: input.language,
+          additionalInstructions: input.additionalInstructions,
+          assignmentMetadata: input.assignmentMetadata,
+        },
       );
       if (aiSlides && aiSlides.length === slideCount) {
         slides = aiSlides;
@@ -838,6 +892,354 @@ export async function regenerateSlideVisual(
     session.fileSize = fileSize;
   } catch (err) {
     console.warn("Failed to re-render PPTX file after visual regeneration:", err);
+  }
+
+  activeSessions.set(sessionId, session);
+  return session;
+}
+
+/**
+ * Deterministic local slide redesign fallback based on natural language keywords
+ */
+function applyLocalSlideRedesign(slide: SlideItem, instruction: string): void {
+  const lower = instruction.toLowerCase();
+  if (lower.includes("bento") || lower.includes("4-card") || lower.includes("grid")) {
+    slide.layout = "bento-grid";
+    slide.bentoGrid = [
+      {
+        title: "Core Architecture",
+        description: slide.bullets?.[0] || "Foundational operational service layer and interface boundaries.",
+        tag: "FOUNDATION",
+      },
+      {
+        title: "Strategic Workflow",
+        description: slide.bullets?.[1] || "Continuous integration pipeline and automated verification gates.",
+        tag: "WORKFLOW",
+      },
+      {
+        title: "Telemetry & Metrics",
+        description: slide.bullets?.[2] || "Real-time performance indicators and operational thresholds.",
+        tag: "TELEMETRY",
+      },
+      {
+        title: "Target Deliverable",
+        description: slide.bullets?.[3] || "Production validation benchmarks and milestone release readiness.",
+        tag: "DELIVERABLE",
+      },
+    ];
+  } else if (
+    lower.includes("hero") ||
+    lower.includes("split") ||
+    lower.includes("attractive") ||
+    lower.includes("punchy") ||
+    lower.includes("modern")
+  ) {
+    slide.layout = "hero-split";
+    slide.heroSplit = {
+      headline: slide.title,
+      highlight: slide.subtitle || slide.bullets?.[0] || "Decisive strategic capability & architecture",
+      details:
+        slide.bullets && slide.bullets.length > 0
+          ? slide.bullets.slice(0, 3)
+          : [
+              "Core operational milestone verified across execution gates.",
+              "End-to-end architectural framework delivery confirmed.",
+            ],
+    };
+  } else if (lower.includes("diagram") || lower.includes("visual") || lower.includes("concept") || lower.includes("chart")) {
+    slide.layout = "text-visual";
+    slide.visual = {
+      type: "diagram",
+      concept: slide.title,
+      caption: `Conceptual architecture: ${slide.title}`,
+      imageUrl: buildSlideDeckContent(slide.title, slide.bullets?.join("\n") || "", 4, "balanced", "Business Strategy")[1]?.visual?.imageUrl,
+    };
+  } else if (lower.includes("comparison") || lower.includes("two-column") || lower.includes("compare")) {
+    slide.layout = "two-column";
+    slide.leftColumn = {
+      title: "In-Scope & Strengths",
+      bullets: slide.bullets && slide.bullets.length >= 2 ? slide.bullets.slice(0, 2) : ["Strategic alignment", "Operational efficiency"],
+    };
+    slide.rightColumn = {
+      title: "Constraints & Guardrails",
+      bullets: slide.bullets && slide.bullets.length > 2 ? slide.bullets.slice(2, 4) : ["Zero regression tolerance", "Compliance validation"],
+    };
+  } else if (lower.includes("process") || lower.includes("step") || lower.includes("workflow")) {
+    slide.layout = "process";
+    slide.processSteps = [
+      { stepNumber: 1, title: "Discovery & Analysis", description: slide.bullets?.[0] || "Define strategic parameters and scope." },
+      { stepNumber: 2, title: "Architecture & Implementation", description: slide.bullets?.[1] || "Construct resilient modular components." },
+      { stepNumber: 3, title: "Validation & Release", description: slide.bullets?.[2] || "Verify quality benchmarks and deployment gates." },
+    ];
+  } else if (lower.includes("metric") || lower.includes("number") || lower.includes("data")) {
+    slide.layout = "metrics";
+    slide.metrics = [
+      { label: "Throughput", value: "99.8%", description: "Continuous service availability" },
+      { label: "Adoption", value: "+45%", description: "Quarterly active workflow expansion" },
+      { label: "Efficiency", value: "<15ms", description: "Average processing latency" },
+    ];
+  }
+}
+
+/**
+ * Redesigns and rewrites a specific slide using natural language AI instructions
+ * (e.g., "Make this slide more visually attractive", "Add a diagram explaining this concept", "Use a 4-card bento grid").
+ */
+export async function regenerateSlideWithAI(
+  sessionId: string,
+  slideIndex: number,
+  instruction: string,
+  apiKey?: string,
+): Promise<PresentationSession | null> {
+  const session = activeSessions.get(sessionId);
+  if (!session || !session.slides[slideIndex]) return null;
+
+  const currentSlide = session.slides[slideIndex]!;
+  const effectiveKey = apiKey || getEffectiveGeminiApiKey() || ENV.GEMINI_API_KEY;
+
+  if (effectiveKey && instruction && instruction.trim().length > 0) {
+    try {
+      const prompt = `You are DocuMind's Senior Presentation Architect & Creative Director.
+You are tasked with redesigning and rewriting Slide ${slideIndex + 1} of a presentation entitled "${session.title}".
+Presentation Purpose: "${session.purpose}"
+Presentation Theme: "${session.theme.name}" (${session.theme.kind})
+
+CURRENT SLIDE CONTENT:
+${JSON.stringify(currentSlide, null, 2)}
+
+USER DESIGN & EDITING INSTRUCTION:
+"${instruction}"
+
+INSTRUCTIONS:
+1. Strictly follow the user's instruction to transform this slide.
+2. Select the optimal layout that fulfills the instruction:
+   - "hero-split": Modern split-screen layout with left hero container and right detail cards.
+   - "bento-grid": 4-card quadrant matrix (2x2 grid) with tags and descriptions.
+   - "headline-hero": Bold high-impact statement banner + 2-3 supporting takeaway cards.
+   - "two-column": Comparative examination (In-Scope vs Out-of-Scope, Before vs After).
+   - "three-card": 3 distinct pillar cards with tags.
+   - "metrics": KPI telemetry and quantitative performance indicators.
+   - "timeline": Chronological phases or milestones.
+   - "process": Sequential numbered execution workflow.
+   - "quote": Standout editorial takeaway.
+   - "diagram-explainer" or "text-visual": Conceptual visual or vector diagram + side explanation.
+   - "image-led": Visual-first presentation slide.
+   - "content": Structured dual-column or focused content card.
+3. If the user asks for a diagram or visual, include a "visual" object with "type", "concept", "caption", and a rich "imagePrompt".
+4. Ensure content is punchy, high-impact, professional, and directly relevant.
+
+Respond strictly in valid JSON matching this schema:
+{
+  "layout": "string",
+  "title": "string",
+  "subtitle": "string",
+  "categoryTag": "string",
+  "bullets": ["string"],
+  "bentoGrid": [{"title": "string", "description": "string", "tag": "string"}],
+  "heroSplit": {"headline": "string", "highlight": "string", "details": ["string"]},
+  "statCallout": {"stat": "string", "label": "string", "context": "string", "bullets": ["string"]},
+  "leftColumn": {"title": "string", "bullets": ["string"]},
+  "rightColumn": {"title": "string", "bullets": ["string"]},
+  "cards": [{"title": "string", "description": "string", "tag": "string"}],
+  "metrics": [{"label": "string", "value": "string", "description": "string"}],
+  "timeline": [{"phase": "string", "title": "string", "description": "string"}],
+  "processSteps": [{"stepNumber": 1, "title": "string", "description": "string"}],
+  "quote": {"text": "string", "author": "string", "role": "string"},
+  "visual": {
+    "type": "diagram"|"picture"|"chart",
+    "concept": "string",
+    "caption": "string",
+    "imagePrompt": "string"
+  },
+  "notes": "string"
+}`;
+
+      const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 1200 : 14000;
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${effectiveKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json" },
+          }),
+          signal: AbortSignal.timeout(timeoutMs),
+        },
+      );
+
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson);
+          const updatedSlide: SlideItem = {
+            ...currentSlide,
+            ...parsed,
+            id: currentSlide.id,
+            slideNumber: currentSlide.slideNumber,
+          };
+
+          // If the redesigned slide requested visual imagery or diagram, generate it
+          if (
+            (updatedSlide.layout === "text-visual" ||
+              updatedSlide.layout === "diagram-explainer" ||
+              updatedSlide.layout === "image-led" ||
+              updatedSlide.visual?.imagePrompt) &&
+            (!updatedSlide.visual?.imageUrl || updatedSlide.visual?.imagePrompt)
+          ) {
+            try {
+              const vPrompt =
+                updatedSlide.visual?.imagePrompt ||
+                `A clean, professional 16:9 presentation visual illustration: ${updatedSlide.title}. ${updatedSlide.subtitle || ""}. Minimalist modern style, high clarity.`;
+              const concept = updatedSlide.visual?.concept || updatedSlide.title;
+              const imgRes = await imageProviderManager.generateImage({
+                source: "presentation_maker",
+                prompt: vPrompt,
+                slideTitle: updatedSlide.title,
+                concept,
+                aspectRatio: "16:9",
+              });
+              if (imgRes && imgRes.imageUrl) {
+                updatedSlide.visual = {
+                  type: imgRes.format === "svg+xml" ? "diagram" : "picture",
+                  concept,
+                  caption: updatedSlide.subtitle || `Visual: ${concept}`,
+                  imageUrl: imgRes.imageUrl,
+                  imagePrompt: vPrompt,
+                };
+              }
+            } catch (err) {
+              console.warn("Image generation fallback for AI slide redesign:", err);
+            }
+          }
+
+          session.slides[slideIndex] = updatedSlide;
+        }
+      }
+    } catch (err) {
+      console.warn("AI slide regeneration error, applying local semantic redesign:", err);
+      applyLocalSlideRedesign(currentSlide, instruction);
+    }
+  } else {
+    applyLocalSlideRedesign(currentSlide, instruction);
+  }
+
+  // Re-generate PPTX file on disk
+  try {
+    const fileSize = await generatePptxFile(session, session.filePath);
+    session.fileSize = fileSize;
+  } catch (err) {
+    console.warn("Failed to re-render PPTX file for session:", sessionId, err);
+  }
+
+  activeSessions.set(sessionId, session);
+  return session;
+}
+
+/**
+ * Reorders slides in an active presentation session and updates slide numbers
+ */
+export async function reorderSessionSlides(
+  sessionId: string,
+  newOrder: number[],
+): Promise<PresentationSession | null> {
+  const session = activeSessions.get(sessionId);
+  if (!session) return null;
+  if (!Array.isArray(newOrder) || newOrder.length !== session.slides.length) return null;
+
+  const reordered: SlideItem[] = [];
+  for (const idx of newOrder) {
+    if (idx < 0 || idx >= session.slides.length) return null;
+    reordered.push(session.slides[idx]!);
+  }
+
+  session.slides = reordered.map((s, idx) => ({
+    ...s,
+    slideNumber: idx + 1,
+    id: `slide-${idx + 1}`,
+  }));
+
+  try {
+    const fileSize = await generatePptxFile(session, session.filePath);
+    session.fileSize = fileSize;
+  } catch (err) {
+    console.warn("Failed to re-render PPTX file for session:", sessionId, err);
+  }
+
+  activeSessions.set(sessionId, session);
+  return session;
+}
+
+/**
+ * Adds a new slide into the session at target position
+ */
+export async function addSessionSlide(
+  sessionId: string,
+  afterIndex: number,
+  newSlideData?: Partial<SlideItem>,
+): Promise<PresentationSession | null> {
+  const session = activeSessions.get(sessionId);
+  if (!session) return null;
+
+  const targetIdx = Math.max(0, Math.min(session.slides.length, afterIndex + 1));
+  const newSlide: SlideItem = {
+    id: `slide-${Date.now()}`,
+    slideNumber: targetIdx + 1,
+    layout: newSlideData?.layout || "hero-split",
+    title: newSlideData?.title || "New Strategic Slide",
+    subtitle: newSlideData?.subtitle || "Key analytical takeaway and operational deliverables",
+    categoryTag: newSlideData?.categoryTag || session.purpose,
+    bullets: newSlideData?.bullets || [
+      "Core operational deliverable verified across checkpoints.",
+      "Strategic milestone readiness confirmed for release gates.",
+    ],
+    notes: newSlideData?.notes || "Present key takeaway and engage audience.",
+  };
+
+  session.slides.splice(targetIdx, 0, newSlide);
+  session.slides = session.slides.map((s, idx) => ({
+    ...s,
+    slideNumber: idx + 1,
+    id: `slide-${idx + 1}`,
+  }));
+  session.slideCount = session.slides.length;
+
+  try {
+    const fileSize = await generatePptxFile(session, session.filePath);
+    session.fileSize = fileSize;
+  } catch (err) {
+    console.warn("Failed to re-render PPTX file for session:", sessionId, err);
+  }
+
+  activeSessions.set(sessionId, session);
+  return session;
+}
+
+/**
+ * Deletes a slide from the session and re-indexes remaining slides
+ */
+export async function deleteSessionSlide(
+  sessionId: string,
+  slideIndex: number,
+): Promise<PresentationSession | null> {
+  const session = activeSessions.get(sessionId);
+  if (!session || !session.slides[slideIndex]) return null;
+  if (session.slides.length <= 2) return null; // preserve at least 2 slides
+
+  session.slides.splice(slideIndex, 1);
+  session.slides = session.slides.map((s, idx) => ({
+    ...s,
+    slideNumber: idx + 1,
+    id: `slide-${idx + 1}`,
+  }));
+  session.slideCount = session.slides.length;
+
+  try {
+    const fileSize = await generatePptxFile(session, session.filePath);
+    session.fileSize = fileSize;
+  } catch (err) {
+    console.warn("Failed to re-render PPTX file for session:", sessionId, err);
   }
 
   activeSessions.set(sessionId, session);

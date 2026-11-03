@@ -885,6 +885,317 @@ export async function renderSlideDeckToPptx(
         break;
       }
 
+      case "hero-split": {
+        const startY = geo.contentStartY;
+        const cardH = geo.contentMaxH;
+        const heroW = 4.8;
+        const detailW = 6.133;
+        const detailX = 1.0 + heroW + 0.4;
+
+        // Left Hero Container
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: 1.0,
+          y: startY,
+          w: heroW,
+          h: cardH,
+          fill: { color: tokens.isDark ? "1E293B" : "F1F5F9" },
+          line: { color: tokens.accentHex, width: 2 },
+        });
+
+        // Left Hero Accent Stripe
+        slide.addShape(pptx.ShapeType.rect, {
+          x: 1.0,
+          y: startY,
+          w: 0.18,
+          h: cardH,
+          fill: { color: tokens.accentHex },
+        });
+
+        // Left Hero Tag
+        slide.addText((s.categoryTag || "STRATEGIC IMPERATIVE").toUpperCase(), {
+          x: 1.35,
+          y: startY + 0.3,
+          w: heroW - 0.6,
+          h: 0.35,
+          fontSize: sizes.sectionTag,
+          bold: true,
+          color: tokens.accentHex,
+          fontFace: fontTitle,
+          charSpacing: 2,
+        });
+
+        // Left Hero Headline
+        const heroHeadline = s.heroSplit?.headline || s.title;
+        slide.addText(heroHeadline, {
+          x: 1.35,
+          y: startY + 0.75,
+          w: heroW - 0.6,
+          h: 1.8,
+          fontSize: Math.min(26, sizes.heroTitle - 8),
+          bold: true,
+          color: tokens.textPrimaryHex,
+          fontFace: fontTitle,
+          lineSpacing: 30,
+        });
+
+        // Left Hero Highlight
+        const heroHighlight = s.heroSplit?.highlight || s.subtitle || (s.bullets?.[0] || "");
+        if (heroHighlight) {
+          slide.addText(heroHighlight, {
+            x: 1.35,
+            y: startY + 2.7,
+            w: heroW - 0.6,
+            h: cardH - 2.9,
+            fontSize: sizes.body,
+            color: tokens.textSecondaryHex,
+            fontFace: fontBody,
+            lineSpacing: 22,
+          });
+        }
+
+        // Right Detail Cards
+        const details = s.heroSplit?.details || (s.bullets && s.bullets.length > 0 ? s.bullets.slice(0, 3) : [
+          "Operational validation across implementation checkpoints.",
+          "Targeted execution framework supporting end-to-end deliverables.",
+        ]);
+        const dCount = Math.min(3, Math.max(1, details.length));
+        const gap = 0.25;
+        const dCardH = (cardH - (dCount - 1) * gap) / dCount;
+
+        for (let di = 0; di < dCount; di++) {
+          const dy = startY + di * (dCardH + gap);
+          slide.addShape(pptx.ShapeType.roundRect, {
+            x: detailX,
+            y: dy,
+            w: detailW,
+            h: dCardH,
+            fill: { color: tokens.cardBgHex },
+            line: { color: tokens.cardBorderHex, width: 1 },
+          });
+
+          // Index badge
+          slide.addShape(pptx.ShapeType.roundRect, {
+            x: detailX + 0.3,
+            y: dy + 0.25,
+            w: 0.8,
+            h: 0.32,
+            fill: { color: tokens.accentHex },
+          });
+          slide.addText(`0${di + 1}`, {
+            x: detailX + 0.3,
+            y: dy + 0.27,
+            w: 0.8,
+            h: 0.28,
+            fontSize: 10,
+            bold: true,
+            color: "FFFFFF",
+            fontFace: fontTitle,
+            align: "center",
+          });
+
+          // Detail text
+          slide.addText(details[di]!, {
+            x: detailX + 1.3,
+            y: dy + 0.2,
+            w: detailW - 1.6,
+            h: dCardH - 0.4,
+            fontSize: sizes.body,
+            bold: di === 0,
+            color: tokens.cardTextHex,
+            fontFace: fontBody,
+            lineSpacing: 22,
+          });
+        }
+        break;
+      }
+
+      case "bento-grid": {
+        const startY = geo.contentStartY;
+        const cardH = geo.contentMaxH;
+        const gridW = 5.466;
+        const gridH = (cardH - 0.3) / 2;
+        const col2X = 6.866;
+
+        const defaultBento = [
+          { title: "Core Architecture", description: s.bullets?.[0] || "Foundational service layer and interface boundaries.", tag: "FOUNDATION" },
+          { title: "Telemetry & Performance", description: s.bullets?.[1] || "Real-time metrics tracking throughput and latency.", tag: "TELEMETRY" },
+          { title: "Security & Guardrails", description: s.bullets?.[2] || "Enterprise access controls and verification gates.", tag: "SECURITY" },
+          { title: "Scalability Roadmap", description: s.bullets?.[3] || "Horizontal expansion and resilient failover topology.", tag: "ROADMAP" },
+        ];
+        const bentoItems = s.bentoGrid && s.bentoGrid.length >= 4 ? s.bentoGrid : (
+          s.bullets && s.bullets.length >= 4
+            ? s.bullets.slice(0, 4).map((b, idx) => {
+                const parts = b.split(/:\s*/);
+                return {
+                  title: parts.length > 1 ? parts[0]! : `Component 0${idx + 1}`,
+                  description: parts.length > 1 ? parts.slice(1).join(": ") : b,
+                  tag: `PILLAR 0${idx + 1}`,
+                };
+              })
+            : defaultBento
+        );
+
+        for (let bi = 0; bi < 4; bi++) {
+          const item = bentoItems[bi]!;
+          const isLeft = bi % 2 === 0;
+          const isTop = bi < 2;
+          const bx = isLeft ? 1.0 : col2X;
+          const by = isTop ? startY : startY + gridH + 0.3;
+
+          slide.addShape(pptx.ShapeType.roundRect, {
+            x: bx,
+            y: by,
+            w: gridW,
+            h: gridH,
+            fill: { color: tokens.cardBgHex },
+            line: { color: tokens.cardBorderHex, width: 1 },
+          });
+
+          // Accent corner pill
+          slide.addShape(pptx.ShapeType.rect, {
+            x: bx + 0.3,
+            y: by + 0.2,
+            w: 0.6,
+            h: 0.06,
+            fill: { color: tokens.accentHex },
+          });
+
+          // Tag
+          if (item.tag) {
+            slide.addText(item.tag.toUpperCase(), {
+              x: bx + 1.1,
+              y: by + 0.16,
+              w: gridW - 1.4,
+              h: 0.25,
+              fontSize: sizes.sectionTag - 1,
+              bold: true,
+              color: tokens.accentHex,
+              fontFace: fontTitle,
+              charSpacing: 1.5,
+            });
+          }
+
+          // Card Title
+          slide.addText(item.title, {
+            x: bx + 0.3,
+            y: by + 0.42,
+            w: gridW - 0.6,
+            h: 0.4,
+            fontSize: sizes.body + 1,
+            bold: true,
+            color: tokens.cardTextHex,
+            fontFace: fontTitle,
+          });
+
+          // Card Description
+          slide.addText(item.description, {
+            x: bx + 0.3,
+            y: by + 0.85,
+            w: gridW - 0.6,
+            h: gridH - 0.95,
+            fontSize: sizes.bodySmall,
+            color: tokens.cardMutedHex,
+            fontFace: fontBody,
+            lineSpacing: 20,
+          });
+        }
+        break;
+      }
+
+      case "headline-hero": {
+        const startY = geo.contentStartY;
+        const cardH = geo.contentMaxH;
+
+        // Top Headline Banner
+        const topH = 1.8;
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: 1.0,
+          y: startY,
+          w: 11.333,
+          h: topH,
+          fill: { color: tokens.cardBgHex },
+          line: { color: tokens.accentHex, width: 1.5 },
+        });
+
+        // Top Accent indicator
+        slide.addShape(pptx.ShapeType.rect, {
+          x: 1.0,
+          y: startY,
+          w: 0.18,
+          h: topH,
+          fill: { color: tokens.accentHex },
+        });
+
+        const headlineStat = s.statCallout?.stat || (s.title.length < 35 ? s.title : "DECISIVE INSIGHT");
+        const headlineContext = s.statCallout?.context || s.subtitle || (s.bullets?.[0] || "");
+
+        slide.addText(headlineStat, {
+          x: 1.4,
+          y: startY + 0.25,
+          w: 10.5,
+          h: 0.75,
+          fontSize: Math.min(32, sizes.heroTitle - 4),
+          bold: true,
+          color: tokens.textPrimaryHex,
+          fontFace: fontTitle,
+        });
+
+        slide.addText(headlineContext, {
+          x: 1.4,
+          y: startY + 1.05,
+          w: 10.5,
+          h: 0.6,
+          fontSize: sizes.body + 1,
+          color: tokens.textSecondaryHex,
+          fontFace: fontBody,
+        });
+
+        // Bottom Row of Supporting Takeaway Cards
+        const bottomBullets = s.statCallout?.bullets || (s.bullets && s.bullets.length > 1 ? s.bullets.slice(1, 4) : [
+          "Strategic requirement validated by telemetry benchmarks.",
+          "Target milestone readiness confirmed for release gates.",
+        ]);
+        const bCount = Math.min(3, Math.max(1, bottomBullets.length));
+        const bGap = 0.3;
+        const bCardW = (11.333 - (bCount - 1) * bGap) / bCount;
+        const bY = startY + topH + 0.3;
+        const bCardH = cardH - topH - 0.3;
+
+        for (let bi = 0; bi < bCount; bi++) {
+          const bx = 1.0 + bi * (bCardW + bGap);
+          slide.addShape(pptx.ShapeType.roundRect, {
+            x: bx,
+            y: bY,
+            w: bCardW,
+            h: bCardH,
+            fill: { color: tokens.cardBgHex },
+            line: { color: tokens.cardBorderHex, width: 1 },
+          });
+
+          slide.addShape(pptx.ShapeType.rect, {
+            x: bx + 0.3,
+            y: bY + 0.2,
+            w: 0.6,
+            h: 0.05,
+            fill: { color: tokens.accentHex },
+          });
+
+          slide.addText(bottomBullets[bi]!, {
+            x: bx + 0.3,
+            y: bY + 0.35,
+            w: bCardW - 0.6,
+            h: bCardH - 0.5,
+            fontSize: sizes.bodySmall,
+            bold: bi === 0,
+            color: tokens.cardTextHex,
+            fontFace: fontBody,
+            lineSpacing: 20,
+          });
+        }
+        break;
+      }
+
+      case "diagram-explainer":
       case "text-visual":
       case "image-led": {
         const startY = geo.contentStartY;
@@ -1091,12 +1402,19 @@ export async function renderSlideDeckToPptx(
               lineSpacing: 32,
               fontFace: fontBody,
             });
-          } else {
-            // Render as an Executive Content Card with rounded border and accent edge
+          } else if (s.bullets.length >= 4) {
+            // Render as Dual-Column Structured Cards so slide area is intelligently balanced with zero empty space
+            const colW = 5.466;
+            const col2X = 6.866;
+            const mid = Math.ceil(s.bullets.length / 2);
+            const col1Bullets = s.bullets.slice(0, mid);
+            const col2Bullets = s.bullets.slice(mid, 6);
+
+            // Left Card
             slide.addShape(pptx.ShapeType.roundRect, {
               x: 1.0,
               y: startY,
-              w: 11.333,
+              w: colW,
               h: cardH,
               fill: { color: tokens.cardBgHex },
               line: { color: tokens.cardBorderHex, width: 1.2 },
@@ -1104,9 +1422,105 @@ export async function renderSlideDeckToPptx(
             slide.addShape(pptx.ShapeType.rect, {
               x: 1.0,
               y: startY,
-              w: 0.15,
+              w: 0.12,
               h: cardH,
               fill: { color: tokens.accentHex },
+            });
+            slide.addText("STRATEGIC FRAMEWORK", {
+              x: 1.3,
+              y: startY + 0.25,
+              w: colW - 0.5,
+              h: 0.3,
+              fontSize: sizes.sectionTag,
+              bold: true,
+              color: tokens.accentHex,
+              fontFace: fontTitle,
+              charSpacing: 1.5,
+            });
+            slide.addText(
+              col1Bullets.map((b) => ({ text: b, options: { breakLine: true } })),
+              {
+                x: 1.3,
+                y: startY + 0.65,
+                w: colW - 0.5,
+                h: cardH - 0.9,
+                fontSize: sizes.body,
+                color: tokens.cardTextHex,
+                bullet: true,
+                lineSpacing: 26,
+                fontFace: fontBody,
+              },
+            );
+
+            // Right Card
+            slide.addShape(pptx.ShapeType.roundRect, {
+              x: col2X,
+              y: startY,
+              w: colW,
+              h: cardH,
+              fill: { color: tokens.cardBgHex },
+              line: { color: tokens.cardBorderHex, width: 1.2 },
+            });
+            slide.addShape(pptx.ShapeType.rect, {
+              x: col2X,
+              y: startY,
+              w: 0.12,
+              h: cardH,
+              fill: { color: tokens.accentHex },
+            });
+            slide.addText("OPERATIONAL IMPACT", {
+              x: col2X + 0.3,
+              y: startY + 0.25,
+              w: colW - 0.5,
+              h: 0.3,
+              fontSize: sizes.sectionTag,
+              bold: true,
+              color: tokens.accentHex,
+              fontFace: fontTitle,
+              charSpacing: 1.5,
+            });
+            slide.addText(
+              col2Bullets.map((b) => ({ text: b, options: { breakLine: true } })),
+              {
+                x: col2X + 0.3,
+                y: startY + 0.65,
+                w: colW - 0.5,
+                h: cardH - 0.9,
+                fontSize: sizes.body,
+                color: tokens.cardTextHex,
+                bullet: true,
+                lineSpacing: 26,
+                fontFace: fontBody,
+              },
+            );
+          } else {
+            // Render as an Executive Content Card with rounded border, accent edge, and balanced spacing
+            const fittedH = Math.min(cardH, 1.4 + s.bullets.length * 0.95);
+            slide.addShape(pptx.ShapeType.roundRect, {
+              x: 1.0,
+              y: startY,
+              w: 11.333,
+              h: fittedH,
+              fill: { color: tokens.cardBgHex },
+              line: { color: tokens.cardBorderHex, width: 1.2 },
+            });
+            slide.addShape(pptx.ShapeType.rect, {
+              x: 1.0,
+              y: startY,
+              w: 0.15,
+              h: fittedH,
+              fill: { color: tokens.accentHex },
+            });
+            slide.addText("CORE ANALYSIS & DELIVERABLES", {
+              x: 1.4,
+              y: startY + 0.25,
+              w: 10.5,
+              h: 0.35,
+              fontSize: sizes.sectionTag,
+              bold: true,
+              color: tokens.accentHex,
+              fontFace: fontTitle,
+              charSpacing: 1.5,
             });
             const bulletItems = s.bullets.slice(0, 6).map((b) => ({
               text: b,
@@ -1114,13 +1528,13 @@ export async function renderSlideDeckToPptx(
             }));
             slide.addText(bulletItems, {
               x: 1.4,
-              y: startY + 0.35,
+              y: startY + 0.65,
               w: 10.5,
-              h: cardH - 0.7,
+              h: fittedH - 0.8,
               fontSize: sizes.body,
               color: tokens.cardTextHex,
               bullet: true,
-              lineSpacing: 30,
+              lineSpacing: 28,
               fontFace: fontBody,
             });
           }

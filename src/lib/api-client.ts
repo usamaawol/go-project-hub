@@ -1038,6 +1038,10 @@ export async function createPresentationSessionApi(input: {
   content: string;
   purpose?: string;
   density?: "concise" | "balanced" | "detailed";
+  audience?: string;
+  language?: string;
+  additionalInstructions?: string;
+  presentationType?: "standard" | "assignment";
   assignmentMetadata?: AssignmentMetadata;
   theme: {
     id: string;
@@ -1262,4 +1266,167 @@ export async function updatePresentationSlideApi(
   }
 
   return { success: true, data: local || undefined };
+}
+
+export async function regeneratePresentationSlideAIApi(
+  sessionId: string,
+  slideIndex: number,
+  instruction: string,
+): Promise<{ success: boolean; data?: PresentationSessionData; message?: string }> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/presentations/session/${sessionId}/slide/${slideIndex}/regenerate-ai`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction }),
+      },
+    );
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data) {
+        saveClientSession(json.data);
+      }
+      return json;
+    }
+  } catch (err) {
+    console.warn("Backend regeneratePresentationSlideAIApi unreachable:", err);
+  }
+
+  // Local client fallback
+  const local = getClientSession(sessionId);
+  if (local && local.slides[slideIndex]) {
+    const target = local.slides[slideIndex]!;
+    const lower = instruction.toLowerCase();
+    if (lower.includes("bento") || lower.includes("4-card") || lower.includes("grid")) {
+      target.layout = "bento-grid";
+      target.bentoGrid = [
+        { title: "Core Component", description: target.bullets?.[0] || "Foundational operational service layer.", tag: "FOUNDATION" },
+        { title: "Strategic Workflow", description: target.bullets?.[1] || "Continuous integration pipeline.", tag: "WORKFLOW" },
+        { title: "Telemetry Metrics", description: target.bullets?.[2] || "Real-time indicators & thresholds.", tag: "TELEMETRY" },
+        { title: "Target Deliverable", description: target.bullets?.[3] || "Production validation benchmarks.", tag: "DELIVERABLE" },
+      ];
+    } else if (lower.includes("hero") || lower.includes("split") || lower.includes("attractive") || lower.includes("punchy")) {
+      target.layout = "hero-split";
+      target.heroSplit = {
+        headline: target.title,
+        highlight: target.subtitle || target.bullets?.[0] || "Decisive strategic capability",
+        details: target.bullets && target.bullets.length > 0 ? target.bullets.slice(0, 3) : [
+          "Core operational milestone verified.",
+          "End-to-end framework delivery confirmed.",
+        ],
+      };
+    } else if (lower.includes("diagram") || lower.includes("visual") || lower.includes("concept")) {
+      target.layout = "text-visual";
+    }
+    saveClientSession(local);
+    return { success: true, data: local, message: "Slide updated via local assistant" };
+  }
+
+  return { success: false };
+}
+
+export async function reorderPresentationSlidesApi(
+  sessionId: string,
+  newOrder: number[],
+): Promise<{ success: boolean; data?: PresentationSessionData }> {
+  try {
+    const res = await fetch(`${API_BASE}/presentations/session/${sessionId}/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newOrder }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data) saveClientSession(json.data);
+      return json;
+    }
+  } catch (err) {
+    console.warn("Backend reorderPresentationSlidesApi unreachable:", err);
+  }
+
+  const local = getClientSession(sessionId);
+  if (local) {
+    const reordered = newOrder.map((idx) => local.slides[idx]!).filter(Boolean);
+    local.slides = reordered.map((s, idx) => ({ ...s, slideNumber: idx + 1, id: `slide-${idx + 1}` }));
+    saveClientSession(local);
+    return { success: true, data: local };
+  }
+
+  return { success: false };
+}
+
+export async function addPresentationSlideApi(
+  sessionId: string,
+  afterIndex: number,
+  slideData?: Partial<SlidePreviewItem>,
+): Promise<{ success: boolean; data?: PresentationSessionData }> {
+  try {
+    const res = await fetch(`${API_BASE}/presentations/session/${sessionId}/slide/add`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ afterIndex, slideData }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data) saveClientSession(json.data);
+      return json;
+    }
+  } catch (err) {
+    console.warn("Backend addPresentationSlideApi unreachable:", err);
+  }
+
+  const local = getClientSession(sessionId);
+  if (local) {
+    const targetIdx = Math.max(0, Math.min(local.slides.length, afterIndex + 1));
+    const newSlide: SlidePreviewItem = {
+      id: `slide-${Date.now()}`,
+      slideNumber: targetIdx + 1,
+      layout: slideData?.layout || "hero-split",
+      title: slideData?.title || "New Strategic Slide",
+      subtitle: slideData?.subtitle || "Key analytical takeaway and operational deliverables",
+      categoryTag: slideData?.categoryTag || local.purpose,
+      bullets: slideData?.bullets || [
+        "Core operational deliverable verified across checkpoints.",
+        "Strategic milestone readiness confirmed for release gates.",
+      ],
+      notes: slideData?.notes || "Present key takeaway and engage audience.",
+    };
+    local.slides.splice(targetIdx, 0, newSlide);
+    local.slides = local.slides.map((s, idx) => ({ ...s, slideNumber: idx + 1, id: `slide-${idx + 1}` }));
+    local.slideCount = local.slides.length;
+    saveClientSession(local);
+    return { success: true, data: local };
+  }
+
+  return { success: false };
+}
+
+export async function deletePresentationSlideApi(
+  sessionId: string,
+  slideIndex: number,
+): Promise<{ success: boolean; data?: PresentationSessionData }> {
+  try {
+    const res = await fetch(`${API_BASE}/presentations/session/${sessionId}/slide/${slideIndex}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data) saveClientSession(json.data);
+      return json;
+    }
+  } catch (err) {
+    console.warn("Backend deletePresentationSlideApi unreachable:", err);
+  }
+
+  const local = getClientSession(sessionId);
+  if (local && local.slides.length > 2) {
+    local.slides.splice(slideIndex, 1);
+    local.slides = local.slides.map((s, idx) => ({ ...s, slideNumber: idx + 1, id: `slide-${idx + 1}` }));
+    local.slideCount = local.slides.length;
+    saveClientSession(local);
+    return { success: true, data: local };
+  }
+
+  return { success: false };
 }

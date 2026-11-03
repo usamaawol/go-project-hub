@@ -24,6 +24,12 @@ export interface SlidePreviewItem {
   rightColumn?: { title: string; bullets: string[] };
   // Three Pillar Cards
   cards?: Array<{ title: string; description: string; tag?: string }>;
+  // Bento Grid (4 Quadrants / Feature Matrix)
+  bentoGrid?: Array<{ title: string; description: string; tag?: string; icon?: string }>;
+  // Hero Split (High-impact left highlight + right analytical cards)
+  heroSplit?: { headline: string; highlight: string; details: string[] };
+  // Stat Callout / Headline Hero (Massive statement or telemetry takeaway)
+  statCallout?: { stat: string; label: string; context: string; bullets?: string[] };
   // Metrics & KPI telemetry
   metrics?: Array<{ label: string; value: string; description?: string }>;
   // Timeline & Phases
@@ -41,7 +47,7 @@ export interface SlidePreviewItem {
   visual?: {
     type: "diagram" | "illustration" | "chart" | "image" | "picture" | "graph";
     concept: string;
-    diagramType?: "architecture" | "flowchart" | "layers" | "metrics-bars" | "venn";
+    diagramType?: "architecture" | "flowchart" | "layers" | "metrics-bars" | "venn" | "pipeline" | "cycle" | "matrix";
     imagePrompt?: string;
     imageUrl?: string;
     svgContent?: string;
@@ -61,6 +67,10 @@ export interface PresentationSessionData {
   title: string;
   purpose: string;
   density: "concise" | "balanced" | "detailed";
+  audience?: string;
+  language?: string;
+  additionalInstructions?: string;
+  presentationType?: "standard" | "assignment";
   assignmentMetadata?: AssignmentMetadata;
   theme: {
     id: string;
@@ -1035,6 +1045,44 @@ export function buildSlideDeckContent(
           bullets: s.bullets && s.bullets.length > 0 ? s.bullets : [`Strategic implementation criteria for ${s.title}`],
           visual: autoVisual,
           notes: `Elaborate on ${s.title} and examine the architectural framework.`,
+        });
+      } else if (s.bullets.length === 4) {
+        // Modern 4-card Bento Grid layout
+        const bentoGrid = s.bullets.map((b, idx) => {
+          const parts = b.split(/:\s*/);
+          return {
+            title: parts.length > 1 ? parts[0]! : `Pillar 0${idx + 1}`,
+            description: parts.length > 1 ? parts.slice(1).join(": ") : b,
+            tag: `PILLAR 0${idx + 1}`,
+          };
+        });
+        slides.push({
+          id: `slide-${slideNumber}`,
+          slideNumber,
+          layout: "bento-grid",
+          title: s.title,
+          subtitle: s.subtitle || `Section 0${i + 1} — Architectural Quadrants`,
+          categoryTag: "FOUNDATIONS",
+          bullets: s.bullets,
+          bentoGrid,
+          notes: `Walk through each quadrant supporting ${s.title}.`,
+        });
+      } else if (i % 3 === 0 && s.bullets.length >= 3) {
+        // Modern Editorial Hero Split Screen
+        slides.push({
+          id: `slide-${slideNumber}`,
+          slideNumber,
+          layout: "hero-split",
+          title: s.title,
+          subtitle: s.subtitle || `Section 0${i + 1} — Strategic Imperative`,
+          categoryTag: "STRATEGY",
+          heroSplit: {
+            headline: s.title,
+            highlight: s.subtitle || s.bullets[0]!,
+            details: s.bullets.slice(0, 3),
+          },
+          bullets: s.bullets,
+          notes: `Emphasize the core strategic mandate of ${s.title}.`,
         });
       } else {
         slides.push({

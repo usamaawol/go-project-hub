@@ -5,6 +5,10 @@ import {
   getPresentationSession,
   updateSessionSlide,
   regenerateSlideVisual,
+  regenerateSlideWithAI,
+  reorderSessionSlides,
+  addSessionSlide,
+  deleteSessionSlide,
   deletePresentationSession,
   type CreatePresentationSessionInput,
 } from "../services/presentationSession.service";
@@ -22,6 +26,10 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       content,
       purpose,
       density,
+      audience,
+      language,
+      additionalInstructions,
+      presentationType,
       theme,
       typography,
       slideCount,
@@ -50,6 +58,10 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       content: (content || "").slice(0, 50000), // Max 50k chars for ephemeral safety
       purpose: purpose || "Business & Strategy",
       density: density || "balanced",
+      audience,
+      language,
+      additionalInstructions,
+      presentationType,
       theme,
       typography: {
         fontFamily: typography?.fontFamily || "Inter",
@@ -214,6 +226,173 @@ router.post("/presentations/session/:id/slide/:index/regenerate-visual", async (
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to regenerate slide visual";
+    return res.status(500).json({ success: false, error: { message: msg } });
+  }
+});
+
+/**
+ * POST /api/presentations/session/:id/slide/:index/regenerate-ai
+ * Redesigns and rewrites a slide using natural language AI instructions
+ */
+router.post("/presentations/session/:id/slide/:index/regenerate-ai", async (req: Request, res: Response) => {
+  const sessionId = req.params["id"];
+  const slideIndex = parseInt(req.params["index"] || "-1", 10);
+  if (!sessionId || isNaN(slideIndex) || slideIndex < 0) {
+    return res.status(400).json({
+      success: false,
+      error: { message: "Valid Session ID and slide index are required." },
+    });
+  }
+
+  const { instruction, apiKey } = req.body || {};
+  const headerApiKey = req.headers["x-gemini-api-key"] as string | undefined;
+
+  try {
+    const updated = await regenerateSlideWithAI(
+      sessionId,
+      slideIndex,
+      instruction || "Make this slide more visually attractive and impactful",
+      apiKey || headerApiKey,
+    );
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: { message: "Presentation session not found or slide index out of range." },
+      });
+    }
+
+    const secondsRemaining = Math.max(0, Math.floor((updated.expiresAt - Date.now()) / 1000));
+    const { filePath, ...safeSession } = updated;
+
+    return res.json({
+      success: true,
+      data: {
+        ...safeSession,
+        secondsRemaining,
+      },
+      message: `Slide ${slideIndex + 1} redesigned with AI`,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to redesign slide with AI";
+    return res.status(500).json({ success: false, error: { message: msg } });
+  }
+});
+
+/**
+ * POST /api/presentations/session/:id/reorder
+ * Reorders slides in an active presentation session
+ */
+router.post("/presentations/session/:id/reorder", async (req: Request, res: Response) => {
+  const sessionId = req.params["id"];
+  const { newOrder } = req.body || {};
+  if (!sessionId || !Array.isArray(newOrder)) {
+    return res.status(400).json({
+      success: false,
+      error: { message: "Session ID and newOrder array are required." },
+    });
+  }
+
+  try {
+    const updated = await reorderSessionSlides(sessionId, newOrder);
+    if (!updated) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Invalid slide reorder request." },
+      });
+    }
+
+    const secondsRemaining = Math.max(0, Math.floor((updated.expiresAt - Date.now()) / 1000));
+    const { filePath, ...safeSession } = updated;
+
+    return res.json({
+      success: true,
+      data: {
+        ...safeSession,
+        secondsRemaining,
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to reorder slides";
+    return res.status(500).json({ success: false, error: { message: msg } });
+  }
+});
+
+/**
+ * POST /api/presentations/session/:id/slide/add
+ * Adds a new slide into the presentation
+ */
+router.post("/presentations/session/:id/slide/add", async (req: Request, res: Response) => {
+  const sessionId = req.params["id"];
+  const { afterIndex, slideData } = req.body || {};
+  if (!sessionId) {
+    return res.status(400).json({
+      success: false,
+      error: { message: "Session ID is required." },
+    });
+  }
+
+  try {
+    const updated = await addSessionSlide(sessionId, Number(afterIndex) || 0, slideData);
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: { message: "Presentation session not found." },
+      });
+    }
+
+    const secondsRemaining = Math.max(0, Math.floor((updated.expiresAt - Date.now()) / 1000));
+    const { filePath, ...safeSession } = updated;
+
+    return res.json({
+      success: true,
+      data: {
+        ...safeSession,
+        secondsRemaining,
+      },
+      message: "New slide added successfully",
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to add slide";
+    return res.status(500).json({ success: false, error: { message: msg } });
+  }
+});
+
+/**
+ * DELETE /api/presentations/session/:id/slide/:index
+ * Deletes a slide from the presentation
+ */
+router.delete("/presentations/session/:id/slide/:index", async (req: Request, res: Response) => {
+  const sessionId = req.params["id"];
+  const slideIndex = parseInt(req.params["index"] || "-1", 10);
+  if (!sessionId || isNaN(slideIndex) || slideIndex < 0) {
+    return res.status(400).json({
+      success: false,
+      error: { message: "Valid Session ID and slide index are required." },
+    });
+  }
+
+  try {
+    const updated = await deleteSessionSlide(sessionId, slideIndex);
+    if (!updated) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Could not delete slide (minimum 2 slides required or index invalid)." },
+      });
+    }
+
+    const secondsRemaining = Math.max(0, Math.floor((updated.expiresAt - Date.now()) / 1000));
+    const { filePath, ...safeSession } = updated;
+
+    return res.json({
+      success: true,
+      data: {
+        ...safeSession,
+        secondsRemaining,
+      },
+      message: `Slide ${slideIndex + 1} deleted`,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to delete slide";
     return res.status(500).json({ success: false, error: { message: msg } });
   }
 });
