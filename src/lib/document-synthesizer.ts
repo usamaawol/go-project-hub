@@ -353,13 +353,106 @@ export function mergeAdjacentRuns(runs: DocSynthesizerInlineRun[]): DocSynthesiz
 }
 
 /**
+ * Parses inline markdown tokens (***bold-italic***, **bold**, *italic*, `code`, __bold__, _italic_)
+ * into rich formatting runs, stripping markdown syntax marks.
+ */
+export function parseInlineMarkdownToRuns(
+  text: string,
+  baseStyle?: Partial<DocSynthesizerInlineRun>,
+): DocSynthesizerInlineRun[] {
+  if (!text) return [];
+
+  // If no markdown tokens, return base run
+  if (!/[\*_`]/.test(text)) {
+    return [{ ...baseStyle, text }];
+  }
+
+  const runs: DocSynthesizerInlineRun[] = [];
+  const tokenRegex = /(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|___[^_]+___|__[^_]+__|_[^_]+_)/g;
+  const parts = text.split(tokenRegex);
+
+  for (const part of parts) {
+    if (!part) continue;
+
+    if (part.startsWith("***") && part.endsWith("***") && part.length >= 6) {
+      runs.push({
+        ...baseStyle,
+        text: part.slice(3, -3),
+        bold: true,
+        italics: true,
+      });
+    } else if (part.startsWith("___") && part.endsWith("___") && part.length >= 6) {
+      runs.push({
+        ...baseStyle,
+        text: part.slice(3, -3),
+        bold: true,
+        italics: true,
+      });
+    } else if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
+      runs.push({
+        ...baseStyle,
+        text: part.slice(2, -2),
+        bold: true,
+      });
+    } else if (part.startsWith("__") && part.endsWith("__") && part.length >= 4) {
+      runs.push({
+        ...baseStyle,
+        text: part.slice(2, -2),
+        bold: true,
+      });
+    } else if (part.startsWith("*") && part.endsWith("*") && part.length >= 2) {
+      runs.push({
+        ...baseStyle,
+        text: part.slice(1, -1),
+        italics: true,
+      });
+    } else if (part.startsWith("_") && part.endsWith("_") && part.length >= 2) {
+      runs.push({
+        ...baseStyle,
+        text: part.slice(1, -1),
+        italics: true,
+      });
+    } else if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
+      runs.push({
+        ...baseStyle,
+        text: part.slice(1, -1),
+        fontFamily: "Courier, monospace",
+      });
+    } else {
+      runs.push({
+        ...baseStyle,
+        text: part,
+      });
+    }
+  }
+
+  return runs.filter((r) => r.text && r.text.length > 0);
+}
+
+/**
+ * Expands a list of runs by applying markdown parsing to each run's text while preserving existing styles.
+ */
+export function expandRunsWithMarkdown(runs: DocSynthesizerInlineRun[]): DocSynthesizerInlineRun[] {
+  if (!runs || runs.length === 0) return [];
+  const expanded: DocSynthesizerInlineRun[] = [];
+  for (const r of runs) {
+    if (r.text && /[\*_`]/.test(r.text)) {
+      expanded.push(...parseInlineMarkdownToRuns(r.text, r));
+    } else {
+      expanded.push(r);
+    }
+  }
+  return expanded;
+}
+
+/**
  * Parses inline HTML tags (strong, b, em, i, u, s, span, mark, font) into rich text runs.
  * Accurately preserves colors, highlights, fonts, and avoids false strikethroughs on <span>.
  */
 export function parseInlineHtmlToRuns(html: string): DocSynthesizerInlineRun[] {
   if (!html) return [];
   if (!/<[^>]+>/.test(html)) {
-    return [{ text: decodeHtmlEntities(html) }];
+    return parseInlineMarkdownToRuns(decodeHtmlEntities(html));
   }
 
   const doc = parseHtmlDocument(html);
@@ -369,7 +462,7 @@ export function parseInlineHtmlToRuns(html: string): DocSynthesizerInlineRun[] {
       extractRunsFromNode(doc.body.childNodes[i]!, {}, domRuns);
     }
     const merged = mergeAdjacentRuns(domRuns);
-    if (merged.length > 0) return merged;
+    if (merged.length > 0) return expandRunsWithMarkdown(merged);
   }
 
   const runs: DocSynthesizerInlineRun[] = [];
@@ -550,7 +643,7 @@ export function parseInlineHtmlToRuns(html: string): DocSynthesizerInlineRun[] {
     }
   }
 
-  return runs.length > 0 ? runs : [{ text: decodeHtmlEntities(stripTags(html)) }];
+  return expandRunsWithMarkdown(runs.length > 0 ? runs : [{ text: decodeHtmlEntities(stripTags(html)) }]);
 }
 
 export function hexToRgb(hex?: string): { r: number; g: number; b: number } {
@@ -590,11 +683,16 @@ export function buildCoverPageSvg(
       if (el.type === "shape") {
         if (el.svgContent) {
           let svgInner = el.svgContent.trim();
+          let vb = `0 0 ${el.width} ${el.height}`;
+          const vbMatch = svgInner.match(/viewBox=["']([^"']+)["']/i);
+          if (vbMatch) {
+            vb = vbMatch[1]!;
+          }
           if (svgInner.startsWith("<svg")) {
             svgInner = svgInner.replace(/^<svg[^>]*>/i, "").replace(/<\/svg>$/i, "");
           }
           return `<g transform="translate(${el.x}, ${el.y})" opacity="${opacity}">
-            <svg width="${el.width}" height="${el.height}" viewBox="0 0 794 1123" preserveAspectRatio="none">
+            <svg width="${el.width}" height="${el.height}" viewBox="${vb}" preserveAspectRatio="none">
               ${svgInner}
             </svg>
           </g>`;
@@ -731,14 +829,33 @@ export function renderCoverElementsDirectlyToPdf(
       }
       if (fillColor && fillColor !== "transparent") {
         const c = hexToRgb(fillColor);
-        coverPage.drawRectangle({
-          x: Math.max(0, x),
-          y: Math.max(0, y),
-          width: Math.min(pageWidth, width),
-          height: Math.min(pageHeight, height),
-          color: rgb(c.r, c.g, c.b),
-          opacity: el.opacity ?? 1,
-        });
+        if (el.shapeType === "circle" || (el.borderRadius && el.borderRadius >= el.width / 2)) {
+          const radius = Math.min(width, height) / 2;
+          coverPage.drawCircle({
+            x: Math.max(0, x + radius),
+            y: Math.max(0, y + radius),
+            size: radius,
+            color: rgb(c.r, c.g, c.b),
+            opacity: el.opacity ?? 1,
+          });
+        } else if (el.type === "divider" || height <= 2.5) {
+          coverPage.drawLine({
+            start: { x: Math.max(0, x), y: y + height / 2 },
+            end: { x: Math.min(pageWidth, x + width), y: y + height / 2 },
+            thickness: Math.max(0.75, height),
+            color: rgb(c.r, c.g, c.b),
+            opacity: el.opacity ?? 1,
+          });
+        } else {
+          coverPage.drawRectangle({
+            x: Math.max(0, x),
+            y: Math.max(0, y),
+            width: Math.min(pageWidth, width),
+            height: Math.min(pageHeight, height),
+            color: rgb(c.r, c.g, c.b),
+            opacity: el.opacity ?? 1,
+          });
+        }
       }
     } else if (el.type === "text" && el.text) {
       const rawFontSize = el.fontSize || 14;
@@ -1638,7 +1755,8 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
     if (pendingParagraphLines.length > 0) {
       const pText = pendingParagraphLines.join(" ").trim();
       if (pText) {
-        blocks.push({ type: "paragraph", text: pText });
+        const runs = parseInlineMarkdownToRuns(pText);
+        blocks.push({ type: "paragraph", text: pText, runs });
       }
       pendingParagraphLines = [];
     }
@@ -1831,19 +1949,35 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
       continue;
     }
 
+    // Dedicated Conclusion Section
+    if (/^conclusion:?$/i.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading1", text: "Conclusion" });
+      continue;
+    }
+
+    // Numbered Major Section Headings (e.g. "1. Project Description", "2. General Objective", "10. Expected Outcome", "1.0 Executive Summary")
+    const topLevelSectionMatch = trimmed.match(/^(\d+(?:\.\d+)*)\s*[:.]?\s+([A-Za-z0-9\s—–\-&/:,()]{2,65})$/);
+    if (
+      topLevelSectionMatch &&
+      !trimmed.endsWith(".") &&
+      !trimmed.includes(":") &&
+      trimmed.length < 75 &&
+      !/^(the\s|this\s|these\s|here\s|following\s|note\b|responsibilit|feature)/i.test(trimmed)
+    ) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading1", text: trimmed });
+      continue;
+    }
+
     // 3. Bullet or Numbered Lists
     if (/^([•\-\*]|\d+\.)\s+(.+)$/.test(trimmed)) {
       flushParagraph();
       const m = trimmed.match(/^([•\-\*]|\d+\.)\s+(.+)$/);
-      pendingListItems.push(m?.[2]?.trim() || trimmed);
-      continue;
-    }
-
-    // 4. Numbered Major Section (e.g. 1.0 Executive Summary, 12. GITHUB AND BACKUP)
-    if (/^\d+(\.\d+)*\s+[A-Z0-9\s—–-]{3,60}$/.test(trimmed) && trimmed.length < 75) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: "heading1", text: trimmed });
+      const isNum = /^\d+\./.test(trimmed);
+      pendingListItems.push(isNum ? trimmed : (m?.[2]?.trim() || trimmed));
       continue;
     }
 
@@ -1976,7 +2110,7 @@ export async function renderExecutivePdf(
   let boldItalicFontId = StandardFonts.HelveticaBoldOblique;
 
   const fam = (options?.fontFamily || "").toLowerCase();
-  if (fam.includes("times") || fam.includes("serif") || fam.includes("georgia")) {
+  if (fam.includes("times") || fam.includes("serif") || fam.includes("georgia") || fam.includes("academic") || options?.layoutArchetype === "academic") {
     regularFontId = StandardFonts.TimesRoman;
     boldFontId = StandardFonts.TimesRomanBold;
     italicFontId = StandardFonts.TimesRomanItalic;
@@ -2203,7 +2337,8 @@ export async function renderExecutivePdf(
     const block = blocks[bIdx]!;
 
     if (block.type === "title") {
-      const text = sanitizeLine(block.text || "", fontBold);
+      const cleanRaw = (block.text || "").replace(/^\*+|\*+$/g, "").trim();
+      const text = sanitizeLine(cleanRaw, fontBold);
       const wrapped = wrapPdfText(text, fontBold, 20, contentWidth);
       if (y - wrapped.length * 24 < bottomMargin) addNewPage();
 
@@ -2213,33 +2348,34 @@ export async function renderExecutivePdf(
           y,
           size: 20,
           font: fontBold,
-          color: rgb(0.06, 0.09, 0.16),
+          color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
         });
         y -= 24;
       }
 
-      // Elegant blue accent bar (skip if removeDividers requested)
+      // Accent bar under title
       if (!options?.removeDividers) {
         currentPage.drawLine({
           start: { x: margin, y: y + 8 },
           end: { x: margin + 80, y: y + 8 },
-          thickness: 3,
-          color: rgb(0.15, 0.39, 0.92),
+          thickness: 2.5,
+          color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
         });
         y -= 12;
       } else {
         y -= 6;
       }
     } else if (block.type === "subtitle") {
-      const text = sanitizeLine(block.text || "", fontBold);
-      const wrapped = wrapPdfText(text, fontBold, 10, contentWidth);
+      const cleanRaw = (block.text || "").replace(/^\*+|\*+$/g, "").trim();
+      const text = sanitizeLine(cleanRaw, fontBold);
+      const wrapped = wrapPdfText(text, fontBold, 10.5, contentWidth);
       if (y - wrapped.length * 14 < bottomMargin) addNewPage();
 
       for (const line of wrapped) {
         currentPage.drawText(line, {
           x: margin,
           y,
-          size: 10,
+          size: 10.5,
           font: fontBold,
           color: rgb(0.35, 0.42, 0.52),
         });
@@ -2247,17 +2383,19 @@ export async function renderExecutivePdf(
       }
       y -= 8;
     } else if (block.type === "heading1") {
-      const text = sanitizeLine(block.text || "", fontBold);
+      const cleanRaw = (block.text || "").replace(/^\*+|\*+$/g, "").trim();
+      const text = sanitizeLine(cleanRaw, fontBold);
       const baseFontSize = options?.fontSize || 9.5;
       const h1FontSize = Math.round(baseFontSize * 1.4);
-      const textIndent = options?.removeDividers ? 0 : 12;
-      const wrapped = wrapPdfText(text, fontBold, h1FontSize, contentWidth - (options?.removeDividers ? 0 : 20));
+      const isCardStyle = options?.headingStyle === "card";
+      const textIndent = isCardStyle ? 12 : 0;
+      const wrapped = wrapPdfText(text, fontBold, h1FontSize, contentWidth - textIndent);
       if (y - wrapped.length * (h1FontSize + 4.5) - 25 < bottomMargin) addNewPage();
 
       y -= 12;
       const barH = wrapped.length * (h1FontSize + 3.5);
 
-      if (!options?.removeDividers) {
+      if (isCardStyle) {
         // Soft executive accent background card
         currentPage.drawRectangle({
           x: margin,
@@ -2278,7 +2416,7 @@ export async function renderExecutivePdf(
       }
 
       const headColor1 = block.runs?.[0]?.color ? hexToRgb(block.runs[0].color) : undefined;
-      const headPdfColor1 = headColor1 ? rgb(headColor1.r, headColor1.g, headColor1.b) : rgb(0.08, 0.12, 0.22);
+      const headPdfColor1 = headColor1 ? rgb(headColor1.r, headColor1.g, headColor1.b) : (isCardStyle ? rgb(0.08, 0.12, 0.22) : rgb(accentRgb.r, accentRgb.g, accentRgb.b));
 
       for (const line of wrapped) {
         let lineX = margin + textIndent;
@@ -2300,8 +2438,7 @@ export async function renderExecutivePdf(
         y -= h1FontSize + 3.5;
       }
 
-      // Subtle horizontal rule below section card (skip if removeDividers requested)
-      if (!options?.removeDividers) {
+      if (isCardStyle) {
         currentPage.drawLine({
           start: { x: margin, y: y + 2 },
           end: { x: margin + contentWidth, y: y + 2 },
@@ -2310,18 +2447,20 @@ export async function renderExecutivePdf(
         });
         y -= 8;
       } else {
-        y -= 4;
+        y -= 6;
       }
     } else if (block.type === "heading2") {
-      const text = sanitizeLine(block.text || "", fontBold);
+      const cleanRaw = (block.text || "").replace(/^\*+|\*+$/g, "").trim();
+      const text = sanitizeLine(cleanRaw, fontBold);
       const baseFontSize = options?.fontSize || 9.5;
       const h2FontSize = Math.round(baseFontSize * 1.2);
-      const dotIndent = options?.removeDividers ? 0 : 14;
+      const isCardStyle = options?.headingStyle === "card";
+      const dotIndent = isCardStyle ? 14 : 0;
       const wrapped = wrapPdfText(text, fontBold, h2FontSize, contentWidth - dotIndent);
       if (y - wrapped.length * (h2FontSize + 4.5) - 15 < bottomMargin) addNewPage();
 
       y -= 8;
-      if (!options?.removeDividers) {
+      if (isCardStyle) {
         // Accent bullet dot
         currentPage.drawCircle({
           x: margin + 4,
@@ -2332,7 +2471,7 @@ export async function renderExecutivePdf(
       }
 
       const headColor2 = block.runs?.[0]?.color ? hexToRgb(block.runs[0].color) : undefined;
-      const headPdfColor2 = headColor2 ? rgb(headColor2.r, headColor2.g, headColor2.b) : rgb(0.10, 0.15, 0.25);
+      const headPdfColor2 = headColor2 ? rgb(headColor2.r, headColor2.g, headColor2.b) : (isCardStyle ? rgb(0.10, 0.15, 0.25) : rgb(accentRgb.r, accentRgb.g, accentRgb.b));
 
       for (const line of wrapped) {
         let lineX = margin + dotIndent;
@@ -2355,7 +2494,8 @@ export async function renderExecutivePdf(
       }
       y -= 4;
     } else if (block.type === "heading3") {
-      const text = sanitizeLine(block.text || "", fontBold);
+      const cleanRaw = (block.text || "").replace(/^\*+|\*+$/g, "").trim();
+      const text = sanitizeLine(cleanRaw, fontBold);
       const baseFontSize = options?.fontSize || 9.5;
       const h3FontSize = Math.round(baseFontSize * 1.05);
       const wrapped = wrapPdfText(text, fontBold, h3FontSize, contentWidth);
@@ -2399,7 +2539,12 @@ export async function renderExecutivePdf(
       const afterSpacing = isMeta ? 2.5 : 5.5;
       const color = isMeta ? rgb(0.28, 0.35, 0.45) : rgb(0.12, 0.16, 0.23);
 
-      if (block.runs && block.runs.length > 0) {
+      const runsToUse =
+        block.runs && block.runs.length > 0
+          ? expandRunsWithMarkdown(block.runs)
+          : parseInlineMarkdownToRuns(block.text || "");
+
+      if (runsToUse && runsToUse.length > 0) {
         interface PdfWordToken {
           text: string;
           font: any;
@@ -2413,7 +2558,7 @@ export async function renderExecutivePdf(
 
         const tokens: PdfWordToken[] = [];
 
-        for (const run of block.runs) {
+        for (const run of runsToUse) {
           const runFont =
             run.bold && run.italics
               ? fontBoldItalic
@@ -2541,31 +2686,100 @@ export async function renderExecutivePdf(
       }
       y -= afterSpacing;
     } else if (block.type === "list" && block.items) {
+      const fontSize = options?.fontSize || 9.5;
+      const lineMultiplier = options?.lineSpacing || 1.4;
+      const lineH = Math.round(fontSize * lineMultiplier) + 1;
+      const bulletColor = rgb(0.12, 0.16, 0.23);
+
       for (const item of block.items) {
-        const text = sanitizeLine(item, fontRegular);
-        const wrapped = wrapPdfText(text, fontRegular, 9.5, contentWidth - 16);
-
-        if (y - wrapped.length * 13.5 < bottomMargin) addNewPage();
-
-        currentPage.drawText("•", {
-          x: margin + 4,
-          y,
-          size: 10,
-          font: fontBold,
-          color: rgb(0.15, 0.39, 0.92),
-        });
-
-        for (const line of wrapped) {
-          if (y < bottomMargin) addNewPage();
-          currentPage.drawText(line, {
-            x: margin + 16,
-            y,
-            size: 9.5,
-            font: fontRegular,
-            color: rgb(0.12, 0.16, 0.23),
-          });
-          y -= 13.5;
+        const itemRuns = parseInlineMarkdownToRuns(item);
+        interface ListPdfToken {
+          text: string;
+          font: any;
+          size: number;
+          color: any;
+          width: number;
+          underline?: boolean;
+          strike?: boolean;
         }
+        const tokens: ListPdfToken[] = [];
+
+        for (const run of itemRuns) {
+          const runFont =
+            run.bold && run.italics
+              ? fontBoldItalic
+              : run.bold
+                ? fontBold
+                : run.italics
+                  ? fontItalic
+                  : fontRegular;
+          const runSize = run.size || fontSize;
+          const runRgb = run.color ? hexToRgb(run.color) : { r: 0.12, g: 0.16, b: 0.23 };
+          const pdfColor = rgb(runRgb.r, runRgb.g, runRgb.b);
+          const runText = sanitizeLine(run.text || "", runFont);
+          if (!runText) continue;
+
+          const parts = runText.split(/(\s+)/);
+          for (const p of parts) {
+            if (!p) continue;
+            tokens.push({
+              text: p,
+              font: runFont,
+              size: runSize,
+              color: pdfColor,
+              width: runFont.widthOfTextAtSize(p, runSize),
+              underline: run.underline,
+              strike: run.strike,
+            });
+          }
+        }
+
+        const listContentWidth = contentWidth - 18;
+        let currentLine: ListPdfToken[] = [];
+        let currentLineWidth = 0;
+        let isFirstLine = true;
+
+        const flushListLine = () => {
+          if (currentLine.length === 0) return;
+          if (y < bottomMargin) addNewPage();
+
+          if (isFirstLine) {
+            currentPage.drawText("•", {
+              x: margin + 4,
+              y,
+              size: fontSize + 1,
+              font: fontBold,
+              color: bulletColor,
+            });
+            isFirstLine = false;
+          }
+
+          let cursorX = margin + 18;
+          for (const tok of currentLine) {
+            currentPage.drawText(tok.text, {
+              x: cursorX,
+              y,
+              size: tok.size,
+              font: tok.font,
+              color: tok.color,
+            });
+            cursorX += tok.width;
+          }
+          y -= lineH;
+          currentLine = [];
+          currentLineWidth = 0;
+        };
+
+        for (const tok of tokens) {
+          if (currentLine.length === 0 && /^\s+$/.test(tok.text)) continue;
+          if (currentLineWidth + tok.width > listContentWidth && currentLine.length > 0) {
+            flushListLine();
+            if (/^\s+$/.test(tok.text)) continue;
+          }
+          currentLine.push(tok);
+          currentLineWidth += tok.width;
+        }
+        flushListLine();
         y -= 2;
       }
       y -= 4;

@@ -675,14 +675,14 @@ export function parseLinesToBlocks(
     }
 
     // 1. Check for bullet list item:
-    // Only concise bullet lines (< 120 chars) that start with explicit bullet symbols (- * •)
-    // or short numbered items (< 70 chars, without terminal period)
+    // Explicit bullet symbols (- * •) or numbered list items
     const isExplicitBullet = /^[-*•]\s+(.*)$/.exec(line);
-    const isShortNumberedItem = /^\d+\.\s+([^.\n]{3,65})$/.exec(line);
-    const isBulletList = isExplicitBullet || (isShortNumberedItem && lines.length > 2);
+    const isNumberedItem = /^\d+[\.\)]\s+(.*)$/.exec(line);
+    const isShortNumberedItem = isNumberedItem && (line.length < 140 || lines.length > 2) && !line.startsWith("Chapter") && !line.startsWith("Section");
+    const isBulletList = Boolean(isExplicitBullet || isShortNumberedItem);
 
     if (isBulletList) {
-      pendingListItems.push(isExplicitBullet ? isExplicitBullet[1]! : isShortNumberedItem![1]!);
+      pendingListItems.push(isExplicitBullet ? isExplicitBullet[1]! : line);
       continue;
     } else {
       flushList();
@@ -892,34 +892,49 @@ export function parseDocumentSections(
   const isHeader = (line: string): { isHeader: boolean; level: 1 | 2 | 3; cleanTitle: string } => {
     if (!line || line.length > 140) return { isHeader: false, level: 1, cleanTitle: "" };
 
+    // Dedicated detection for Conclusion (always Level 1 clean section)
+    if (/^(?:#+\s*)?conclusion(?::|\b)/i.test(line.trim())) {
+      return { isHeader: true, level: 1, cleanTitle: "Conclusion" };
+    }
+
     // Markdown headers
     if (line.startsWith("###")) {
-      return { isHeader: true, level: 3, cleanTitle: line.replace(/^###\s*/, "").trim() };
+      return { isHeader: true, level: 3, cleanTitle: line.replace(/^###\s*/, "").replace(/^\*+|\*+$/g, "").trim() };
     }
     if (line.startsWith("##")) {
-      return { isHeader: true, level: 2, cleanTitle: line.replace(/^##\s*/, "").trim() };
+      return { isHeader: true, level: 2, cleanTitle: line.replace(/^##\s*/, "").replace(/^\*+|\*+$/g, "").trim() };
     }
     if (line.startsWith("#")) {
-      return { isHeader: true, level: 1, cleanTitle: line.replace(/^#\s*/, "").trim() };
+      return { isHeader: true, level: 1, cleanTitle: line.replace(/^#\s*/, "").replace(/^\*+|\*+$/g, "").trim() };
     }
 
     // Numbered headings like "1.0 Title", "1. Title", "2.1 Subtitle", "2.1.1 Detail", "4. The six-chapter structure"
     const numMatch = line.match(/^(\d+(?:\.\d+)*)\s*[:.]?\s+(.*)$/);
-    if (numMatch && numMatch[2] && numMatch[2].length > 2 && !numMatch[2].endsWith(".")) {
-      const parts = numMatch[1].split(".");
-      let lvl: 1 | 2 | 3 = 1;
-      if (parts.length === 1 || (parts.length === 2 && parts[1] === "0")) {
-        lvl = 1;
-      } else if (parts.length === 2) {
-        lvl = 2;
-      } else {
-        lvl = 3;
+    if (numMatch && numMatch[2] && numMatch[2].length > 2) {
+      const rest = numMatch[2].trim();
+      const isSentenceOrBullet = (rest.length > 50 && rest.includes(":")) || rest.endsWith(".");
+      if (!isSentenceOrBullet) {
+        const parts = numMatch[1].split(".");
+        let lvl: 1 | 2 | 3 = 1;
+        if (parts.length === 1 || (parts.length === 2 && parts[1] === "0")) {
+          lvl = 1;
+        } else if (parts.length === 2) {
+          lvl = 2;
+        } else {
+          lvl = 3;
+        }
+        if (headingNumbering === "none") {
+          return { isHeader: true, level: lvl, cleanTitle: line.trim() };
+        }
+        const clean = rest.replace(/^(\d+[\s.)-]+\s*|[A-Z]\.[\s.)-]+\s*)/, "").trim();
+        return { isHeader: true, level: lvl, cleanTitle: clean || rest };
       }
-      if (headingNumbering === "none") {
-        return { isHeader: true, level: lvl, cleanTitle: line.trim() };
-      }
-      const clean = numMatch[2].replace(/^(\d+[\s.)-]+\s*|[A-Z]\.[\s.)-]+\s*)/, "").trim();
-      return { isHeader: true, level: lvl, cleanTitle: clean || numMatch[2].trim() };
+    }
+
+    // Alphabetic subsections like "A. Abstraction", "B. Inheritance", "C. Polymorphism"
+    const alphaMatch = line.match(/^([A-Z])[\.\)]\s+([A-Za-z0-9\s—–\-&/:,()]{2,60})$/);
+    if (alphaMatch && !line.endsWith(".")) {
+      return { isHeader: true, level: 2, cleanTitle: line.trim() };
     }
 
     // Chapter or Section heading: e.g. "Chapter 1 — Our Identity and Foundation"
@@ -934,10 +949,15 @@ export function parseDocumentSections(
     }
 
     // Heading ending with colon e.g. "Background & Problem Statement:"
+    // Exclude transitional lead-in phrases like "The following technologies and tools will be used:" or "Responsibilities:"
+    const isLeadInPhrase =
+      /^(the\s|this\s|these\s|here\s|following\s|note\b|responsibilit|requirement|feature|step|supported|please|we\s|you\s|to\s|for\s)/i.test(line) ||
+      line.split(" ").length > 7;
     if (
       line.endsWith(":") &&
       line.length < 55 &&
       !line.includes(",") &&
+      !isLeadInPhrase &&
       !/^(visual|audio|format|duration|note|on-screen)/i.test(line)
     ) {
       return { isHeader: true, level: 2, cleanTitle: line.replace(/:$/, "").trim() };
@@ -1008,7 +1028,10 @@ export function parseDocumentSections(
       }
 
       let numStr = "";
-      if (headingNumbering === "decimal") {
+      const isConclusionTitle = /conclusion/i.test(check.cleanTitle);
+      if (isConclusionTitle) {
+        numStr = "";
+      } else if (headingNumbering === "decimal") {
         const alreadyHasNumber = /^(\d+[\s.)-]|Chapter\s+\d+|Section\s+\d+)/i.test(check.cleanTitle);
         if (!alreadyHasNumber) {
           numStr =
@@ -4533,6 +4556,23 @@ export function renderDocBlock(
   );
 }
 
+export function formatInlineMarkdownToHtml(raw: string): string {
+  if (!raw) return "";
+  let out = escapeHtml(raw);
+  // Bold-italic: ***text*** or ___text___
+  out = out.replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>");
+  out = out.replace(/___([^_]+)___/g, "<strong><em>$1</em></strong>");
+  // Bold: **text** or __text__
+  out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  out = out.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  // Italic: *text* or _text_
+  out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  out = out.replace(/_([^_]+)_/g, "<em>$1</em>");
+  // Code: `text`
+  out = out.replace(/`([^`]+)`/g, '<code style="background-color: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 0.9em; color: #0f172a;">$1</code>');
+  return out;
+}
+
 export function convertSectionsToInitialHtml(sections: DocSection[]): string {
   if (!sections || sections.length === 0) return "<p>Start typing or formatting your document...</p>";
 
@@ -4542,17 +4582,18 @@ export function convertSectionsToInitialHtml(sections: DocSection[]): string {
       if (sec.title) {
         const tag = sec.level === 1 ? "h2" : sec.level === 2 ? "h3" : "h4";
         const num = sec.numberStr ? `${sec.numberStr.trim()} ` : "";
-        secHtml += `<${tag}>${num}${escapeHtml(sec.title)}</${tag}>\n`;
+        const cleanTitle = sec.title.replace(/^\*+|\*+$/g, "").trim();
+        secHtml += `<${tag} style="font-weight: 700; color: #1e3a8a; margin-top: 18px; margin-bottom: 8px; line-height: 1.3;">${num}${escapeHtml(cleanTitle)}</${tag}>\n`;
       }
       for (const block of sec.blocks) {
         if (block.type === "list" && block.listItems) {
-          secHtml += `<ul>\n${block.listItems.map((li) => `  <li>${escapeHtml(li)}</li>`).join("\n")}\n</ul>\n`;
+          secHtml += `<ul style="margin: 8px 0 12px 0; padding-left: 24px; list-style-type: disc;">\n${block.listItems.map((li) => `  <li style="margin-bottom: 4px; line-height: 1.5;">${formatInlineMarkdownToHtml(li)}</li>`).join("\n")}\n</ul>\n`;
         } else if (block.type === "callout") {
-          secHtml += `<blockquote><strong>${escapeHtml(block.calloutTitle || "Note")}:</strong> ${escapeHtml(block.content)}</blockquote>\n`;
+          secHtml += `<blockquote style="margin: 12px 0; padding: 10px 16px; border-left: 4px solid #1e3a8a; background: #f8fafc; border-radius: 4px;"><strong>${escapeHtml(block.calloutTitle || "Note")}:</strong> ${formatInlineMarkdownToHtml(block.content)}</blockquote>\n`;
         } else if (block.type === "lead") {
-          secHtml += `<p style="font-size: 1.15em; font-weight: 500;">${escapeHtml(block.content)}</p>\n`;
+          secHtml += `<p style="font-size: 1.15em; font-weight: 500; line-height: 1.6; margin: 10px 0;">${formatInlineMarkdownToHtml(block.content)}</p>\n`;
         } else {
-          secHtml += `<p>${escapeHtml(block.content)}</p>\n`;
+          secHtml += `<p style="line-height: 1.6; margin: 8px 0;">${formatInlineMarkdownToHtml(block.content)}</p>\n`;
         }
       }
       return secHtml;

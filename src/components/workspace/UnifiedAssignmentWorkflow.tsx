@@ -34,6 +34,7 @@ import {
   renderExecutivePdf,
   parsePlainTextToBlocks,
   parseHtmlToBlocks,
+  cleanDocumentPageNoise,
   type DocBlock,
 } from "@/lib/document-synthesizer";
 import {
@@ -244,7 +245,7 @@ export function UnifiedAssignmentWorkflow({
     baseFontSize: "11pt",
     lineSpacing: "1.5",
     margins: "normal",
-    headingNumbering: "decimal",
+    headingNumbering: "none",
     includeToc: true,
     headerText: "",
     footerText: "",
@@ -855,10 +856,37 @@ export function UnifiedAssignmentWorkflow({
     setAiProgress(100);
 
     if (mode === "document") {
-      // Build document sections and initial HTML
-      const sections = parseDocumentSections(rawContent, formattingConfig.headingNumbering);
+      // 1. Clean document noise, repeated headers, page artifacts
+      const cleaned = cleanDocumentPageNoise(rawContent);
+
+      // 2. Synchronize title/subtitle if detected from content
+      let activeTitle = metadata.assignmentTitle?.trim() || "";
+      let activeSubtitle = metadata.courseName?.trim() || "";
+
+      const titleMatch = cleaned.match(/^(?:#+\s*|\*\*\s*)?(PROJECT PROPOSAL|ASSIGNMENT|LAB REPORT|RESEARCH REPORT|FINAL PROJECT|EXECUTIVE SUMMARY)\b/im);
+      if (titleMatch && !activeTitle) {
+        activeTitle = titleMatch[1]!;
+      }
+
+      // 3. Build document sections preserving natural numbering
+      const sections = parseDocumentSections(cleaned, formattingConfig.headingNumbering);
       const initialHtml = convertSectionsToInitialHtml(sections);
       setBodyHtml(initialHtml);
+
+      // 4. Update formatting config with academic styling
+      setFormattingConfig((prev) => ({
+        ...prev,
+        docTitle: activeTitle || prev.docTitle || "Document Title",
+        docSubtitle: activeSubtitle || prev.docSubtitle,
+        fontFamily: prev.fontFamily || "academic",
+        lineSpacing: prev.lineSpacing || "1.5",
+        headingNumbering: prev.headingNumbering || "none",
+        assignmentMetadata: {
+          ...metadata,
+          assignmentTitle: activeTitle || metadata.assignmentTitle,
+          courseName: activeSubtitle || metadata.courseName,
+        },
+      }));
     } else {
       // Build presentation slides with assignment cover as Slide 1
       const title =

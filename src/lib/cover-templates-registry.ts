@@ -105,7 +105,7 @@ function postProcessCoverElements(
     }
   }
 
-  // 2. Remove Fake Placeholders (reallygreatsite, +123-456-7890)
+  // 2. Remove Fake Placeholders (reallygreatsite, +123-456-7890, Executive Confidential, Board Review)
   const realAcademicContact = [
     meta.universityName,
     meta.department,
@@ -115,8 +115,12 @@ function postProcessCoverElements(
 
   for (const el of processed) {
     if (el.type === "text" && el.text) {
-      if (el.text.includes("reallygreatsite.com") || el.text.includes("+123-456-7890")) {
-        el.text = realAcademicContact || "Academic Assignment Submission";
+      if (
+        el.text.includes("reallygreatsite.com") ||
+        el.text.includes("+123-456-7890") ||
+        /executive confidential|board review|corporate strategy|strategic assessment/i.test(el.text)
+      ) {
+        el.text = realAcademicContact || "Academic Assignment Submission • Verified & Reviewed";
       }
     }
   }
@@ -327,27 +331,54 @@ function postProcessCoverElements(
       flowStack.push({ el: subtitleEl, gapAfter: is169 ? 28 : 22 });
     }
 
-    if (metaLabelEl) {
-      metaLabelEl.height = Math.max(metaLabelEl.height, 20);
-      flowStack.push({ el: metaLabelEl, gapAfter: 6 });
+    const isGroup = meta.assignmentType === "group";
+    const validMembers = (meta.groupMembers || []).filter(
+      (m) => m && (m.fullName?.trim() || m.studentId?.trim()),
+    );
+
+    let groupBannerEl: CanvasCoverElement | null = null;
+    if (isGroup && validMembers.length > 0) {
+      groupBannerEl = {
+        id: "cover-group-banner",
+        type: "text",
+        name: "Group Assignment Banner",
+        x: stackX,
+        y: 0,
+        width: stackW,
+        height: is169 ? 24 : 32,
+        text: meta.groupName ? meta.groupName.toUpperCase() : "GROUP ASSIGNMENT",
+        fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
+        fontSize: is169 ? 16 : 22,
+        fontWeight: "800",
+        textAlign: "center",
+        textColor: meta.accentColor || "#1B365D",
+        letterSpacing: 2,
+        zIndex: 20,
+      };
+      flowStack.push({ el: groupBannerEl, gapAfter: is169 ? 16 : 24 });
+    } else {
+      if (metaLabelEl) {
+        metaLabelEl.height = Math.max(metaLabelEl.height, 20);
+        flowStack.push({ el: metaLabelEl, gapAfter: 6 });
+      }
+
+      if (authorNameEl) {
+        authorNameEl.height = Math.max(authorNameEl.height, 28);
+        flowStack.push({ el: authorNameEl, gapAfter: courseInfoEl ? 8 : 12 });
+      }
+
+      if (courseInfoEl) {
+        courseInfoEl.height = Math.max(courseInfoEl.height, 22);
+        flowStack.push({ el: courseInfoEl, gapAfter: instructorEl ? 8 : 12 });
+      }
     }
 
-    if (authorNameEl) {
-      authorNameEl.height = Math.max(authorNameEl.height, 28);
-      flowStack.push({ el: authorNameEl, gapAfter: courseInfoEl ? 8 : 12 });
-    }
-
-    if (courseInfoEl) {
-      courseInfoEl.height = Math.max(courseInfoEl.height, 22);
-      flowStack.push({ el: courseInfoEl, gapAfter: instructorEl ? 8 : 12 });
-    }
-
-    if (instructorEl) {
+    if (instructorEl && (!isGroup || validMembers.length === 0)) {
       instructorEl.height = Math.max(instructorEl.height, 22);
       flowStack.push({ el: instructorEl, gapAfter: institutionInfoEl ? 8 : 14 });
     }
 
-    if (institutionInfoEl && institutionInfoEl.y > 200) {
+    if (institutionInfoEl && institutionInfoEl.y > 200 && (!isGroup || validMembers.length === 0)) {
       institutionInfoEl.height = Math.max(institutionInfoEl.height, 22);
       flowStack.push({ el: institutionInfoEl, gapAfter: 14 });
     }
@@ -385,8 +416,136 @@ function postProcessCoverElements(
       currY += item.el.height + item.gapAfter;
     }
 
-    // H. Formatted Executive Showcase Card for Metadata
-    if (authorNameEl) {
+    // H. Formatted Presentation of Group Members or Individual Showcase Card
+    if (isGroup && validMembers.length > 0) {
+      if (processed.some((e) => e.id === "cover-group-col-name")) {
+        return processed;
+      }
+      // Remove single-student metadata elements and existing credentials card
+      const removeIds = new Set([
+        "cover-credentials-card",
+        "canva-meta-label",
+        "canva-meta-name",
+        "canva-meta-course",
+        "crimson-meta-label",
+        "crimson-meta-name",
+        "salford-meta-label",
+        "salford-meta-name",
+        "ocean-meta-label",
+        "ocean-meta-name",
+        authorNameEl?.id,
+        metaLabelEl?.id,
+        courseInfoEl?.id,
+      ].filter(Boolean));
+
+      for (let rIdx = processed.length - 1; rIdx >= 0; rIdx--) {
+        if (removeIds.has(processed[rIdx]!.id) || processed[rIdx]!.isMetadataField === "studentName") {
+          processed.splice(rIdx, 1);
+        }
+      }
+
+      // Add Group Directory: Name Header, ID Header, Member Rows with Leader Lines
+      const colNameX = is169 ? 120 : 65;
+      const colIdX = is169 ? pageW - 280 : pageW - 220;
+      const lineStartX = colNameX + (is169 ? 180 : 210);
+      const lineW = Math.max(80, colIdX - lineStartX - 15);
+      const accent = meta.accentColor || "#1B365D";
+
+      processed.push({
+        id: "cover-group-col-name",
+        type: "text",
+        name: "Group Directory Name Column",
+        x: colNameX,
+        y: currY,
+        width: 180,
+        height: 24,
+        text: "Name:",
+        fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
+        fontSize: is169 ? 15 : 18,
+        fontWeight: "800",
+        textColor: accent,
+        zIndex: 22,
+      });
+
+      processed.push({
+        id: "cover-group-col-id",
+        type: "text",
+        name: "Group Directory ID Column",
+        x: colIdX,
+        y: currY,
+        width: 140,
+        height: 24,
+        text: "ID",
+        fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
+        fontSize: is169 ? 15 : 18,
+        fontWeight: "800",
+        textColor: accent,
+        zIndex: 22,
+      });
+
+      currY += is169 ? 28 : 34;
+
+      const rowH = is169 ? 26 : 34;
+      validMembers.slice(0, 8).forEach((m, idx) => {
+        const rowY = currY + idx * rowH;
+
+        processed.push({
+          id: `cover-member-name-${idx}`,
+          type: "text",
+          name: `Member Name ${idx + 1}`,
+          x: colNameX,
+          y: rowY,
+          width: 200,
+          height: 24,
+          text: m.fullName || "Student Name",
+          fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
+          fontSize: is169 ? 13 : 15,
+          fontWeight: "600",
+          textColor: accent,
+          zIndex: 22,
+        });
+
+        processed.push({
+          id: `cover-member-line-${idx}`,
+          type: "shape",
+          name: `Member Leader Line ${idx + 1}`,
+          shapeType: "rectangle",
+          x: lineStartX,
+          y: rowY + (is169 ? 8 : 10),
+          width: lineW,
+          height: 2,
+          fillColor: accent,
+          opacity: 0.85,
+          zIndex: 21,
+        });
+
+        processed.push({
+          id: `cover-member-id-${idx}`,
+          type: "text",
+          name: `Member ID ${idx + 1}`,
+          x: colIdX,
+          y: rowY,
+          width: 140,
+          height: 24,
+          text: m.studentId || "N/A",
+          fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
+          fontSize: is169 ? 13 : 15,
+          fontWeight: "600",
+          textColor: accent,
+          zIndex: 22,
+        });
+      });
+
+      currY += validMembers.slice(0, 8).length * rowH + (is169 ? 16 : 22);
+
+      if (instructorEl) {
+        instructorEl.y = currY;
+        instructorEl.x = colNameX;
+        instructorEl.width = stackW;
+        instructorEl.textAlign = "left";
+        currY += instructorEl.height + 8;
+      }
+    } else if (authorNameEl) {
       const metaEls = [
         metaLabelEl,
         authorNameEl,
@@ -2370,30 +2529,32 @@ export function generateCanvaBlueYellowProposal(
       type: "shape",
       name: "Yellow Accent Dot",
       shapeType: "circle",
-      x: 100,
-      y: 160,
-      width: 14,
-      height: 14,
+      x: 70,
+      y: 130,
+      width: 32,
+      height: 32,
       fillColor: yellow,
-      borderRadius: 7,
+      borderRadius: 16,
       zIndex: zIndex++,
     });
 
-    elements.push({
-      id: "canva-brand-name",
-      type: "text",
-      name: "Company / Studio / University Name",
-      x: 124,
-      y: 156,
-      width: 340,
-      height: 22,
-      text: institution,
-      fontFamily: "Inter, Montserrat, sans-serif",
-      fontSize: 13,
-      fontWeight: "700",
-      textColor: navy,
-      zIndex: zIndex++,
-    });
+    if (institution) {
+      elements.push({
+        id: "canva-brand-name",
+        type: "text",
+        name: "Company / Studio / University Name",
+        x: 115,
+        y: 135,
+        width: 340,
+        height: 22,
+        text: institution,
+        fontFamily: "Inter, Montserrat, sans-serif",
+        fontSize: 13,
+        fontWeight: "700",
+        textColor: navy,
+        zIndex: zIndex++,
+      });
+    }
   }
 
   // 8. Main Proposal Title
@@ -2403,32 +2564,34 @@ export function generateCanvaBlueYellowProposal(
         : meta.academicYear.toUpperCase().includes("YEAR")
           ? meta.academicYear.toUpperCase()
           : `${meta.academicYear.toUpperCase()} ACADEMIC YEAR`)
-    : (meta.courseCode ? `${meta.courseCode} · ASSIGNMENT` : "2026");
+    : (meta.courseCode ? `${meta.courseCode} · ASSIGNMENT` : "");
 
-  elements.push({
-    id: "canva-title-year",
-    type: "text",
-    name: "Year / Category Lead",
-    x: 100,
-    y: 215,
-    width: 520,
-    height: 22,
-    text: yearTag,
-    fontFamily: "Inter, Montserrat, sans-serif",
-    fontSize: 12,
-    fontWeight: "700",
-    textColor: "#B45309",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    zIndex: zIndex++,
-  });
+  if (yearTag) {
+    elements.push({
+      id: "canva-title-year",
+      type: "text",
+      name: "Year / Category Lead",
+      x: 100,
+      y: 200,
+      width: 520,
+      height: 22,
+      text: yearTag,
+      fontFamily: "Inter, Montserrat, sans-serif",
+      fontSize: 12,
+      fontWeight: "700",
+      textColor: "#B45309",
+      letterSpacing: 1.5,
+      textTransform: "uppercase",
+      zIndex: zIndex++,
+    });
+  }
 
   elements.push({
     id: "canva-title-main",
     type: "text",
     name: "Main Title Heading",
     x: 100,
-    y: 245,
+    y: 230,
     width: 540,
     height: 72,
     text: title || "PROJECT PROPOSAL",
@@ -2442,6 +2605,29 @@ export function generateCanvaBlueYellowProposal(
     isMetadataField: "assignmentTitle",
     zIndex: zIndex++,
   });
+
+  const formattedCourseSub = course
+    ? (course.toUpperCase().startsWith("FOR ") ? course.toUpperCase() : `FOR ${course.toUpperCase()}`)
+    : "";
+
+  if (formattedCourseSub) {
+    elements.push({
+      id: "canva-title-sub",
+      type: "text",
+      name: "Course Subtitle",
+      x: 100,
+      y: 305,
+      width: 540,
+      height: 30,
+      text: formattedCourseSub,
+      fontFamily: "Inter, Montserrat, sans-serif",
+      fontSize: 22,
+      fontWeight: "800",
+      textColor: navy,
+      letterSpacing: 1.5,
+      zIndex: zIndex++,
+    });
+  }
 
   // 9. Prepared By / Author Metadata
   elements.push({
