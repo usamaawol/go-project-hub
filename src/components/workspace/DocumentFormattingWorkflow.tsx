@@ -1382,7 +1382,7 @@ export function DocumentFormattingWorkflow({
   // Configuration state
   const [config, setConfig] = useState<FormattingConfig>({
     layoutArchetype: "executive",
-    hasCoverPage: false,
+    hasCoverPage: true,
     coverStyle: "modern",
     docTitle: "Document Title",
     docSubtitle: "",
@@ -1789,7 +1789,8 @@ export function DocumentFormattingWorkflow({
       const blocks = bodyHtml ? parseHtmlToBlocks(bodyHtml) : parsePlainTextToBlocks(rawText);
 
       const docxResult = await renderExecutiveDocx(blocks, config.docTitle || activeMeta.assignmentTitle || "Document", {
-        hasCoverPage: config.hasCoverPage || Boolean(chosenMeta?.customCoverElements || chosenMeta?.coverTemplateId) || assignmentMode,
+        hasCoverPage: config.hasCoverPage ?? true,
+        includeToc: config.includeToc ?? true,
         coverMetadata: activeMeta,
         docTitle: config.docTitle || activeMeta.assignmentTitle,
         docSubtitle: config.docSubtitle || activeMeta.courseName,
@@ -1798,6 +1799,10 @@ export function DocumentFormattingWorkflow({
         dateStr: config.dateStr || activeMeta.submissionDate,
         primaryColor: activeMeta.accentColor || config.accentColor || "#1B365D",
         identityPlacement: activeMeta.identityPlacement || "cover-only",
+        margins: config.margins,
+        fontFamily: config.fontFamily,
+        fontSize: config.baseFontSize,
+        lineSpacing: config.lineSpacing,
       });
 
       const blob = docxResult instanceof Blob
@@ -1853,7 +1858,8 @@ export function DocumentFormattingWorkflow({
       const blocks = bodyHtml ? parseHtmlToBlocks(bodyHtml) : parsePlainTextToBlocks(rawText);
 
       const pdfBytes = await renderExecutivePdf(blocks, config.docTitle || activeMeta.assignmentTitle || "Document", {
-        hasCoverPage: config.hasCoverPage || Boolean(chosenMeta?.customCoverElements || chosenMeta?.coverTemplateId) || assignmentMode,
+        hasCoverPage: config.hasCoverPage ?? true,
+        includeToc: config.includeToc ?? true,
         coverMetadata: activeMeta,
         docTitle: config.docTitle || activeMeta.assignmentTitle,
         docSubtitle: config.docSubtitle || activeMeta.courseName,
@@ -1862,6 +1868,10 @@ export function DocumentFormattingWorkflow({
         dateStr: config.dateStr || activeMeta.submissionDate,
         primaryColor: activeMeta.accentColor || config.accentColor || "#1B365D",
         identityPlacement: activeMeta.identityPlacement || "cover-only",
+        margins: config.margins,
+        fontFamily: config.fontFamily,
+        fontSize: config.baseFontSize,
+        lineSpacing: config.lineSpacing,
       });
 
       const blob = new Blob([pdfBytes], { type: "application/pdf" });

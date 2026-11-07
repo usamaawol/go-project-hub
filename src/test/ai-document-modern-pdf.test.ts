@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { PDFDocument } from "pdf-lib";
 import {
   parseInlineMarkdownToRuns,
   parseInlineHtmlToRuns,
   renderExecutivePdf,
+  renderExecutiveDocx,
   parsePlainTextToBlocks,
+  parseHtmlToBlocks,
 } from "@/lib/document-synthesizer";
 import {
   parseDocumentSections,
@@ -159,5 +162,54 @@ The system successfully fulfills all academic objectives.
 
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     expect(pdfBytes.length).toBeGreaterThan(1000);
+  });
+
+  test("renderExecutivePdf and renderExecutiveDocx preserve Cover Page and Table of Contents on download", async () => {
+    const updatedHtml = `
+      <h1>Distributed Cloud Computing Architecture</h1>
+      <h2>1. Introduction to Decentralized Infrastructure</h2>
+      <p>Modern microservices rely on distributed systems across multiple fault domains.</p>
+      <h2>2. High Availability & Data Replication</h2>
+      <p>Replication factors ensure zero downtime even during major network partitions.</p>
+      <h2>3. Disaster Recovery Benchmarks</h2>
+      <p>Failover times are measured below 250 milliseconds with Raft consensus.</p>
+    `;
+
+    const blocks = parseHtmlToBlocks(updatedHtml);
+
+    // 1. PDF Export Verification
+    const pdfBytes = await renderExecutivePdf(blocks, "Distributed Cloud Computing Architecture", {
+      hasCoverPage: true,
+      includeToc: true,
+      coverMetadata: {
+        assignmentTitle: "Distributed Cloud Computing Architecture",
+        courseName: "Cloud Systems Engineering",
+        studentName: "Sara Connor",
+        universityName: "MIT Department of EECS",
+        submissionDate: "Fall 2026",
+      },
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const loadedPdf = await PDFDocument.load(pdfBytes);
+    // Page 1: Cover, Page 2: Table of Contents, Page 3+: Body
+    expect(loadedPdf.getPageCount()).toBeGreaterThanOrEqual(3);
+
+    // 2. DOCX Export Verification
+    const docxResult = await renderExecutiveDocx(blocks, "Distributed Cloud Computing Architecture", {
+      hasCoverPage: true,
+      includeToc: true,
+      coverMetadata: {
+        assignmentTitle: "Distributed Cloud Computing Architecture",
+        courseName: "Cloud Systems Engineering",
+        studentName: "Sara Connor",
+        universityName: "MIT Department of EECS",
+        submissionDate: "Fall 2026",
+      },
+    });
+
+    expect(docxResult).toBeDefined();
+    const docxLength = (docxResult as Uint8Array).byteLength || (docxResult as any).length || (docxResult as any).size;
+    expect(docxLength).toBeGreaterThan(3000);
   });
 });

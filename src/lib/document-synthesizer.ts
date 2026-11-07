@@ -26,6 +26,9 @@ import {
   PageNumber,
   Packer,
   PageBreak,
+  SectionType,
+  ImageRun,
+  TableOfContents,
 } from "docx";
 import type { AssignmentMetadata, CanvasCoverElement } from "./assignment-types";
 import { getDefaultAssignmentMetadata } from "./assignment-types";
@@ -49,6 +52,7 @@ export interface DocSynthesizerInlineRun {
 
 export interface SynthesizerExportOptions {
   hasCoverPage?: boolean;
+  includeToc?: boolean;
   coverMetadata?: AssignmentMetadata;
   headerText?: string;
   footerText?: string;
@@ -62,9 +66,10 @@ export interface SynthesizerExportOptions {
   identityPlacement?: "cover-only" | "first-body-page-only" | "both";
   bodyHtml?: string;
   removeDividers?: boolean;
-  lineSpacing?: number;
-  fontSize?: number;
+  lineSpacing?: number | string;
+  fontSize?: number | string;
   fontFamily?: string;
+  margins?: "normal" | "narrow" | "academic" | "wide";
 }
 
 export interface DocSynthesizerIdentityData {
@@ -2236,7 +2241,21 @@ export async function renderExecutivePdf(
     }
   }
 
-  // 2. Body Pages
+  // 2. Dedicated Table of Contents Page
+  const tocHeadings = blocks.filter(
+    (b) =>
+      b.type === "heading1" ||
+      b.type === "heading2" ||
+      (b.type === "heading3" && blocks.filter((x) => x.type === "heading1" || x.type === "heading2").length < 4),
+  );
+  const shouldRenderToc = options?.includeToc !== false && tocHeadings.length > 0;
+  let tocPage: PDFPage | null = null;
+  if (shouldRenderToc) {
+    tocPage = pdfDoc.addPage([pageWidth, pageHeight]);
+  }
+
+  // 3. Body Pages
+  const headingPageMap = new Map<any, number>();
   let currentPage: PDFPage = pdfDoc.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin - 15;
 
@@ -2394,6 +2413,7 @@ export async function renderExecutivePdf(
       const textIndent = isCardStyle ? 12 : 0;
       const wrapped = wrapPdfText(text, fontBold, h1FontSize, contentWidth - textIndent);
       if (y - wrapped.length * (h1FontSize + 4.5) - 25 < bottomMargin) addNewPage();
+      headingPageMap.set(block, pdfDoc.getPageCount());
 
       y -= 12;
       const barH = wrapped.length * (h1FontSize + 3.5);
@@ -2461,6 +2481,7 @@ export async function renderExecutivePdf(
       const dotIndent = isCardStyle ? 14 : 0;
       const wrapped = wrapPdfText(text, fontBold, h2FontSize, contentWidth - dotIndent);
       if (y - wrapped.length * (h2FontSize + 4.5) - 15 < bottomMargin) addNewPage();
+      headingPageMap.set(block, pdfDoc.getPageCount());
 
       y -= 8;
       if (isCardStyle) {
@@ -2503,6 +2524,7 @@ export async function renderExecutivePdf(
       const h3FontSize = Math.round(baseFontSize * 1.05);
       const wrapped = wrapPdfText(text, fontBold, h3FontSize, contentWidth);
       if (y - wrapped.length * (h3FontSize + 3.5) - 10 < bottomMargin) addNewPage();
+      headingPageMap.set(block, pdfDoc.getPageCount());
 
       y -= 6;
       for (const line of wrapped) {
@@ -3078,10 +3100,125 @@ export async function renderExecutivePdf(
     }
   }
 
+  // Draw Dedicated Table of Contents Page if enabled
+  if (shouldRenderToc && tocPage) {
+    let yToc = pageHeight - margin - 25;
+
+    // Eyebrow label
+    tocPage.drawText("DOCUMENT DIRECTORY", {
+      x: margin,
+      y: yToc,
+      size: 8,
+      font: fontBold,
+      color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
+    });
+    yToc -= 16;
+
+    // Title
+    tocPage.drawText("Table of Contents", {
+      x: margin,
+      y: yToc,
+      size: 20,
+      font: fontBold,
+      color: rgb(0.06, 0.09, 0.16),
+    });
+    yToc -= 10;
+
+    // Accent line
+    tocPage.drawRectangle({
+      x: margin,
+      y: yToc,
+      width: 44,
+      height: 3,
+      color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
+    });
+    yToc -= 24;
+
+    // Container Card Background
+    const cardH = Math.min(yToc - 60, Math.max(120, tocHeadings.length * 26 + 28));
+    tocPage.drawRectangle({
+      x: margin,
+      y: yToc - cardH + 12,
+      width: contentWidth,
+      height: cardH,
+      color: rgb(0.98, 0.99, 1.0),
+      borderColor: rgb(0.89, 0.91, 0.95),
+      borderWidth: 0.75,
+    });
+
+    let yEntry = yToc - 12;
+    for (const h of tocHeadings) {
+      if (yEntry < yToc - cardH + 20) break;
+
+      const isH1 = h.type === "heading1";
+      const hText = (h.text || "Section").replace(/^\*+|\*+$/g, "").trim();
+      const xEntry = isH1 ? margin + 16 : margin + 30;
+      const f = isH1 ? fontBold : fontRegular;
+      const sz = isH1 ? 9.5 : 8.5;
+      const c = isH1 ? rgb(0.08, 0.12, 0.2) : rgb(0.25, 0.32, 0.42);
+
+      const maxTitleW = contentWidth - 110 - (isH1 ? 16 : 30);
+      let displayTitle = hText;
+      while (displayTitle.length > 3 && f.widthOfTextAtSize(displayTitle, sz) > maxTitleW) {
+        displayTitle = displayTitle.slice(0, -4) + "...";
+      }
+
+      const titleW = f.widthOfTextAtSize(sanitizeLine(displayTitle, f), sz);
+      tocPage.drawText(sanitizeLine(displayTitle, f), {
+        x: xEntry,
+        y: yEntry,
+        size: sz,
+        font: f,
+        color: c,
+      });
+
+      // Target page number: matching physical page
+      const targetPageNum = headingPageMap.get(h) || (hasCoverPage ? 3 : 2);
+      const pageLabel = `Page ${targetPageNum}`;
+      const pageW = fontBold.widthOfTextAtSize(pageLabel, 8.5);
+      const xPage = margin + contentWidth - 18 - pageW;
+
+      // Dot leaders
+      const xDotStart = xEntry + titleW + 6;
+      const dotSpan = xPage - 8 - xDotStart;
+      if (dotSpan > 15) {
+        const numDots = Math.floor(dotSpan / 5.5);
+        const dotsStr = ". ".repeat(numDots);
+        tocPage.drawText(dotsStr, {
+          x: xDotStart,
+          y: yEntry,
+          size: 7.5,
+          font: fontRegular,
+          color: rgb(0.72, 0.78, 0.85),
+        });
+      }
+
+      // Draw page number in accent color
+      tocPage.drawText(pageLabel, {
+        x: xPage,
+        y: yEntry,
+        size: 8.5,
+        font: fontBold,
+        color: rgb(accentRgb.r, accentRgb.g, accentRgb.b),
+      });
+
+      yEntry -= isH1 ? 25 : 20;
+    }
+
+    // Bottom TOC footer
+    tocPage.drawText("Table of Contents", {
+      x: margin + contentWidth / 2 - 35,
+      y: 30,
+      size: 8,
+      font: fontRegular,
+      color: rgb(0.55, 0.62, 0.72),
+    });
+  }
+
   // Running Header and Footer with "Page X of Y" on body pages
   const totalPages = pdfDoc.getPageCount();
-  const startBodyPageIdx = hasCoverPage ? 1 : 0;
-  const bodyPageCount = hasCoverPage ? Math.max(1, totalPages - 1) : totalPages;
+  const startBodyPageIdx = (hasCoverPage ? 1 : 0) + (shouldRenderToc ? 1 : 0);
+  const bodyPageCount = Math.max(1, totalPages - startBodyPageIdx);
 
   for (let p = startBodyPageIdx; p < totalPages; p++) {
     const page = pdfDoc.getPage(p);
@@ -3132,8 +3269,8 @@ export async function renderExecutivePdf(
       });
     }
 
-    const currentBodyNum = hasCoverPage ? p : p + 1;
-    const pageLabel = `Page ${currentBodyNum} of ${bodyPageCount}`;
+    const currentBodyNum = p - startBodyPageIdx + 1;
+    const pageLabel = hasCoverPage || shouldRenderToc ? `Page ${p + 1} of ${totalPages}` : `Page ${currentBodyNum} of ${bodyPageCount}`;
     const pageLabelW = fontBold.widthOfTextAtSize(pageLabel, 8.5);
     page.drawText(pageLabel, {
       x: margin + contentWidth - pageLabelW,
@@ -3847,374 +3984,564 @@ export async function renderExecutiveDocx(
       }
     : undefined;
 
-  if (hasCoverPage) {
-    const coverChildren: (Paragraph | Table)[] = [];
+  const docxMarginTwips =
+    options?.margins === "narrow"
+      ? 720
+      : options?.margins === "wide"
+        ? 2160
+        : 1440;
 
-    // Top University / Institution Name
-    const institutionName = options?.institution || meta?.universityName || "";
-    if (institutionName) {
-      coverChildren.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: institutionName.toUpperCase(),
-              bold: true,
-              size: 24, // 12pt
-              color: accent,
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 1440, after: 120 },
-        }),
-      );
+  // Dedicated Table of Contents
+  const tocHeadings = blocks.filter(
+    (b) =>
+      b.type === "heading1" ||
+      b.type === "heading2" ||
+      (b.type === "heading3" && blocks.filter((x) => x.type === "heading1" || x.type === "heading2").length < 4),
+  );
+  const shouldRenderToc = options?.includeToc !== false && tocHeadings.length > 0;
+
+  let coverSection: any = null;
+  if (hasCoverPage) {
+    const templateId = meta?.coverTemplateId || "canva-salford-wave";
+    const rawElements =
+      meta?.customCoverElements && meta.customCoverElements.length > 0
+        ? meta.customCoverElements
+        : generateCoverElements(templateId, meta || getDefaultAssignmentMetadata(), 794, 1123);
+
+    const elements = rawElements
+      .filter((el) => {
+        if (
+          !showOnCover &&
+          (el.isMetadataField === "studentName" ||
+            el.isMetadataField === "groupMembersList" ||
+            el.id === "group-banner-card")
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .map((el) => {
+        if (el.isMetadataField === "assignmentTitle" && mainTitle) {
+          return { ...el, text: mainTitle };
+        }
+        if (el.isMetadataField === "courseName" && (options?.docSubtitle || meta?.courseName)) {
+          return { ...el, text: options?.docSubtitle || meta?.courseName || "" };
+        }
+        if (el.isMetadataField === "studentName" && (options?.authorName || meta?.studentName)) {
+          return { ...el, text: options?.authorName || meta?.studentName || "" };
+        }
+        if (el.isMetadataField === "universityName" && (options?.institution || meta?.universityName)) {
+          return { ...el, text: options?.institution || meta?.universityName || "" };
+        }
+        if (el.isMetadataField === "submissionDate" && (options?.dateStr || meta?.submissionDate)) {
+          return { ...el, text: options?.dateStr || meta?.submissionDate || "" };
+        }
+        return el;
+      });
+
+    let coverRasterPng: Uint8Array | null = null;
+    try {
+      const svgString = buildCoverPageSvg(elements, 794, 1123);
+      coverRasterPng = await rasterizeSvgToPngBytes(svgString, 1588, 2246);
+    } catch (e) {
+      console.warn("Cover SVG rasterization for DOCX skipped:", e);
     }
 
-    if (meta?.department || meta?.collegeOrFaculty) {
+    const coverChildren: (Paragraph | Table)[] = [];
+
+    if (coverRasterPng && coverRasterPng.length > 0) {
       coverChildren.push(
         new Paragraph({
           children: [
-            new TextRun({
-              text: [meta.department, meta.collegeOrFaculty].filter(Boolean).join(" · "),
-              size: 20,
-              color: "64748B",
+            new ImageRun({
+              data: coverRasterPng,
+              transformation: {
+                width: 595,
+                height: 842,
+              },
             }),
           ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 720 },
         }),
       );
     } else {
-      coverChildren.push(new Paragraph({ spacing: { after: 720 } }));
-    }
-
-    // Main Document Title
-    coverChildren.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: mainTitle,
-            bold: true,
-            size: 52, // 26pt
-            color: "0F172A",
-          }),
-        ],
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 720, after: 240 },
-      }),
-    );
-
-    const sub = options?.docSubtitle || meta?.courseName;
-    if (sub) {
-      coverChildren.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: sub,
-              italics: true,
-              size: 24,
-              color: "475569",
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 720 },
-        }),
-      );
-    }
-
-    // Divider Line
-    coverChildren.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: "―".repeat(28),
-            bold: true,
-            color: accent,
-          }),
-        ],
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 1200 },
-      }),
-    );
-
-    // Identity block on cover (if showOnCover)
-    if (showOnCover) {
-      if (meta?.assignmentType === "group") {
+      // Top University / Institution Name
+      const institutionName = options?.institution || meta?.universityName || "";
+      if (institutionName) {
         coverChildren.push(
           new Paragraph({
             children: [
               new TextRun({
-                text: meta.groupName ? `PROJECT GROUP: ${meta.groupName.toUpperCase()}` : "ASSIGNMENT GROUP MEMBERS",
+                text: institutionName.toUpperCase(),
                 bold: true,
-                size: 22,
+                size: 24, // 12pt
                 color: accent,
+                font: docxFontName,
               }),
             ],
             alignment: AlignmentType.CENTER,
-            spacing: { before: 360, after: 180 },
+            spacing: { before: 1440, after: 120 },
           }),
         );
-
-        const members = (meta.groupMembers || []).filter((m) => m && (m.fullName?.trim() || m.studentId?.trim()));
-        if (members.length > 0) {
-          for (const m of members) {
-            coverChildren.push(
-              new Paragraph({
-                children: [
-                  new TextRun({ text: "• ", bold: true, color: accent }),
-                  new TextRun({ text: m.fullName || "Student", bold: true, size: 21 }),
-                  m.studentId ? new TextRun({ text: ` (ID: ${m.studentId})`, size: 20, color: "64748B" }) : new TextRun(""),
-                  m.role ? new TextRun({ text: ` — ${m.role}`, italics: true, size: 19, color: "475569" }) : new TextRun(""),
-                ],
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 80 },
-              }),
-            );
-          }
-        }
-      } else {
-        const studentName = options?.authorName || meta?.studentName;
-        if (studentName) {
-          coverChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({ text: "SUBMITTED BY", bold: true, size: 18, color: "64748B" }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 360, after: 80 },
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({ text: studentName, bold: true, size: 26, color: "0F172A" }),
-                meta?.studentId ? new TextRun({ text: `  (ID: ${meta.studentId})`, size: 22, color: "475569" }) : new TextRun(""),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 360 },
-            }),
-          );
-        }
       }
-    }
 
-    // Bottom details on cover
-    if (meta?.courseName || meta?.courseCode) {
+      if (meta?.department || meta?.collegeOrFaculty) {
+        coverChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: [meta.department, meta.collegeOrFaculty].filter(Boolean).join(" · "),
+                size: 20,
+                color: "64748B",
+                font: docxFontName,
+              }),
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 720 },
+          }),
+        );
+      } else {
+        coverChildren.push(new Paragraph({ spacing: { after: 720 } }));
+      }
+
+      // Main Document Title
       coverChildren.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: "Course: ", bold: true, size: 20, color: "64748B" }),
-            new TextRun({ text: [meta.courseName, meta.courseCode ? `(${meta.courseCode})` : ""].filter(Boolean).join(" "), size: 21, color: "1E293B" }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 80 },
-        }),
-      );
-    }
-
-    if (meta?.instructorName) {
-      coverChildren.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: "Submitted To: ", bold: true, size: 20, color: "64748B" }),
-            new TextRun({ text: meta.instructorName, size: 21, color: "1E293B" }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 80 },
-        }),
-      );
-    }
-
-    const subDate = options?.dateStr || meta?.submissionDate;
-    if (subDate) {
-      coverChildren.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: "Submission Date: ", bold: true, size: 20, color: "64748B" }),
-            new TextRun({ text: subDate, size: 21, color: "1E293B" }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 120 },
-        }),
-      );
-    }
-
-    // Section 2: Body Children
-    const bodyChildren: (Paragraph | Table)[] = [];
-
-    // If showOnFirstBody, render Academic Identity Header atop the opening body page
-    if (showOnFirstBody) {
-      bodyChildren.push(
         new Paragraph({
           children: [
             new TextRun({
               text: mainTitle,
               bold: true,
-              size: 32, // 16pt
+              size: 52, // 26pt
               color: "0F172A",
+              font: docxFontName,
             }),
           ],
-          spacing: { before: 120, after: 80 },
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 720, after: 240 },
         }),
       );
 
-      if (meta?.assignmentType === "group") {
-        const groupLabel = meta.groupName ? `Group: ${meta.groupName}` : "Group Submission";
-        bodyChildren.push(
+      const sub = options?.docSubtitle || meta?.courseName;
+      if (sub) {
+        coverChildren.push(
           new Paragraph({
             children: [
-              new TextRun({ text: groupLabel, bold: true, size: 22, color: accent }),
+              new TextRun({
+                text: sub,
+                italics: true,
+                size: 24,
+                color: "475569",
+                font: docxFontName,
+              }),
             ],
-            spacing: { after: 60 },
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 720 },
           }),
         );
-        for (const m of meta?.groupMembers || []) {
-          if (m && (m.fullName || m.studentId)) {
-            bodyChildren.push(
+      }
+
+      // Divider Line
+      coverChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "―".repeat(28),
+              bold: true,
+              color: accent,
+              font: docxFontName,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 1200 },
+        }),
+      );
+
+      // Identity block on cover (if showOnCover)
+      if (showOnCover) {
+        if (meta?.assignmentType === "group") {
+          coverChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: meta.groupName ? `PROJECT GROUP: ${meta.groupName.toUpperCase()}` : "ASSIGNMENT GROUP MEMBERS",
+                  bold: true,
+                  size: 22,
+                  color: accent,
+                  font: docxFontName,
+                }),
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 360, after: 180 },
+            }),
+          );
+
+          const members = (meta.groupMembers || []).filter((m) => m && (m.fullName?.trim() || m.studentId?.trim()));
+          if (members.length > 0) {
+            for (const m of members) {
+              coverChildren.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: "• ", bold: true, color: accent, font: docxFontName }),
+                    new TextRun({ text: m.fullName || "Student", bold: true, size: 21, font: docxFontName }),
+                    m.studentId ? new TextRun({ text: ` (ID: ${m.studentId})`, size: 20, color: "64748B", font: docxFontName }) : new TextRun(""),
+                    m.role ? new TextRun({ text: ` — ${m.role}`, italics: true, size: 19, color: "475569", font: docxFontName }) : new TextRun(""),
+                  ],
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 80 },
+                }),
+              );
+            }
+          }
+        } else {
+          const studentName = options?.authorName || meta?.studentName;
+          if (studentName) {
+            coverChildren.push(
               new Paragraph({
                 children: [
-                  new TextRun({ text: `• ${m.fullName || "Student"}`, size: 20 }),
-                  m.studentId ? new TextRun({ text: ` (ID: ${m.studentId})`, size: 19, color: "64748B" }) : new TextRun(""),
-                  m.role ? new TextRun({ text: ` [${m.role}]`, italics: true, size: 18, color: "475569" }) : new TextRun(""),
+                  new TextRun({ text: "SUBMITTED BY", bold: true, size: 18, color: "64748B", font: docxFontName }),
                 ],
-                spacing: { after: 40 },
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 360, after: 80 },
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: studentName, bold: true, size: 26, color: "0F172A", font: docxFontName }),
+                  meta?.studentId ? new TextRun({ text: `  (ID: ${meta.studentId})`, size: 22, color: "475569", font: docxFontName }) : new TextRun(""),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 360 },
               }),
             );
           }
         }
-      } else {
-        const studentName = options?.authorName || meta?.studentName;
-        if (studentName) {
-          bodyChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({ text: "Author: ", bold: true, size: 20, color: "64748B" }),
-                new TextRun({ text: studentName, bold: true, size: 21, color: "0F172A" }),
-                meta?.studentId ? new TextRun({ text: ` (Student ID: ${meta.studentId})`, size: 20, color: "475569" }) : new TextRun(""),
-              ],
-              spacing: { after: 60 },
-            }),
-          );
-        }
       }
 
-      if (meta?.courseName || meta?.instructorName || subDate) {
-        const details = [
-          meta?.courseName ? `Course: ${meta.courseName}` : "",
-          meta?.instructorName ? `Instructor: ${meta.instructorName}` : "",
-          subDate ? `Date: ${subDate}` : "",
-        ].filter(Boolean).join("  |  ");
-
-        bodyChildren.push(
+      // Bottom details on cover
+      if (meta?.courseName || meta?.courseCode) {
+        coverChildren.push(
           new Paragraph({
             children: [
-              new TextRun({ text: details, size: 19, color: "64748B" }),
+              new TextRun({ text: "Course: ", bold: true, size: 20, color: "64748B", font: docxFontName }),
+              new TextRun({ text: [meta.courseName, meta.courseCode ? `(${meta.courseCode})` : ""].filter(Boolean).join(" "), size: 21, color: "1E293B", font: docxFontName }),
             ],
-            spacing: { after: 120 },
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 80 },
           }),
         );
       }
 
-      bodyChildren.push(
+      if (meta?.instructorName) {
+        coverChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Submitted To: ", bold: true, size: 20, color: "64748B", font: docxFontName }),
+              new TextRun({ text: meta.instructorName, size: 21, color: "1E293B", font: docxFontName }),
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 80 },
+          }),
+        );
+      }
+
+      const subDate = options?.dateStr || meta?.submissionDate;
+      if (subDate) {
+        coverChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Submission Date: ", bold: true, size: 20, color: "64748B", font: docxFontName }),
+              new TextRun({ text: subDate, size: 21, color: "1E293B", font: docxFontName }),
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 120 },
+          }),
+        );
+      }
+    }
+
+    coverSection = {
+      properties: {
+        type: SectionType.NEXT_PAGE,
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: coverRasterPng
+            ? { top: 0, right: 0, bottom: 0, left: 0 }
+            : { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+        },
+      },
+      children: coverChildren,
+    };
+  }
+
+  // Dedicated Table of Contents Section
+  let tocSection: any = null;
+  if (shouldRenderToc) {
+    const tocChildren: (Paragraph | Table | TableOfContents)[] = [];
+
+    // Eyebrow label
+    tocChildren.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "DOCUMENT DIRECTORY",
+            size: 16,
+            bold: true,
+            color: accent,
+            font: docxFontName,
+          }),
+        ],
+        spacing: { before: 720, after: 120 },
+      }),
+    );
+
+    // Title
+    tocChildren.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "Table of Contents",
+            size: 44, // 22pt
+            bold: true,
+            color: "0F172A",
+            font: docxFontName,
+          }),
+        ],
+        spacing: { after: 160 },
+      }),
+    );
+
+    // Accent line
+    tocChildren.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "―".repeat(24),
+            bold: true,
+            color: accent,
+            font: docxFontName,
+          }),
+        ],
+        spacing: { after: 720 },
+      }),
+    );
+
+    // Heading entries with dot leaders and estimated physical page numbers
+    for (let i = 0; i < tocHeadings.length; i++) {
+      const h = tocHeadings[i];
+      const isH1 = h.type === "heading1";
+      const isH2 = h.type === "heading2";
+      const cleanTitle = (h.text || "Section").replace(/^\*+|\*+$/g, "").trim();
+      const indent = isH1 ? "" : isH2 ? "    " : "        ";
+      const targetPageNum = (hasCoverPage ? 3 : 2) + Math.floor(i / 3);
+
+      tocChildren.push(
         new Paragraph({
           children: [
-            new TextRun({ text: "―".repeat(40), color: "CBD5E1" }),
+            new TextRun({
+              text: `${indent}${cleanTitle}`,
+              bold: isH1,
+              size: isH1 ? 22 : 20,
+              color: isH1 ? "0F172A" : "334155",
+              font: docxFontName,
+            }),
+            new TextRun({
+              text: "  " + ". ".repeat(isH1 ? 20 : 16) + "  ",
+              color: "94A3B8",
+              size: 16,
+              font: docxFontName,
+            }),
+            new TextRun({
+              text: `Page ${targetPageNum}`,
+              bold: true,
+              size: isH1 ? 20 : 18,
+              color: accent,
+              font: docxFontName,
+            }),
           ],
-          spacing: { after: 240 },
+          spacing: { after: isH1 ? 180 : 120 },
         }),
       );
     }
 
-    bodyChildren.push(...children);
+    // Native Word TableOfContents component
+    try {
+      tocChildren.push(
+        new TableOfContents("Table of Contents", {
+          hyperlink: true,
+          headingStyleRange: "1-3",
+        }),
+      );
+    } catch {
+      // Ignore if unsupported
+    }
 
-    doc = new Document({
-      styles: {
-        default: {
-          document: {
-            run: {
-              font: docxFontName,
-            },
-          },
+    tocSection = {
+      properties: {
+        type: SectionType.NEXT_PAGE,
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
         },
       },
-      sections: [
-        {
-          properties: {
-            page: {
-              size: { width: 11906, height: 16838 },
-              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
-            },
-          },
-          children: coverChildren,
-        },
-        {
-          properties: {
-            page: {
-              size: { width: 11906, height: 16838 },
-              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
-              pageNumbers: { start: 1 },
-            },
-          },
-          headers: docxHeaderDef,
-          footers: {
-            default: new Footer({
+      headers: docxHeaderDef,
+      footers: {
+        default: new Footer({
+          children: [
+            new Paragraph({
               children: [
-                new Paragraph({
-                  children: [
-                    new TextRun({ text: "Page ", size: 18, color: "94A3B8" }),
-                    PageNumber.CURRENT,
-                    new TextRun({ text: " of ", size: 18, color: "94A3B8" }),
-                    PageNumber.TOTAL_PAGES,
-                  ],
-                  alignment: AlignmentType.RIGHT,
+                new TextRun({
+                  text: "Table of Contents",
+                  size: 18,
+                  color: "94A3B8",
+                  font: docxFontName,
                 }),
               ],
+              alignment: AlignmentType.CENTER,
             }),
-          },
-          children: bodyChildren,
-        },
-      ],
-    });
-  } else {
-    doc = new Document({
-      styles: {
-        default: {
-          document: {
-            run: {
-              font: docxFontName,
-            },
-          },
-        },
+          ],
+        }),
       },
-      sections: [
-        {
-          properties: {
-            page: {
-              size: {
-                width: 11906, // Standard ISO A4 width (210mm in twips)
-                height: 16838, // Standard ISO A4 height (297mm in twips)
-              },
-              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
-            },
-          },
-          headers: docxHeaderDef,
-          footers: {
-            default: new Footer({
-              children: [
-                new Paragraph({
-                  children: [
-                    new TextRun({ text: "Page ", size: 18, color: "94A3B8" }),
-                    PageNumber.CURRENT,
-                    new TextRun({ text: " of ", size: 18, color: "94A3B8" }),
-                    PageNumber.TOTAL_PAGES,
-                  ],
-                  alignment: AlignmentType.RIGHT,
-                }),
-              ],
-            }),
-          },
-          children,
-        },
-      ],
-    });
+      children: tocChildren,
+    };
   }
+
+  // Section: Body Children
+  const bodyChildren: (Paragraph | Table)[] = [];
+
+  // If showOnFirstBody, render Academic Identity Header atop the opening body page
+  if (showOnFirstBody) {
+    bodyChildren.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: mainTitle,
+            bold: true,
+            size: 32, // 16pt
+            color: "0F172A",
+            font: docxFontName,
+          }),
+        ],
+        spacing: { before: 120, after: 80 },
+      }),
+    );
+
+    if (meta?.assignmentType === "group") {
+      const groupLabel = meta.groupName ? `Group: ${meta.groupName}` : "Group Submission";
+      bodyChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: groupLabel, bold: true, size: 22, color: accent, font: docxFontName }),
+          ],
+          spacing: { after: 60 },
+        }),
+      );
+      for (const m of meta?.groupMembers || []) {
+        if (m && (m.fullName || m.studentId)) {
+          bodyChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: `• ${m.fullName || "Student"}`, size: 20, font: docxFontName }),
+                m.studentId ? new TextRun({ text: ` (ID: ${m.studentId})`, size: 19, color: "64748B", font: docxFontName }) : new TextRun(""),
+                m.role ? new TextRun({ text: ` [${m.role}]`, italics: true, size: 18, color: "475569", font: docxFontName }) : new TextRun(""),
+              ],
+              spacing: { after: 40 },
+            }),
+          );
+        }
+      }
+    } else {
+      const studentName = options?.authorName || meta?.studentName;
+      if (studentName) {
+        bodyChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Author: ", bold: true, size: 20, color: "64748B", font: docxFontName }),
+              new TextRun({ text: studentName, bold: true, size: 21, color: "0F172A", font: docxFontName }),
+              meta?.studentId ? new TextRun({ text: ` (Student ID: ${meta.studentId})`, size: 20, color: "475569", font: docxFontName }) : new TextRun(""),
+            ],
+            spacing: { after: 60 },
+          }),
+        );
+      }
+    }
+
+    if (meta?.courseName || meta?.instructorName || options?.dateStr || meta?.submissionDate) {
+      const details = [
+        meta?.courseName ? `Course: ${meta.courseName}` : "",
+        meta?.instructorName ? `Instructor: ${meta.instructorName}` : "",
+        (options?.dateStr || meta?.submissionDate) ? `Date: ${options?.dateStr || meta?.submissionDate}` : "",
+      ].filter(Boolean).join("  |  ");
+
+      bodyChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: details, size: 19, color: "64748B", font: docxFontName }),
+          ],
+          spacing: { after: 120 },
+        }),
+      );
+    }
+
+    bodyChildren.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: "―".repeat(40), color: "CBD5E1", font: docxFontName }),
+        ],
+        spacing: { after: 240 },
+      }),
+    );
+  }
+
+  bodyChildren.push(...children);
+
+  const startPageNum = (hasCoverPage ? 1 : 0) + (shouldRenderToc ? 1 : 0) + 1;
+  const bodySection = {
+    properties: {
+      type: SectionType.NEXT_PAGE,
+      page: {
+        size: { width: 11906, height: 16838 },
+        margin: { top: docxMarginTwips, right: docxMarginTwips, bottom: docxMarginTwips, left: docxMarginTwips },
+        pageNumbers: { start: startPageNum },
+      },
+    },
+    headers: docxHeaderDef,
+    footers: {
+      default: new Footer({
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Page ", size: 18, color: "94A3B8", font: docxFontName }),
+              PageNumber.CURRENT,
+              new TextRun({ text: " of ", size: 18, color: "94A3B8", font: docxFontName }),
+              PageNumber.TOTAL_PAGES,
+            ],
+            alignment: AlignmentType.RIGHT,
+          }),
+        ],
+      }),
+    },
+    children: bodyChildren,
+  };
+
+  const sectionsList: any[] = [];
+  if (hasCoverPage && coverSection) {
+    sectionsList.push(coverSection);
+  }
+  if (shouldRenderToc && tocSection) {
+    sectionsList.push(tocSection);
+  }
+  sectionsList.push(bodySection);
+
+  doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: docxFontName,
+          },
+        },
+      },
+    },
+    sections: sectionsList,
+  });
 
   if (typeof window === "undefined" && typeof (Packer as any).toBuffer === "function") {
     const nodeBuf = await (Packer as any).toBuffer(doc);

@@ -1115,6 +1115,7 @@ export function UnifiedAssignmentWorkflow({
 
       const docxResult = await renderExecutiveDocx(blocks, title, {
         hasCoverPage: true,
+        includeToc: formattingConfig.includeToc ?? true,
         coverMetadata: metadata,
         docTitle: title,
         docSubtitle: metadata.courseName,
@@ -1123,6 +1124,10 @@ export function UnifiedAssignmentWorkflow({
         dateStr: metadata.submissionDate,
         primaryColor: metadata.accentColor || "#1E3A8A",
         identityPlacement: metadata.identityPlacement || "cover-only",
+        margins: formattingConfig.margins,
+        fontFamily: formattingConfig.fontFamily,
+        fontSize: formattingConfig.baseFontSize,
+        lineSpacing: formattingConfig.lineSpacing,
       });
 
       const blob = docxResult instanceof Blob
@@ -1162,6 +1167,7 @@ export function UnifiedAssignmentWorkflow({
 
       const pdfBytes = await renderExecutivePdf(blocks, title, {
         hasCoverPage: true,
+        includeToc: formattingConfig.includeToc ?? true,
         coverMetadata: metadata,
         docTitle: title,
         docSubtitle: metadata.courseName,
@@ -1170,6 +1176,10 @@ export function UnifiedAssignmentWorkflow({
         dateStr: metadata.submissionDate,
         primaryColor: metadata.accentColor || "#1E3A8A",
         identityPlacement: metadata.identityPlacement || "cover-only",
+        margins: formattingConfig.margins,
+        fontFamily: formattingConfig.fontFamily,
+        fontSize: formattingConfig.baseFontSize,
+        lineSpacing: formattingConfig.lineSpacing,
       });
 
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
