@@ -6,6 +6,8 @@ import {
   handleConvertDocument,
   handleGeneratePresentation,
   handleAiGuidance,
+  handleAiDocumentDesign,
+  handleAiDocumentEdit,
 } from "../controllers/document.controller";
 import { optionalAuth } from "../middleware/auth";
 
@@ -24,5 +26,7 @@ router.post("/documents/compress", optionalAuth, upload.single("file"), handleCo
 router.post("/documents/convert", optionalAuth, upload.single("file"), handleConvertDocument);
 router.post("/documents/presentation", optionalAuth, handleGeneratePresentation);
 router.post("/documents/guide", optionalAuth, handleAiGuidance);
+router.post("/documents/ai-design", optionalAuth, handleAiDocumentDesign);
+router.post("/documents/ai-edit", optionalAuth, handleAiDocumentEdit);
 
 export default router;

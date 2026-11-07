@@ -39,7 +39,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { extractDocumentText } from "@/lib/api-client";
+import {
+  extractDocumentText,
+  generateAiDocumentApi,
+  refineAiDocumentApi,
+  type ClientAiDocumentResult,
+} from "@/lib/api-client";
 import type { AssignmentMetadata } from "@/lib/assignment-types";
 import { getDefaultAssignmentMetadata, COVER_TEMPLATES } from "@/lib/assignment-types";
 import { extractAssignmentMetadataFromText } from "@/lib/assignment-metadata-extractor";
@@ -370,8 +375,10 @@ export function deriveDocumentMetadata(text: string): {
   let foundTitle = "";
 
   for (const l of lines) {
-    const authorM = l.match(/^(?:Author|Researcher|Prepared By|Student Name|Student|By)\s*[:]\s*(.*)$/i);
-    if (authorM && authorM[1]) foundAuthor = authorM[1].trim();
+    const authorM = l.match(/^(?:Author|Researcher|Prepared By|Submitted By|Student Name|Student|By)\s*[:]\s*(.*)$/i);
+    if (authorM && authorM[1]) {
+      foundAuthor = authorM[1].replace(/\s*\([^)]+\)/g, "").trim();
+    }
 
     const instM = l.match(/^(?:Institution|Department|Organization|University|College|Affiliation)\s*[:]\s*(.*)$/i);
     if (instM && instM[1]) foundInstitution = instM[1].trim();
@@ -464,6 +471,34 @@ export function deriveDocumentMetadata(text: string): {
         );
         if (refMatch && refMatch[1] && refMatch[1].length < 50) {
           foundTitle = `${refMatch[1].trim()} — Reference Guide`;
+          break;
+        }
+
+        // Check for compound course + assignment pattern (e.g. "CS 401 — Advanced Distributed Systems Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols")
+        const compoundMatch = cur.match(
+          /^(.*?)(?:\s+[-–—]\s*|\s+)(?:(?:Midterm|Final|Research|Lab|Term|Course|Individual|Group)\s+)*(?:Assignment|Project|Paper|Report|Case\s+Study|Proposal)(?:\s+\d+)?\s*[:–—-]\s*(.{4,120})$/i,
+        );
+        if (compoundMatch && compoundMatch[2]) {
+          foundTitle = compoundMatch[2].trim();
+          if (!foundSubtitle && compoundMatch[1]) {
+            foundSubtitle = compoundMatch[1].replace(/[-–—:]+$/, "").trim();
+          }
+          break;
+        }
+
+        // Check for course pattern (e.g. "CS 401 — Advanced Distributed Systems" or "Course: CS 401...")
+        const coursePattern = cur.match(/^(?:Course|Class|Subject)?\s*[:–—-]?\s*([A-Z]{2,5}\s*[-]?\s*\d{2,5}[A-Za-z]?\s*[:–—-]\s*.{3,80})$/i);
+        if (coursePattern && coursePattern[1]) {
+          if (!foundSubtitle) foundSubtitle = coursePattern[1].trim();
+          continue;
+        }
+
+        // Check for explicit assignment/project topic (e.g. "... Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols")
+        const assignTopicPattern = cur.match(
+          /(?:(?:Midterm|Final|Research|Lab|Term|Course|Individual|Group)?\s*(?:Assignment|Project|Paper|Report|Case\s+Study|Proposal)(?:\s+\d+)?)\s*[:–—-]\s*(.{4,120})$/i,
+        );
+        if (assignTopicPattern && assignTopicPattern[1]) {
+          foundTitle = assignTopicPattern[1].trim();
           break;
         }
 
@@ -912,7 +947,9 @@ export function parseDocumentSections(
     const numMatch = line.match(/^(\d+(?:\.\d+)*)\s*[:.]?\s+(.*)$/);
     if (numMatch && numMatch[2] && numMatch[2].length > 2) {
       const rest = numMatch[2].trim();
-      const isSentenceOrBullet = (rest.length > 50 && rest.includes(":")) || rest.endsWith(".");
+      const isSentenceOrBullet =
+        (!/^SCENE\b/i.test(rest) && rest.length > 70 && rest.includes(":")) ||
+        rest.endsWith(".");
       if (!isSentenceOrBullet) {
         const parts = numMatch[1].split(".");
         let lvl: 1 | 2 | 3 = 1;
@@ -1568,6 +1605,156 @@ export function DocumentFormattingWorkflow({
     if (!rawText.trim()) return;
     deriveTitleFromContent(rawText);
     toast.success("Document structure and editorial blueprint optimized!");
+  };
+
+  // AI Full Document Generation & Structuring State
+  const [isAiGeneratingDoc, setIsAiGeneratingDoc] = useState(false);
+  const [docAiPrompt, setDocAiPrompt] = useState("");
+  const [isApplyingDocAiPrompt, setIsApplyingDocAiPrompt] = useState(false);
+
+  const handleGenerateWithAi = async () => {
+    if (!rawText.trim()) {
+      toast.error("Please supply document content", {
+        description: "Paste your document or upload a supported file.",
+      });
+      return;
+    }
+
+    setIsAiGeneratingDoc(true);
+    toast.loading("Analyzing content and designing document with AI...", { id: "ai-doc-design" });
+
+    try {
+      const res = await generateAiDocumentApi({
+        content: rawText,
+        docType: assignmentMode ? "assignment" : (config.layoutArchetype || "standard"),
+        metadata: assignmentMetadata,
+        preferredCoverTemplate: config.assignmentMetadata?.coverTemplateId || assignmentMetadata.coverTemplateId || "canva-salford-wave",
+        preferredFont: config.fontFamily as any,
+        preferredAccent: config.accentColor,
+      });
+
+      if (res.success && res.data) {
+        const docData = res.data;
+        const newSections: DocSection[] = docData.sections.map((s, sIdx) => ({
+          level: s.level,
+          numberStr: s.numberStr,
+          title: s.title,
+          paragraphs: s.paragraphs,
+          blocks: s.blocks.map((b) => ({
+            type: b.type,
+            content: b.content,
+            calloutType: b.calloutType,
+            calloutTitle: b.calloutTitle,
+            listItems: b.listItems,
+            tableData: b.tableData,
+          })),
+          sectionIndex: sIdx,
+        }));
+
+        const newHtml = convertSectionsToInitialHtml(newSections);
+        setBodyHtml(newHtml);
+
+        const activeTitle = docData.docTitle || config.docTitle;
+        const activeSubtitle = docData.docSubtitle || config.docSubtitle;
+        const activeStudent = docData.authorName || config.authorName;
+        const activeUni = docData.institution || config.institution;
+        const activeDate = docData.dateStr || config.dateStr;
+
+        if (assignmentMode) {
+          setAssignmentMetadata((prev) => ({
+            ...prev,
+            assignmentTitle: activeTitle,
+            courseName: activeSubtitle,
+            studentName: activeStudent || prev.studentName,
+            universityName: activeUni || prev.universityName,
+            submissionDate: activeDate || prev.submissionDate,
+          }));
+        }
+
+        setConfig((prev) => ({
+          ...prev,
+          docTitle: activeTitle,
+          docSubtitle: activeSubtitle,
+          authorName: activeStudent,
+          institution: activeUni,
+          dateStr: activeDate,
+          fontFamily: (docData.fontFamily as any) || prev.fontFamily,
+          baseFontSize: docData.baseFontSize || prev.baseFontSize,
+          lineSpacing: docData.lineSpacing || prev.lineSpacing,
+          margins: docData.margins || prev.margins,
+          accentColor: docData.accentColor || prev.accentColor,
+          layoutArchetype: docData.layoutArchetype || prev.layoutArchetype,
+          hasCoverPage: docData.hasCoverPage ?? prev.hasCoverPage,
+          includeToc: docData.includeToc ?? prev.includeToc,
+        }));
+
+        toast.success("Document designed and formatted with AI!", { id: "ai-doc-design" });
+        goToStep(3); // Jump directly to real A4 Sheet preview!
+      } else {
+        toast.error("AI Document Design failed, using editorial defaults.", { id: "ai-doc-design" });
+        goToStep(2);
+      }
+    } catch (err: any) {
+      toast.error(`AI Generation Error: ${err?.message || "Failed to generate document"}`, { id: "ai-doc-design" });
+      goToStep(2);
+    } finally {
+      setIsAiGeneratingDoc(false);
+    }
+  };
+
+  const handleApplyDocAiPrompt = async () => {
+    if (!docAiPrompt.trim()) return;
+    setIsApplyingDocAiPrompt(true);
+    try {
+      const payloadDoc: ClientAiDocumentResult = {
+        docTitle: config.docTitle || "Document Title",
+        docSubtitle: config.docSubtitle || "",
+        authorName: config.authorName || "",
+        institution: config.institution || "",
+        dateStr: config.dateStr || "",
+        layoutArchetype: config.layoutArchetype || "academic",
+        fontFamily: (config.fontFamily as any) || "academic",
+        baseFontSize: config.baseFontSize,
+        lineSpacing: config.lineSpacing,
+        margins: config.margins,
+        accentColor: config.accentColor || "#1E3A8A",
+        coverTemplateId: config.assignmentMetadata?.coverTemplateId || "canva-salford-wave",
+        hasCoverPage: config.hasCoverPage,
+        includeToc: config.includeToc,
+        sections: parseDocumentSections(bodyHtml ? bodyHtml.replace(/<[^>]+>/g, " ") : rawText, config.headingNumbering).map((s) => ({
+          level: s.level,
+          numberStr: s.numberStr,
+          title: s.title,
+          paragraphs: s.paragraphs,
+          blocks: s.blocks.map((b) => ({
+            type: b.type,
+            content: b.content,
+            calloutType: b.calloutType,
+            calloutTitle: b.calloutTitle,
+            listItems: b.listItems,
+            tableData: b.tableData,
+          })),
+        })),
+      };
+
+      const res = await refineAiDocumentApi(payloadDoc, docAiPrompt);
+      if (res.data?.document) {
+        const refined = res.data.document;
+        setConfig((prev) => ({
+          ...prev,
+          fontFamily: (refined.fontFamily as any) || prev.fontFamily,
+          lineSpacing: refined.lineSpacing || prev.lineSpacing,
+          accentColor: refined.accentColor || prev.accentColor,
+          margins: refined.margins || prev.margins,
+        }));
+        toast.success(res.data.changesSummary || "AI improvements applied!");
+      }
+      setDocAiPrompt("");
+    } catch (err: any) {
+      toast.error(`Refinement failed: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsApplyingDocAiPrompt(false);
+    }
   };
 
   // Export handlers state
@@ -2472,15 +2659,38 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
               </Button>
             ) : <div />}
 
-            <Button
-              variant="hero"
-              size="lg"
-              disabled={!rawText.trim() || extracting}
-              onClick={handleProceedToStyling}
-              className="gap-2 px-6"
-            >
-              Continue to Styling & Typography <ChevronRight className="h-4 w-4" />
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={!rawText.trim() || extracting}
+                onClick={handleProceedToStyling}
+                className="gap-2 px-5 text-xs font-semibold"
+              >
+                <span>Manual Styling</span> <ChevronRight className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="hero"
+                size="lg"
+                disabled={!rawText.trim() || extracting || isAiGeneratingDoc}
+                onClick={handleGenerateWithAi}
+                className="gap-2 px-6 font-bold shadow-md"
+              >
+                {isAiGeneratingDoc ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>AI Designing Document...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 text-amber-300 animate-pulse" />
+                    <span>Format & Design with AI</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -3284,6 +3494,48 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
               >
                 <Download className="h-3.5 w-3.5" />
                 {isExportingDocx ? "Exporting..." : "Download Real DOCX (.docx)"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Interactive Natural Language AI Prompt Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 rounded-2xl border border-primary/20 bg-primary/5 shadow-xs">
+            <div className="flex items-center gap-2 text-xs font-semibold text-primary shrink-0 px-1">
+              <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+              <span>Ask AI to Improve:</span>
+            </div>
+            <div className="flex-1 flex items-center gap-2">
+              <input
+                type="text"
+                value={docAiPrompt}
+                onChange={(e) => setDocAiPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isApplyingDocAiPrompt) {
+                    handleApplyDocAiPrompt();
+                  }
+                }}
+                placeholder='e.g. "Make this more professional", "Add an executive summary", "Convert section 2 into a table", "Use academic serif typography"'
+                className="flex-1 px-3 py-1.5 text-xs rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                disabled={isApplyingDocAiPrompt || !docAiPrompt.trim()}
+                onClick={handleApplyDocAiPrompt}
+                className="text-xs h-8 px-3 gap-1.5 font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs shrink-0"
+              >
+                {isApplyingDocAiPrompt ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Applying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Apply AI Improvement</span>
+                  </>
+                )}
               </Button>
             </div>
           </div>

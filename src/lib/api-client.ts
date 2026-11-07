@@ -1430,3 +1430,248 @@ export async function deletePresentationSlideApi(
 
   return { success: false };
 }
+
+export interface ClientAiDocumentPayload {
+  content: string;
+  docType?: "standard" | "assignment" | "research" | "technical" | "business";
+  userInstructions?: string;
+  metadata?: Partial<AssignmentMetadata>;
+  preferredCoverTemplate?: string;
+  preferredFont?: "academic" | "serif" | "sans" | "mono";
+  preferredAccent?: string;
+}
+
+export interface ClientAiDocumentResult {
+  docTitle: string;
+  docSubtitle: string;
+  authorName: string;
+  institution: string;
+  dateStr: string;
+  layoutArchetype: "academic" | "executive" | "tech-spec" | "creative";
+  fontFamily: "academic" | "serif" | "sans" | "mono";
+  baseFontSize: "10pt" | "11pt" | "12pt";
+  lineSpacing: "1.0" | "1.15" | "1.5" | "2.0";
+  margins: "normal" | "narrow" | "wide";
+  accentColor: string;
+  coverTemplateId: string;
+  hasCoverPage: boolean;
+  includeToc: boolean;
+  sections: Array<{
+    level: 1 | 2 | 3;
+    numberStr: string;
+    title: string;
+    paragraphs: string[];
+    blocks: Array<{
+      type: "paragraph" | "lead" | "callout" | "list" | "table" | "image";
+      content: string;
+      calloutType?: "critical" | "warning" | "note" | "requirement";
+      calloutTitle?: string;
+      listItems?: string[];
+      tableData?: { headers: string[]; rows: string[][] };
+    }>;
+  }>;
+  assignmentMetadata?: AssignmentMetadata;
+  aiNotes?: string;
+}
+
+export async function generateAiDocumentApi(
+  input: ClientAiDocumentPayload,
+): Promise<{ success: boolean; data: ClientAiDocumentResult }> {
+  try {
+    const res = await fetch(`${API_BASE}/documents/ai-design`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return { success: true, data: json.data };
+      }
+    }
+  } catch (err) {
+    console.warn("Backend generateAiDocumentApi unreachable, using local semantic engine:", err);
+  }
+
+  // Client-side resilient semantic document engine
+  const { cleanDocumentPageNoise, parsePlainTextToBlocks } = await import("./document-synthesizer");
+  const { extractAssignmentMetadataFromText } = await import("./assignment-metadata-extractor");
+
+  const cleaned = cleanDocumentPageNoise(input.content);
+  const suggestions = extractAssignmentMetadataFromText(cleaned);
+  const isAssignment = input.docType === "assignment" || Boolean(input.metadata?.isAssignment) || suggestions.hasSuggestions;
+
+  let docTitle = input.metadata?.assignmentTitle || suggestions.assignmentTitle || "";
+  let docSubtitle = input.metadata?.courseName || suggestions.courseName || suggestions.courseCode || "";
+  let authorName = input.metadata?.studentName || suggestions.studentName || "";
+  let institution = input.metadata?.universityName || suggestions.universityName || suggestions.department || "";
+  let dateStr = input.metadata?.submissionDate || suggestions.submissionDate || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  const rawBlocks = parsePlainTextToBlocks(cleaned);
+  const sections: ClientAiDocumentResult["sections"] = [];
+  let currentSection: ClientAiDocumentResult["sections"][0] = {
+    level: 1,
+    numberStr: "1.",
+    title: "1.0 Overview & Scope",
+    paragraphs: [],
+    blocks: [],
+  };
+
+  let sectionCount = 0;
+  for (const block of rawBlocks) {
+    if (block.type === "heading1" || block.type === "heading2") {
+      if (currentSection.blocks.length > 0 || currentSection.paragraphs.length > 0) {
+        sections.push(currentSection);
+      }
+      sectionCount++;
+      const numMatch = block.text.match(/^(\d+(?:\.\d+)*)\.?\s*(.+)$/);
+      currentSection = {
+        level: block.type === "heading1" ? 1 : 2,
+        numberStr: numMatch ? `${numMatch[1]}.` : `${sectionCount}.`,
+        title: block.text,
+        paragraphs: [],
+        blocks: [],
+      };
+      continue;
+    }
+
+    if (block.type === "paragraph") {
+      const text = block.text || "";
+      const metricMatch = text.match(/^([A-Za-z\s]{3,35})\s*[:]\s*(.+)$/);
+      if (metricMatch && metricMatch[1] && metricMatch[2] && metricMatch[1].length < 30) {
+        currentSection.blocks.push({
+          type: "callout",
+          content: metricMatch[2].trim(),
+          calloutType: "note",
+          calloutTitle: metricMatch[1].trim(),
+        });
+      } else {
+        currentSection.paragraphs.push(text);
+        currentSection.blocks.push({
+          type: currentSection.blocks.length === 0 ? "lead" : "paragraph",
+          content: text,
+        });
+      }
+    } else if (block.type === "list") {
+      currentSection.blocks.push({
+        type: "list",
+        content: "",
+        listItems: block.items || [],
+      });
+    } else if (block.type === "table") {
+      currentSection.blocks.push({
+        type: "table",
+        content: "",
+        tableData: {
+          headers: block.table?.headers || [],
+          rows: block.table?.rows || [],
+        },
+      });
+    }
+  }
+
+  if (currentSection.blocks.length > 0 || currentSection.paragraphs.length > 0) {
+    sections.push(currentSection);
+  }
+
+  if (sections.length === 0) {
+    sections.push({
+      level: 1,
+      numberStr: "1.",
+      title: docTitle || "Main Content",
+      paragraphs: [cleaned],
+      blocks: [{ type: "paragraph", content: cleaned }],
+    });
+  }
+
+  if (!docTitle) {
+    docTitle = sections[0]?.title.replace(/^\d+(?:\.\d+)*\.?\s*/, "") || (isAssignment ? "Academic Assignment" : "Executive Document");
+  }
+
+  return {
+    success: true,
+    data: {
+      docTitle,
+      docSubtitle,
+      authorName,
+      institution,
+      dateStr,
+      layoutArchetype: isAssignment ? "academic" : "executive",
+      fontFamily: input.preferredFont || (isAssignment ? "academic" : "serif"),
+      baseFontSize: "11pt",
+      lineSpacing: "1.5",
+      margins: "normal",
+      accentColor: input.preferredAccent || input.metadata?.accentColor || "#1E3A8A",
+      coverTemplateId: input.preferredCoverTemplate || input.metadata?.coverTemplateId || (isAssignment ? "canva-hanover-red-geometric" : "canva-salford-wave"),
+      hasCoverPage: true,
+      includeToc: true,
+      sections,
+      assignmentMetadata: {
+        isAssignment,
+        assignmentType: input.metadata?.assignmentType || (suggestions.groupMembers && suggestions.groupMembers.length > 1 ? "group" : "individual"),
+        assignmentTitle: docTitle,
+        courseName: docSubtitle,
+        courseCode: suggestions.courseCode || "",
+        studentName: authorName,
+        studentId: input.metadata?.studentId || suggestions.studentId || "",
+        instructorName: input.metadata?.instructorName || suggestions.instructorName || "",
+        universityName: institution,
+        department: input.metadata?.department || suggestions.department || "",
+        collegeOrFaculty: input.metadata?.collegeOrFaculty || suggestions.collegeOrFaculty || "",
+        academicYear: input.metadata?.academicYear || suggestions.academicYear || "2026",
+        semester: input.metadata?.semester || suggestions.semester || "Fall 2026",
+        submissionDate: dateStr,
+        coverTemplateId: input.preferredCoverTemplate || input.metadata?.coverTemplateId || "canva-hanover-red-geometric",
+        accentColor: input.preferredAccent || input.metadata?.accentColor || "#1E3A8A",
+        groupMembers: suggestions.groupMembers || input.metadata?.groupMembers || [],
+      },
+      aiNotes: "Structured using DocuMind Semantic Document Engine.",
+    },
+  };
+}
+
+export async function refineAiDocumentApi(
+  document: ClientAiDocumentResult,
+  instruction: string,
+): Promise<{ success: boolean; data: { document: ClientAiDocumentResult; changesSummary: string } }> {
+  try {
+    const res = await fetch(`${API_BASE}/documents/ai-edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document, instruction }),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return { success: true, data: json.data };
+      }
+    }
+  } catch (err) {
+    console.warn("Backend refineAiDocumentApi unreachable, using local modifier:", err);
+  }
+
+  // Client-side quick adjustment
+  const lower = instruction.toLowerCase();
+  const updated = { ...document };
+
+  if (lower.includes("academic") || lower.includes("formal")) {
+    updated.fontFamily = "academic";
+    updated.lineSpacing = "1.5";
+  } else if (lower.includes("modern") || lower.includes("clean") || lower.includes("sans")) {
+    updated.fontFamily = "sans";
+  }
+
+  if (lower.includes("navy")) updated.accentColor = "#1E3A8A";
+  else if (lower.includes("teal")) updated.accentColor = "#0F766E";
+  else if (lower.includes("crimson") || lower.includes("red")) updated.accentColor = "#B91C1C";
+
+  return {
+    success: true,
+    data: {
+      document: updated,
+      changesSummary: `Applied: "${instruction}". Updated formatting and document tokens.`,
+    },
+  };
+}

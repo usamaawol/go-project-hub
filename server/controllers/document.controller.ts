@@ -307,3 +307,72 @@ export async function handleConvertDocument(
     next(error);
   }
 }
+
+export async function handleAiDocumentDesign(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const {
+      content,
+      docType,
+      userInstructions,
+      metadata,
+      preferredCoverTemplate,
+      preferredFont,
+      preferredAccent,
+    } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Content is required for AI document generation." },
+      });
+    }
+
+    const { generateAiDocument } = await import("../services/documentAi.service");
+    const result = await generateAiDocument({
+      content,
+      docType,
+      userInstructions,
+      metadata,
+      preferredCoverTemplate,
+      preferredFont,
+      preferredAccent,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function handleAiDocumentEdit(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { document, instruction } = req.body;
+    if (!document || !instruction) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Both document payload and instruction are required." },
+      });
+    }
+
+    const { refineAiDocument } = await import("../services/documentAi.service");
+    const result = await refineAiDocument(document, instruction);
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}

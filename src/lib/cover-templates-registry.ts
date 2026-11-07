@@ -105,7 +105,7 @@ function postProcessCoverElements(
     }
   }
 
-  // 2. Remove Fake Placeholders (reallygreatsite, +123-456-7890, Executive Confidential, Board Review)
+  // 2. Remove Fake Placeholders (reallygreatsite, +123-456-7890, Executive Confidential, Board Review, corporate boilerplates)
   const realAcademicContact = [
     meta.universityName,
     meta.department,
@@ -113,14 +113,35 @@ function postProcessCoverElements(
     [meta.academicYear, meta.semester].filter(Boolean).join(" · "),
   ].filter(Boolean).join("  •  ");
 
+  const FAKE_CORPORATE_REGEX =
+    /reallygreatsite\.com|\+123-456-7890|executive confidential|board review|corporate strategy|strategic assessment|hanover co|salford & co|ecosphere institute|vanguard strategic|vanguard & partners|nextgen innovation|atelier literary|cyber systems lab|nordic ecology|haute prestige|kunstgewerbeschule|studio shodwe|eleanor fitzgerald|benjamin shah|marcus vance|arthur pendelton|amara vance|camilla sterling|kenji sato|harrison brooks|genevieve monet|max miedinger|connor hamilton|delivering results through innovation|delivering innovative solutions|environmental technology & systems|global market intelligence/i;
+
   for (const el of processed) {
     if (el.type === "text" && el.text) {
-      if (
-        el.text.includes("reallygreatsite.com") ||
-        el.text.includes("+123-456-7890") ||
-        /executive confidential|board review|corporate strategy|strategic assessment/i.test(el.text)
-      ) {
-        el.text = realAcademicContact || "Academic Assignment Submission • Verified & Reviewed";
+      if (FAKE_CORPORATE_REGEX.test(el.text)) {
+        // If user explicitly provided this exact text in metadata, preserve it
+        const isUserSpecified =
+          (meta.studentName && el.text.includes(meta.studentName)) ||
+          (meta.universityName && el.text.includes(meta.universityName)) ||
+          (meta.instructorName && el.text.includes(meta.instructorName)) ||
+          (meta.courseName && el.text.includes(meta.courseName)) ||
+          (meta.assignmentTitle && el.text.includes(meta.assignmentTitle));
+
+        if (!isUserSpecified) {
+          if (el.isMetadataField === "studentName" || el.id?.includes("author") || el.id?.includes("by-name")) {
+            el.text = meta.studentName || (meta.assignmentType === "group" ? (meta.groupName || "Student Roster") : "");
+          } else if (el.isMetadataField === "instructorName" || el.id?.includes("instructor") || el.id?.includes("for-name")) {
+            el.text = meta.instructorName || "";
+          } else if (el.isMetadataField === "universityName" || el.id?.includes("brand") || el.id?.includes("institution")) {
+            el.text = meta.universityName || meta.department || meta.courseCode || "";
+          } else if (el.id?.includes("subtitle") || el.name?.toLowerCase().includes("subtitle")) {
+            el.text = meta.courseName || meta.courseCode || "";
+          } else if (el.id?.includes("footer") || el.name?.toLowerCase().includes("footer")) {
+            el.text = realAcademicContact || "";
+          } else {
+            el.text = "";
+          }
+        }
       }
     }
   }
@@ -1376,12 +1397,12 @@ export function generateCanvaSalfordWave(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Project Team")
-    : (meta.studentName || "Benjamin Shah");
+    : (meta.studentName || "");
 
-  const brand = meta.universityName || meta.department || "Salford & Co.";
+  const brand = (meta.universityName || meta.department || meta.collegeOrFaculty || "").trim();
   const title = meta.assignmentTitle || "Project Proposal";
-  const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Delivering innovative solutions for modern infrastructure";
+  const year = meta.academicYear || "";
+  const subtitle = (meta.courseName || meta.courseCode || "").trim();
 
   const displayTitle =
     title === "Project Proposal" && year === "2026"
@@ -1446,38 +1467,40 @@ export function generateCanvaSalfordWave(
     zIndex: zIndex++,
   });
 
-  // 4. Top-Right Brand Pill Badge ("Salford & Co.")
-  elements.push({
-    id: "salford-brand-pill",
-    type: "badge",
-    name: "Brand Pill Badge",
-    shapeType: "badge-pill",
-    x: pageW - 220,
-    y: 45,
-    width: 160,
-    height: 40,
-    fillColor: navy,
-    borderRadius: 20,
-    zIndex: zIndex++,
-  });
+  // 4. Top-Right Brand Pill Badge (University or Department)
+  if (brand) {
+    elements.push({
+      id: "salford-brand-pill",
+      type: "badge",
+      name: "Brand Pill Badge",
+      shapeType: "badge-pill",
+      x: pageW - 220,
+      y: 45,
+      width: 160,
+      height: 40,
+      fillColor: navy,
+      borderRadius: 20,
+      zIndex: zIndex++,
+    });
 
-  elements.push({
-    id: "salford-brand-text",
-    type: "text",
-    name: "Brand Label Text",
-    x: pageW - 215,
-    y: 54,
-    width: 150,
-    height: 22,
-    text: brand,
-    fontFamily: "Inter, Montserrat, sans-serif",
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "center",
-    textColor: "#FFFFFF",
-    letterSpacing: 1,
-    zIndex: zIndex++,
-  });
+    elements.push({
+      id: "salford-brand-text",
+      type: "text",
+      name: "Brand Label Text",
+      x: pageW - 215,
+      y: 54,
+      width: 150,
+      height: 22,
+      text: brand,
+      fontFamily: "Inter, Montserrat, sans-serif",
+      fontSize: 12,
+      fontWeight: "700",
+      textAlign: "center",
+      textColor: "#FFFFFF",
+      letterSpacing: 1,
+      zIndex: zIndex++,
+    });
+  }
 
   // 5. Category / Academic Year Lead Tag
   elements.push({
@@ -1519,55 +1542,59 @@ export function generateCanvaSalfordWave(
   });
 
   // 7. Subtitle / Course Description
-  elements.push({
-    id: "salford-subtitle",
-    type: "text",
-    name: "Proposal Subtitle",
-    x: 80,
-    y: is169 ? 260 : 340,
-    width: is169 ? 640 : pageW - 160,
-    height: 32,
-    text: subtitle,
-    fontFamily: "Inter, sans-serif",
-    fontSize: 14,
-    fontWeight: "500",
-    textColor: "#64748B",
-    zIndex: zIndex++,
-  });
+  if (subtitle) {
+    elements.push({
+      id: "salford-subtitle",
+      type: "text",
+      name: "Proposal Subtitle",
+      x: 80,
+      y: is169 ? 260 : 340,
+      width: is169 ? 640 : pageW - 160,
+      height: 32,
+      text: subtitle,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 14,
+      fontWeight: "500",
+      textColor: "#64748B",
+      zIndex: zIndex++,
+    });
+  }
 
   // 8. Prepared by Metadata
-  elements.push({
-    id: "salford-meta-label",
-    type: "text",
-    name: "Prepared by Label",
-    x: 80,
-    y: is169 ? 315 : 400,
-    width: 480,
-    height: 20,
-    text: isGroup ? "GROUP RESEARCH DIRECTORY" : "Prepared by :",
-    fontFamily: "Inter, sans-serif",
-    fontSize: 12,
-    fontWeight: "600",
-    textColor: "#64748B",
-    zIndex: zIndex++,
-  });
+  if (author || isGroup) {
+    elements.push({
+      id: "salford-meta-label",
+      type: "text",
+      name: "Prepared by Label",
+      x: 80,
+      y: is169 ? 315 : (subtitle ? 400 : 360),
+      width: 480,
+      height: 20,
+      text: isGroup ? "GROUP RESEARCH DIRECTORY" : "Prepared by :",
+      fontFamily: "Inter, sans-serif",
+      fontSize: 12,
+      fontWeight: "600",
+      textColor: "#64748B",
+      zIndex: zIndex++,
+    });
 
-  elements.push({
-    id: "salford-meta-name",
-    type: "text",
-    name: "Author Name",
-    x: 80,
-    y: is169 ? 340 : 425,
-    width: 480,
-    height: 30,
-    text: author,
-    fontFamily: "Inter, Montserrat, sans-serif",
-    fontSize: 20,
-    fontWeight: "800",
-    textColor: navy,
-    isMetadataField: "studentName",
-    zIndex: zIndex++,
-  });
+    elements.push({
+      id: "salford-meta-name",
+      type: "text",
+      name: "Author Name",
+      x: 80,
+      y: is169 ? 340 : (subtitle ? 425 : 385),
+      width: 480,
+      height: 30,
+      text: author || (isGroup ? "Project Team" : "Student Name"),
+      fontFamily: "Inter, Montserrat, sans-serif",
+      fontSize: 20,
+      fontWeight: "800",
+      textColor: navy,
+      isMetadataField: "studentName",
+      zIndex: zIndex++,
+    });
+  }
 
   if (meta.studentId || meta.courseName) {
     elements.push({
@@ -1673,13 +1700,13 @@ export function generateCanvaHanoverRedGeometric(
   const charcoal = "#1E293B";
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
-    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Proposal Strategy Team")
-    : (meta.studentName || "Eleanor Fitzgerald");
+    ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Project Team")
+    : (meta.studentName || "");
 
-  const brand = meta.universityName || meta.department || "HANOVER CO";
-  const title = meta.assignmentTitle || "STRATEGIC PROPOSAL";
-  const subtitle = meta.courseName || meta.courseCode || "Delivering Results Through Innovation";
-  const instructor = meta.instructorName || "Connor Hamilton";
+  const brand = (meta.universityName || meta.department || meta.collegeOrFaculty || "").trim();
+  const title = meta.assignmentTitle || "PROJECT PROPOSAL";
+  const subtitle = (meta.courseName || meta.courseCode || "").trim();
+  const instructor = (meta.instructorName || "").trim();
 
   // 1. White Background
   elements.push({
@@ -1787,36 +1814,38 @@ export function generateCanvaHanoverRedGeometric(
   });
 
   // 7. Top-Right Brand Mark
-  elements.push({
-    id: "hanover-brand",
-    type: "text",
-    name: "Brand Logo Text",
-    x: pageW - 280,
-    y: 60,
-    width: 220,
-    height: 28,
-    text: brand.toUpperCase(),
-    fontFamily: "Inter, Montserrat, sans-serif",
-    fontSize: 16,
-    fontWeight: "800",
-    textAlign: "right",
-    textColor: charcoal,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    zIndex: zIndex++,
-  });
+  if (brand) {
+    elements.push({
+      id: "hanover-brand",
+      type: "text",
+      name: "Brand Logo Text",
+      x: pageW - 280,
+      y: 60,
+      width: 220,
+      height: 28,
+      text: brand.toUpperCase(),
+      fontFamily: "Inter, Montserrat, sans-serif",
+      fontSize: 16,
+      fontWeight: "800",
+      textAlign: "right",
+      textColor: charcoal,
+      letterSpacing: 2,
+      textTransform: "uppercase",
+      zIndex: zIndex++,
+    });
 
-  elements.push({
-    id: "hanover-brand-line",
-    type: "divider",
-    name: "Brand Accent Line",
-    x: pageW - 140,
-    y: 92,
-    width: 80,
-    height: 3,
-    fillColor: red,
-    zIndex: zIndex++,
-  });
+    elements.push({
+      id: "hanover-brand-line",
+      type: "divider",
+      name: "Brand Accent Line",
+      x: pageW - 140,
+      y: 92,
+      width: 80,
+      height: 3,
+      fillColor: red,
+      zIndex: zIndex++,
+    });
+  }
 
   // 8. Main Proposal Title
   elements.push({
@@ -1840,112 +1869,120 @@ export function generateCanvaHanoverRedGeometric(
   });
 
   // 9. Subtitle
-  elements.push({
-    id: "hanover-subtitle",
-    type: "text",
-    name: "Strategic Subtitle",
-    x: 160,
-    y: 390,
-    width: pageW - 240,
-    height: 30,
-    text: subtitle,
-    fontFamily: "Inter, sans-serif",
-    fontSize: 14,
-    fontWeight: "700",
-    textColor: red,
-    zIndex: zIndex++,
-  });
+  if (subtitle) {
+    elements.push({
+      id: "hanover-subtitle",
+      type: "text",
+      name: "Strategic Subtitle",
+      x: 160,
+      y: 390,
+      width: pageW - 240,
+      height: 30,
+      text: subtitle,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 14,
+      fontWeight: "700",
+      textColor: red,
+      zIndex: zIndex++,
+    });
+  }
 
   // 10. Prepared For / Prepared By Two-Tier Metadata
   const metaY = 480;
 
-  elements.push({
-    id: "hanover-for-label",
-    type: "text",
-    name: "Prepared For Label",
-    x: 160,
-    y: metaY,
-    width: 240,
-    height: 20,
-    text: "PREPARED FOR :",
-    fontFamily: "Inter, sans-serif",
-    fontSize: 11,
-    fontWeight: "700",
-    textColor: "#64748B",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    zIndex: zIndex++,
-  });
-
-  elements.push({
-    id: "hanover-for-name",
-    type: "text",
-    name: "Client / Instructor Name",
-    x: 160,
-    y: metaY + 22,
-    width: 240,
-    height: 26,
-    text: instructor,
-    fontFamily: "Inter, sans-serif",
-    fontSize: 15,
-    fontWeight: "700",
-    textColor: charcoal,
-    isMetadataField: "instructorName",
-    zIndex: zIndex++,
-  });
-
-  elements.push({
-    id: "hanover-by-label",
-    type: "text",
-    name: "Prepared By Label",
-    x: 160,
-    y: metaY + 70,
-    width: 240,
-    height: 20,
-    text: "PREPARED BY :",
-    fontFamily: "Inter, sans-serif",
-    fontSize: 11,
-    fontWeight: "700",
-    textColor: "#64748B",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    zIndex: zIndex++,
-  });
-
-  elements.push({
-    id: "hanover-by-name",
-    type: "text",
-    name: "Student / Author Name",
-    x: 160,
-    y: metaY + 92,
-    width: 260,
-    height: 26,
-    text: author,
-    fontFamily: "Inter, sans-serif",
-    fontSize: 15,
-    fontWeight: "700",
-    textColor: charcoal,
-    isMetadataField: "studentName",
-    zIndex: zIndex++,
-  });
-
-  if (meta.studentId) {
+  if (instructor) {
     elements.push({
-      id: "hanover-by-id",
+      id: "hanover-for-label",
       type: "text",
-      name: "Student ID",
+      name: "Prepared For Label",
       x: 160,
-      y: metaY + 118,
+      y: metaY,
       width: 240,
       height: 20,
-      text: `ID: ${meta.studentId}`,
-      fontFamily: "monospace",
+      text: "PREPARED FOR :",
+      fontFamily: "Inter, sans-serif",
       fontSize: 11,
-      fontWeight: "600",
+      fontWeight: "700",
       textColor: "#64748B",
-      isMetadataField: "studentId",
+      letterSpacing: 1,
+      textTransform: "uppercase",
       zIndex: zIndex++,
     });
+
+    elements.push({
+      id: "hanover-for-name",
+      type: "text",
+      name: "Client / Instructor Name",
+      x: 160,
+      y: metaY + 22,
+      width: 240,
+      height: 26,
+      text: instructor,
+      fontFamily: "Inter, sans-serif",
+      fontSize: 15,
+      fontWeight: "700",
+      textColor: charcoal,
+      isMetadataField: "instructorName",
+      zIndex: zIndex++,
+    });
+  }
+
+  const byY = instructor ? metaY + 70 : metaY;
+
+  if (author || isGroup) {
+    elements.push({
+      id: "hanover-by-label",
+      type: "text",
+      name: "Prepared By Label",
+      x: 160,
+      y: byY,
+      width: 240,
+      height: 20,
+      text: "PREPARED BY :",
+      fontFamily: "Inter, sans-serif",
+      fontSize: 11,
+      fontWeight: "700",
+      textColor: "#64748B",
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      zIndex: zIndex++,
+    });
+
+    elements.push({
+      id: "hanover-by-name",
+      type: "text",
+      name: "Student / Author Name",
+      x: 160,
+      y: byY + 22,
+      width: 260,
+      height: 26,
+      text: author || (isGroup ? "Project Team" : "Student Name"),
+      fontFamily: "Inter, sans-serif",
+      fontSize: 15,
+      fontWeight: "700",
+      textColor: charcoal,
+      isMetadataField: "studentName",
+      zIndex: zIndex++,
+    });
+
+    if (meta.studentId) {
+      elements.push({
+        id: "hanover-by-id",
+        type: "text",
+        name: "Student ID",
+        x: 160,
+        y: byY + 48,
+        width: 240,
+        height: 20,
+        text: `ID: ${meta.studentId}`,
+        fontFamily: "monospace",
+        fontSize: 11,
+        fontWeight: "600",
+        textColor: "#64748B",
+        isMetadataField: "studentId",
+        zIndex: zIndex++,
+      });
+    }
   }
 
   // 11. Footer Coordinates
@@ -1983,11 +2020,11 @@ export function generateCanvaEmeraldGeometric(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Sustainable Systems Team")
-    : (meta.studentName || "Marcus Vance");
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
 
-  const brand = meta.universityName || meta.department || "EcoSphere Institute";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "SUSTAINABILITY & ENERGY REPORT";
-  const subtitle = meta.courseName || meta.courseCode || "Environmental Technology & Systems Analysis";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   // White Background
   elements.push({
@@ -2171,11 +2208,11 @@ export function generateCanvaCharcoalAmber(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Executive Committee")
-    : (meta.studentName || "Arthur Pendelton");
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
 
-  const brand = meta.universityName || meta.department || "Vanguard Strategic Partners";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "ANNUAL EXECUTIVE BRIEF";
-  const subtitle = meta.courseName || meta.courseCode || "Global Market Intelligence & Operational Strategy";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   // White Background
   elements.push({
@@ -2360,9 +2397,9 @@ export function generateCanvaBlueYellowProposal(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Group Project Team")
-    : (meta.studentName || "Benjamin Shah");
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
 
-  const institution = meta.universityName || meta.department || "Studio Shodwe";
+  const institution = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || (isGroup ? "PROJECT PROPOSAL" : "PROJECT PROPOSAL");
   const course = meta.courseName || meta.courseCode || "";
   const studentId = meta.studentId || "";
@@ -3313,11 +3350,11 @@ export function generateCanvaVioletAuroraWave(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Project Team")
-    : (meta.studentName || "Benjamin Shah");
-  const brand = meta.universityName || meta.department || "Academic Research Studio";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "Comprehensive Research Proposal";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Next-Generation Systems Architecture & Analysis";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "aurora-top-cyan", type: "shape", name: "Top Cyan Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: cyan, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${cyan}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
@@ -3354,11 +3391,11 @@ export function generateCanvaTokyoNeomodern(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Development Lead")
-    : (meta.studentName || "Kaito Takahashi");
-  const brand = meta.universityName || meta.department || "Tokyo Tech Lab";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "NEO-SYSTEMS BLUEPRINT";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "High-Frequency Distributed Consensus Protocol";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FAFAFA", zIndex: zIndex++ });
   elements.push({ id: "tokyo-header-bar", type: "shape", name: "Top Header Obsidian Block", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: 170, fillColor: obsidian, zIndex: zIndex++ });
@@ -3398,7 +3435,7 @@ export function generateCanvaScandinavianFrost(
   const brand = meta.universityName || meta.department || "Stockholm University";
   const title = meta.assignmentTitle || "Nordic Sustainable Architecture";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Environmental Lifecycle Assessment & Passive Heating";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "frost-top-mint", type: "shape", name: "Mint Ribbon Underlay", shapeType: "svg", x: 0, y: 0, width: 460, height: 210, fillColor: mint, svgContent: `<svg viewBox="0 0 460 210" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 460,0 C 370,100 270,170 140,170 C 70,170 20,190 0,210 Z" fill="${mint}" opacity="0.6" /></svg>`, zIndex: zIndex++ });
@@ -3433,11 +3470,11 @@ export function generateCanvaCrimsonExecutiveCurve(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Executive Committee")
-    : (meta.studentName || "Arthur Pendelton");
-  const brand = meta.universityName || meta.department || "Vanguard & Partners";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "Executive Strategic Assessment";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Global Market Expansion & Capital Allocation Framework";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "crimson-top-gold", type: "shape", name: "Top Gold Wave", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: gold, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${gold}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
@@ -3472,10 +3509,10 @@ export function generateCanvaSunsetHorizon(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Creative Direction Group")
     : (meta.studentName || "Maya Lin");
-  const brand = meta.universityName || meta.department || "Design & Media Institute";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "Visual Brand Strategy";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Contemporary Design Systems & Digital Identity";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "sunset-top-amber", type: "shape", name: "Top Amber Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: amber, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${amber}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
@@ -3510,10 +3547,10 @@ export function generateCanvaCyberHexMesh(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Security Research Squad")
     : (meta.studentName || "Devon Vance");
-  const brand = meta.universityName || meta.department || "Cyber Defense Institute";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "FAULT-TOLERANT ARCHITECTURE";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Zero-Trust Distributed Cryptographic Consensus Engine";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "cyber-top-poly", type: "shape", name: "Top Cyber Polygon", shapeType: "svg", x: 0, y: 0, width: 440, height: 180, fillColor: cobalt, svgContent: `<svg viewBox="0 0 440 180" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 440,0 360,180 0,180" fill="${cobalt}" /><polygon points="360,0 440,0 390,180 310,180" fill="${cyan}" opacity="0.8" /></svg>`, zIndex: zIndex++ });
@@ -3548,10 +3585,10 @@ export function generateCanvaAcademicCrestModern(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Graduate Research Syndicate")
     : (meta.studentName || "Eleanor Vance");
-  const brand = meta.universityName || meta.department || "Oxford Collegiate Faculty";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "Constitutional Jurisprudence & Governance";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Comparative Treaties in Public Law & Statutory Interpretation";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "crest-top-gold", type: "shape", name: "Top Gold Arch", shapeType: "svg", x: 0, y: 0, width: pageW, height: 165, fillColor: gold, svgContent: `<svg viewBox="0 0 794 165" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 794,0 L 794,145 C 550,165 250,165 0,145 Z" fill="${gold}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
@@ -3588,10 +3625,10 @@ export function generateCanvaForestBotanical(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Ecology Project Group")
     : (meta.studentName || "Rowan Thorne");
-  const brand = meta.universityName || meta.department || "Institute for Ecological Sciences";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "Biodiversity Conservation & Climate Resilience";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Restoration Ecology & Ecosystem Services Valuation";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "forest-top-sage", type: "shape", name: "Top Sage Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: sage, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${sage}" opacity="0.85" /></svg>`, zIndex: zIndex++ });
@@ -3630,10 +3667,10 @@ export function generateCanvaQuantumIndigo(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Quantum Systems Research Group")
     : (meta.studentName || "Dr. Elena Rostova");
-  const brand = meta.universityName || meta.department || "Quantum Dynamics Laboratory";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "QUANTUM ENTANGLEMENT & CRYPTOGRAPHY";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "High-Coherence Qubit Simulation & Fault-Tolerant Gate Synthesis";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "quantum-top-cyan", type: "shape", name: "Top Cyan Tech Polygon", shapeType: "svg", x: 0, y: 0, width: 480, height: 210, fillColor: cyan, svgContent: `<svg viewBox="0 0 480 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 480,0 380,210 0,210" fill="${cyan}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
@@ -3668,10 +3705,10 @@ export function generateCanvaMonochromeArch(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Architectural Collective")
     : (meta.studentName || "Julian Sterling");
-  const brand = meta.universityName || meta.department || "Atelier Modern Architecture";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "MONOCHROME SPATIAL DESIGN";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Brutalist Form, Sustainable Timber Structures, and Natural Illumination";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "mono-top-arch", type: "shape", name: "Architectural Top Arch", shapeType: "svg", x: 0, y: 0, width: 440, height: 210, fillColor: charcoal, svgContent: `<svg viewBox="0 0 440 210" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 440,0 C 440,110 330,210 200,210 L 0,210 Z" fill="${charcoal}"/><path d="M 0,210 L 220,210 C 350,210 440,120 440,0 L 455,0 C 455,130 360,225 220,225 L 0,225 Z" fill="${zinc}" opacity="0.6"/></svg>`, zIndex: zIndex++ });
@@ -3702,10 +3739,10 @@ export function generateCanvaPrismGeometric(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Prismatic Analytics Team")
     : (meta.studentName || "Claire Beaumont");
-  const brand = meta.universityName || meta.department || "Prism Analytics Co";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "PRISMATIC DATA ARCHITECTURE";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "High-Throughput Analytics & Vector Embedding Pipelines";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "prism-tl-coral", type: "shape", name: "Top Coral Facet", shapeType: "svg", x: 0, y: 0, width: 440, height: 210, fillColor: coral, svgContent: `<svg viewBox="0 0 440 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 440,0 320,210 0,210" fill="${coral}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
@@ -3740,10 +3777,10 @@ export function generateCanvaBauhausModernist(
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Bauhaus Design Studio")
     : (meta.studentName || "Walter Gropius");
-  const brand = meta.universityName || meta.department || "Bauhaus Visual Studies";
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "BAUHAUS MODERNIST PROPOSAL";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Form Follows Function • Asymmetric Modern Typography & Color Blocking";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FAFAFA", zIndex: zIndex++ });
   elements.push({ id: "bauhaus-top-bar", type: "shape", name: "Top Navy Bar", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: 160, fillColor: navy, zIndex: zIndex++ });
@@ -3777,11 +3814,11 @@ export function generateCanvaGradientGlassmorphism(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Innovation Research Lab")
-    : (meta.studentName || "Amara Vance");
-  const brand = meta.universityName || meta.department || "NextGen Innovation Labs";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "DIGITAL TRANSFORMATION STRATEGY";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Artificial Intelligence Adoption, Cloud Modernization & UX Agility";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "glass-top-pink", type: "shape", name: "Top Pink Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: secondary, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${secondary}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
@@ -3815,11 +3852,11 @@ export function generateCanvaTerracottaEditorial(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Editorial Board")
-    : (meta.studentName || "Camilla Sterling");
-  const brand = meta.universityName || meta.department || "Atelier Literary Press";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "MEDITERRANEAN ARCHITECTURAL REVIEW";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Earth, Terracotta & Coastal Urban Planning in Southern Europe";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "terra-top-sand", type: "shape", name: "Top Sand Wave", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: sand, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${sand}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
@@ -3852,11 +3889,11 @@ export function generateCanvaCyberpunkNeon(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Cybernetics Core Team")
-    : (meta.studentName || "Kenji Sato");
-  const brand = meta.universityName || meta.department || "Cyber Systems Lab";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "NEURAL INTERFACE & QUANTUM MESH";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "High-Bandwidth Brain-Machine Systems & Cryptographic Substrates";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "cyber-top-dark", type: "shape", name: "Top Dark Hex Polygon", shapeType: "svg", x: 0, y: 0, width: 500, height: 210, fillColor: darkBg, svgContent: `<svg viewBox="0 0 500 210" width="100%" height="100%" preserveAspectRatio="none"><polygon points="0,0 500,0 410,210 0,210" fill="${darkBg}"/><line x1="0" y1="208" x2="410" y2="208" stroke="${cyan}" stroke-width="4"/></svg>`, zIndex: zIndex++ });
@@ -3889,11 +3926,11 @@ export function generateCanvaEmeraldBlueprint(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Sustainable Systems Team")
-    : (meta.studentName || "Harrison Brooks");
-  const brand = meta.universityName || meta.department || "Nordic Ecology & Architecture";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "EMERALD SUSTAINABLE BLUEPRINT";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Passive Solar Envelope, Geothermal Grids, and Zero-Carbon Material Life Cycle";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "em-top-mint", type: "shape", name: "Top Mint Ribbon", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: mint, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${mint}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
@@ -3925,11 +3962,11 @@ export function generateCanvaRoseGoldLuxury(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Prestige Strategic Group")
-    : (meta.studentName || "Genevieve Monet");
-  const brand = meta.universityName || meta.department || "Haute Prestige Luxury Group";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "GLOBAL LUXURY BRAND STRATEGY";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "High-Net-Worth Consumer Acquisition & Heritage Craftsmanship Positioning";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "rose-top-gold", type: "shape", name: "Top Gold Ribbon", shapeType: "svg", x: 0, y: 0, width: 480, height: 220, fillColor: gold, svgContent: `<svg viewBox="0 0 480 220" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 480,0 C 400,100 280,180 160,180 C 90,180 30,200 0,220 Z" fill="${gold}" opacity="0.85"/></svg>`, zIndex: zIndex++ });
@@ -3961,11 +3998,11 @@ export function generateCanvaSwissInternational(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Swiss Typography Laboratory")
-    : (meta.studentName || "Max Miedinger");
-  const brand = meta.universityName || meta.department || "Kunstgewerbeschule Zürich";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "SWISS INTERNATIONAL TYPOGRAPHIC STYLE";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Mathematical Grid Alignment, Asymmetric Structure & Objective Photography";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "swiss-orange-block", type: "shape", name: "Orange Anchor Block", shapeType: "rectangle", x: 60, y: 60, width: 140, height: 140, fillColor: orange, zIndex: zIndex++ });
@@ -3998,7 +4035,7 @@ export function generateCanvaStanfordCardinalWave(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Stanford Engineering Cohort")
-    : (meta.studentName || "Alexander Hayes");
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
   const brand = meta.universityName || meta.department || "Stanford University";
   const title = meta.assignmentTitle || "DISTRIBUTED MACHINE LEARNING ACCELERATION";
   const year = meta.academicYear || "2026";
@@ -4034,11 +4071,11 @@ export function generateCanvaOceanicMaritimeCurve(
   const isGroup = meta.assignmentType === "group";
   const author = isGroup
     ? (meta.groupName || meta.groupMembers?.[0]?.fullName || "Marine Research Expedition")
-    : (meta.studentName || "Dr. Douglas Ballard");
-  const brand = meta.universityName || meta.department || "Institute for Oceanographic Sciences";
+    : (meta.studentName || (meta.isAssignment ? "" : "Author"));
+  const brand = meta.universityName || meta.department || "";
   const title = meta.assignmentTitle || "OCEANIC BIODIVERSITY & THERMAL CURRENTS";
   const year = meta.academicYear || "2026";
-  const subtitle = meta.courseName || meta.courseCode || "Deep-Sea Pelagic Ecosystems & Autonomous Submersible Bathymetry";
+  const subtitle = meta.courseName || meta.courseCode || "";
 
   elements.push({ id: "canvas-bg", type: "shape", name: "Page Background", shapeType: "rectangle", x: 0, y: 0, width: pageW, height: pageH, fillColor: "#FFFFFF", zIndex: zIndex++ });
   elements.push({ id: "ocean-top-aqua", type: "shape", name: "Top Aqua Wave", shapeType: "svg", x: 0, y: 0, width: 490, height: 225, fillColor: aqua, svgContent: `<svg viewBox="0 0 490 225" width="100%" height="100%" preserveAspectRatio="none"><path d="M 0,0 L 490,0 C 410,105 290,185 165,185 C 95,185 30,205 0,225 Z" fill="${aqua}" opacity="0.85"/></svg>`, zIndex: zIndex++ });

@@ -219,16 +219,14 @@ export function extractAssignmentMetadataFromText(text: string): ExtractedAssign
       if (titleMatch && titleMatch[1]) {
         suggestions.assignmentTitle = titleMatch[1].trim();
         suggestions.hasSuggestions = true;
-      } else if (
-        /^(?:Assignment\s+\d+|Midterm\s+Assignment|Final\s+Project|Case\s+Study|Lab\s+Report)\s*[:–—-]\s*(.{4,100})$/i.test(
-          line,
-        )
-      ) {
-        const m = line.match(
-          /^(?:Assignment\s+\d+|Midterm\s+Assignment|Final\s+Project|Case\s+Study|Lab\s+Report)\s*[:–—-]\s*(.{4,100})$/i,
+      } else {
+        // Pattern like: "Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols"
+        // or "... Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols"
+        const assignmentKeywordMatch = line.match(
+          /(?:(?:Midterm|Final|Research|Lab|Term|Course|Individual|Group)?\s*(?:Assignment|Project|Paper|Report|Case\s+Study|Proposal)(?:\s+\d+)?)\s*[:–—-]\s*(.{4,120})$/i,
         );
-        if (m && m[1]) {
-          suggestions.assignmentTitle = m[1].trim();
+        if (assignmentKeywordMatch && assignmentKeywordMatch[1]) {
+          suggestions.assignmentTitle = assignmentKeywordMatch[1].trim();
           suggestions.hasSuggestions = true;
         }
       }

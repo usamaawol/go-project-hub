@@ -1874,28 +1874,31 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
     }
 
     // 4. Markdown Table or Tab-delimited Table
+    const isPipeTableLine = (s: string) =>
+      /^\s*\|.+?\|\s*$/.test(s) || (s.includes("|") && s.split("|").length >= 3);
+
     if (
-      (/^\s*\|.+?\|\s*$/.test(trimmed) && i + 1 < lines.length && /\|/.test(lines[i + 1] || "")) ||
+      (isPipeTableLine(trimmed) && i + 1 < lines.length && (isPipeTableLine((lines[i + 1] || "").trim()) || /^\s*\|?[\s\-:|]+\|?\s*$/.test((lines[i + 1] || "").trim()))) ||
       (trimmed.includes("\t") && !trimmed.startsWith("•"))
     ) {
       flushParagraph();
       flushList();
 
       const tableRows: string[][] = [];
-      let isMarkdown = /^\s*\|.+?\|\s*$/.test(trimmed);
+      const isPipe = isPipeTableLine(trimmed);
 
       let j = i;
       while (j < lines.length) {
         const l = (lines[j] || "").trim();
         if (!l) break;
 
-        if (isMarkdown && /^\s*\|[\s\-:|]+\|\s*$/.test(l)) {
+        if (isPipe && /^\s*\|?[\s\-:|]+\|?\s*$/.test(l)) {
           // Skip markdown divider line |---|---|
           j++;
           continue;
         }
 
-        if (isMarkdown && /^\s*\|.+?\|\s*$/.test(l)) {
+        if (isPipe && isPipeTableLine(l)) {
           const cells = l
             .replace(/^\|\s*/, "")
             .replace(/\s*\|$/, "")
@@ -1903,7 +1906,7 @@ export function parsePlainTextToBlocks(text: string): DocSynthesizerBlock[] {
             .map((c) => c.trim());
           tableRows.push(cells);
           j++;
-        } else if (!isMarkdown && l.includes("\t")) {
+        } else if (!isPipe && l.includes("\t")) {
           const cells = l.split("\t").map((c) => c.trim());
           tableRows.push(cells);
           j++;
@@ -3222,7 +3225,13 @@ export async function renderExecutiveDocx(
         ? "Courier New"
         : "Arial";
 
-  const baseFontSizeHalfPoints = options?.fontSize ? Math.round(options.fontSize * 2) : 21;
+  const rawSize =
+    typeof options?.fontSize === "number"
+      ? options.fontSize
+      : typeof options?.fontSize === "string"
+        ? parseFloat(options.fontSize)
+        : NaN;
+  const baseFontSizeHalfPoints = Number.isFinite(rawSize) && rawSize > 0 ? Math.round(rawSize * 2) : 21;
   const h1SizeHalfPoints = Math.round(baseFontSizeHalfPoints * 1.4);
   const h2SizeHalfPoints = Math.round(baseFontSizeHalfPoints * 1.2);
   const h3SizeHalfPoints = Math.round(baseFontSizeHalfPoints * 1.05);
@@ -3412,7 +3421,13 @@ export async function renderExecutiveDocx(
         }),
       );
     } else if (block.type === "paragraph") {
-      const lineMultiplier = options?.lineSpacing || 1.15;
+      const rawMultiplier =
+        typeof options?.lineSpacing === "number"
+          ? options.lineSpacing
+          : typeof options?.lineSpacing === "string"
+            ? parseFloat(options.lineSpacing)
+            : 1.15;
+      const lineMultiplier = Number.isFinite(rawMultiplier) && rawMultiplier > 0 ? rawMultiplier : 1.15;
       const lineSpacingTwips = Math.round(lineMultiplier * 240);
 
       if (block.runs && block.runs.length > 0) {

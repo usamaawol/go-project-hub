@@ -28,7 +28,14 @@ import {
   type ExtractedAssignmentSuggestions,
   formatStudentMemberDisplay,
 } from "@/lib/assignment-metadata-extractor";
-import { extractDocumentText } from "@/lib/api-client";
+import {
+  extractDocumentText,
+  generateAiDocumentApi,
+  createPresentationSessionApi,
+  refineAiDocumentApi,
+  regeneratePresentationSlideAIApi,
+  type ClientAiDocumentResult,
+} from "@/lib/api-client";
 import {
   renderExecutiveDocx,
   renderExecutivePdf,
@@ -42,6 +49,7 @@ import {
   paginateSectionsIntoA4Pages,
   convertSectionsToInitialHtml,
   type FormattingConfig,
+  type DocSection,
   type DocumentSection,
 } from "./DocumentFormattingWorkflow";
 import { AssignmentCoverRenderer } from "./AssignmentCoverRenderer";
@@ -272,6 +280,82 @@ export function UnifiedAssignmentWorkflow({
   const [currentSlideIdx, setCurrentSlideIdx] = useState<number>(0);
   const [showNotesDrawer, setShowNotesDrawer] = useState<boolean>(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
+
+  // Interactive Natural Language AI Prompt Bar State
+  const [aiPromptInstruction, setAiPromptInstruction] = useState<string>("");
+  const [isApplyingAiPrompt, setIsApplyingAiPrompt] = useState<boolean>(false);
+
+  const handleApplyAiInstruction = async () => {
+    if (!aiPromptInstruction.trim()) return;
+    setIsApplyingAiPrompt(true);
+    try {
+      if (mode === "document") {
+        const payloadDoc: ClientAiDocumentResult = {
+          docTitle: formattingConfig.docTitle || metadata.assignmentTitle || "Document Title",
+          docSubtitle: formattingConfig.docSubtitle || metadata.courseName || "",
+          authorName: formattingConfig.authorName || metadata.studentName || "",
+          institution: formattingConfig.institution || metadata.universityName || "",
+          dateStr: formattingConfig.dateStr || metadata.submissionDate || "",
+          layoutArchetype: formattingConfig.layoutArchetype || "academic",
+          fontFamily: (formattingConfig.fontFamily as any) || "academic",
+          baseFontSize: formattingConfig.baseFontSize,
+          lineSpacing: formattingConfig.lineSpacing,
+          margins: formattingConfig.margins,
+          accentColor: formattingConfig.accentColor || "#1E3A8A",
+          coverTemplateId: metadata.coverTemplateId || "canva-salford-wave",
+          hasCoverPage: formattingConfig.hasCoverPage,
+          includeToc: formattingConfig.includeToc,
+          sections: parseDocumentSections(bodyHtml ? bodyHtml.replace(/<[^>]+>/g, " ") : rawContent, formattingConfig.headingNumbering).map((s) => ({
+            level: s.level,
+            numberStr: s.numberStr,
+            title: s.title,
+            paragraphs: s.paragraphs,
+            blocks: s.blocks.map((b) => ({
+              type: b.type,
+              content: b.content,
+              calloutType: b.calloutType,
+              calloutTitle: b.calloutTitle,
+              listItems: b.listItems,
+              tableData: b.tableData,
+            })),
+          })),
+        };
+
+        const res = await refineAiDocumentApi(payloadDoc, aiPromptInstruction);
+        if (res.data?.document) {
+          const refined = res.data.document;
+          setFormattingConfig((prev) => ({
+            ...prev,
+            fontFamily: (refined.fontFamily as any) || prev.fontFamily,
+            lineSpacing: refined.lineSpacing || prev.lineSpacing,
+            accentColor: refined.accentColor || prev.accentColor,
+            margins: refined.margins || prev.margins,
+          }));
+          toast.success(res.data.changesSummary || "AI improvements applied!");
+        }
+      } else {
+        if (presentationSession && presentationSession.slides[currentSlideIdx]) {
+          toast.loading(`Refining Slide ${currentSlideIdx + 1} with AI...`, { id: "refine-slide" });
+          const res = await regeneratePresentationSlideAIApi(
+            presentationSession.id,
+            currentSlideIdx,
+            aiPromptInstruction,
+          );
+          if (res.success && res.data) {
+            setPresentationSession(res.data);
+            toast.success(`Slide ${currentSlideIdx + 1} updated with AI!`, { id: "refine-slide" });
+          } else {
+            toast.error("Could not refine slide.", { id: "refine-slide" });
+          }
+        }
+      }
+      setAiPromptInstruction("");
+    } catch (err: any) {
+      toast.error(`Refinement failed: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsApplyingAiPrompt(false);
+    }
+  };
 
   const handleApplyThemePreset = (preset: (typeof THEME_PRESETS)[0]) => {
     if (presentationSession) {
@@ -833,145 +917,191 @@ export function UnifiedAssignmentWorkflow({
 
     setCurrentStage(5);
     setIsAiProcessing(true);
-    setAiProgress(10);
+    setAiProgress(15);
     setAiMilestoneIndex(0);
 
-    // Realistic milestone progression
-    const milestones = [
-      "Analyzing uploaded assignment content and preserving authentic text...",
-      "Normalizing heading hierarchy, subheadings, and section structure...",
-      "Formatting academic typography, spacing, citations, and tables...",
-      mode === "document"
-        ? "Applying ISO A4 page layout, margins, and Table of Contents..."
-        : "Synthesizing widescreen 16:9 presentation slide deck...",
-      "Embedding Cover Page (Page 1) with student credentials and institutional logo...",
-    ];
+    try {
+      if (mode === "document") {
+        setAiMilestoneIndex(1);
+        setAiProgress(35);
 
-    for (let i = 0; i < milestones.length; i++) {
-      setAiMilestoneIndex(i);
-      setAiProgress(20 + i * 18);
-      await new Promise((r) => setTimeout(r, 450));
-    }
+        const aiRes = await generateAiDocumentApi({
+          content: rawContent,
+          docType: "assignment",
+          metadata,
+          preferredCoverTemplate: metadata.coverTemplateId,
+          preferredFont: (formattingConfig.fontFamily as any) || "academic",
+          preferredAccent: metadata.accentColor,
+        });
 
-    setAiProgress(100);
+        setAiMilestoneIndex(2);
+        setAiProgress(65);
 
-    if (mode === "document") {
-      // 1. Clean document noise, repeated headers, page artifacts
-      const cleaned = cleanDocumentPageNoise(rawContent);
+        const docData = aiRes.data;
 
-      // 2. Synchronize title/subtitle if detected from content
-      let activeTitle = metadata.assignmentTitle?.trim() || "";
-      let activeSubtitle = metadata.courseName?.trim() || "";
+        // Map AI sections to UI DocSection structure
+        const sections: DocSection[] = docData.sections.map((s, sIdx) => ({
+          level: s.level,
+          numberStr: s.numberStr,
+          title: s.title,
+          paragraphs: s.paragraphs,
+          blocks: s.blocks.map((b) => ({
+            type: b.type,
+            content: b.content,
+            calloutType: b.calloutType,
+            calloutTitle: b.calloutTitle,
+            listItems: b.listItems,
+            tableData: b.tableData,
+          })),
+          sectionIndex: sIdx,
+        }));
 
-      const titleMatch = cleaned.match(/^(?:#+\s*|\*\*\s*)?(PROJECT PROPOSAL|ASSIGNMENT|LAB REPORT|RESEARCH REPORT|FINAL PROJECT|EXECUTIVE SUMMARY)\b/im);
-      if (titleMatch && !activeTitle) {
-        activeTitle = titleMatch[1]!;
-      }
+        setAiMilestoneIndex(3);
+        setAiProgress(85);
 
-      // 3. Build document sections preserving natural numbering
-      const sections = parseDocumentSections(cleaned, formattingConfig.headingNumbering);
-      const initialHtml = convertSectionsToInitialHtml(sections);
-      setBodyHtml(initialHtml);
+        const initialHtml = convertSectionsToInitialHtml(sections);
+        setBodyHtml(initialHtml);
 
-      // 4. Update formatting config with academic styling
-      setFormattingConfig((prev) => ({
-        ...prev,
-        docTitle: activeTitle || prev.docTitle || "Document Title",
-        docSubtitle: activeSubtitle || prev.docSubtitle,
-        fontFamily: prev.fontFamily || "academic",
-        lineSpacing: prev.lineSpacing || "1.5",
-        headingNumbering: prev.headingNumbering || "none",
-        assignmentMetadata: {
+        const activeTitle = metadata.assignmentTitle?.trim() || docData.docTitle;
+        const activeSubtitle = metadata.courseName?.trim() || docData.docSubtitle;
+        const activeStudent = metadata.studentName?.trim() || docData.authorName;
+        const activeUni = metadata.universityName?.trim() || docData.institution;
+        const activeDate = metadata.submissionDate?.trim() || docData.dateStr;
+
+        const updatedMeta: AssignmentMetadata = {
           ...metadata,
-          assignmentTitle: activeTitle || metadata.assignmentTitle,
-          courseName: activeSubtitle || metadata.courseName,
-        },
-      }));
-    } else {
-      // Build presentation slides with assignment cover as Slide 1
-      const title =
-        metadata.assignmentTitle?.trim() ||
-        metadata.courseName?.trim() ||
-        "Course Assignment";
+          isAssignment: true,
+          assignmentTitle: activeTitle,
+          courseName: activeSubtitle,
+          studentName: activeStudent,
+          universityName: activeUni,
+          submissionDate: activeDate,
+        };
 
-      // AI Intelligent Cover Layout Decision
-      const selectedTemplate = COVER_TEMPLATES.find((t) => t.id === metadata.coverTemplateId);
-      const isCenteredTpl =
-        selectedTemplate?.category === "Minimalist" ||
-        selectedTemplate?.category === "Academic" ||
-        selectedTemplate?.id.includes("thesis") ||
-        selectedTemplate?.id.includes("classic") ||
-        selectedTemplate?.id.includes("circular");
+        setMetadata(updatedMeta);
 
-      const aiAlignment: "left" | "center" | "right" =
-        metadata.coverTitleAlignment || (isCenteredTpl ? "center" : "left");
-      const titleLen = title.length;
-      const isLongTitle = titleLen > 35;
-      const isShortTitle = titleLen <= 16;
-      const hasManyMembers = (metadata.groupMembers || []).length > 2;
-      const aiPosition: "top" | "middle" | "lower" =
-        metadata.coverTitlePosition || (isLongTitle || hasManyMembers ? "top" : "middle");
-      const aiFontSize =
-        metadata.coverTitleFontSize || (isShortTitle ? 44 : isLongTitle ? 32 : 38);
+        setFormattingConfig((prev) => ({
+          ...prev,
+          docTitle: activeTitle || prev.docTitle || "Document Title",
+          docSubtitle: activeSubtitle || prev.docSubtitle,
+          authorName: activeStudent || prev.authorName,
+          institution: activeUni || prev.institution,
+          dateStr: activeDate || prev.dateStr,
+          fontFamily: (docData.fontFamily as any) || "academic",
+          lineSpacing: docData.lineSpacing || "1.5",
+          margins: docData.margins || "normal",
+          accentColor: docData.accentColor || prev.accentColor,
+          headingNumbering: prev.headingNumbering || "none",
+          assignmentMetadata: updatedMeta,
+        }));
 
-      const aiEnhancedMeta: AssignmentMetadata = {
-        ...metadata,
-        isAssignment: true,
-        coverTitleAlignment: aiAlignment,
-        coverTitlePosition: aiPosition,
-        coverTitleFontSize: aiFontSize,
-      };
+        setAiMilestoneIndex(4);
+        setAiProgress(100);
+      } else {
+        // Presentation Mode: Real AI slide generator with authentic assignment cover
+        setAiMilestoneIndex(1);
+        setAiProgress(30);
 
-      setMetadata(aiEnhancedMeta);
+        const title =
+          metadata.assignmentTitle?.trim() ||
+          metadata.courseName?.trim() ||
+          "Course Assignment";
 
-      const slides = buildSlideDeckContent(
-        title,
-        rawContent,
-        8,
-        "balanced",
-        "Academic Assignment",
-        aiEnhancedMeta,
-      );
+        const selectedTemplate = COVER_TEMPLATES.find((t) => t.id === metadata.coverTemplateId);
+        const isCenteredTpl =
+          selectedTemplate?.category === "Minimalist" ||
+          selectedTemplate?.category === "Academic" ||
+          selectedTemplate?.id.includes("thesis") ||
+          selectedTemplate?.id.includes("classic") ||
+          selectedTemplate?.id.includes("circular");
 
-      const session: PresentationSessionData = {
-        id: `sess-${Date.now()}`,
-        title,
-        purpose: "Academic Assignment",
-        density: "balanced",
-        assignmentMetadata: aiEnhancedMeta,
-        theme: {
-          id: "corporate-clean",
-          name: "Academic Clean",
-          category: "Academic",
-          kind: "academic",
-          colors: {
-            primary: aiEnhancedMeta.accentColor || "#1E3A8A",
-            accent: "#3B82F6",
-            bg: "#FFFFFF",
+        const aiAlignment: "left" | "center" | "right" =
+          metadata.coverTitleAlignment || (isCenteredTpl ? "center" : "left");
+        const titleLen = title.length;
+        const isLongTitle = titleLen > 35;
+        const isShortTitle = titleLen <= 16;
+        const hasManyMembers = (metadata.groupMembers || []).length > 2;
+        const aiPosition: "top" | "middle" | "lower" =
+          metadata.coverTitlePosition || (isLongTitle || hasManyMembers ? "top" : "middle");
+        const aiFontSize =
+          metadata.coverTitleFontSize || (isShortTitle ? 44 : isLongTitle ? 32 : 38);
+
+        const aiEnhancedMeta: AssignmentMetadata = {
+          ...metadata,
+          isAssignment: true,
+          coverTitleAlignment: aiAlignment,
+          coverTitlePosition: aiPosition,
+          coverTitleFontSize: aiFontSize,
+        };
+
+        setMetadata(aiEnhancedMeta);
+
+        setAiMilestoneIndex(2);
+        setAiProgress(60);
+
+        const session = await createPresentationSessionApi({
+          title,
+          content: rawContent,
+          presentationType: "assignment",
+          assignmentMetadata: aiEnhancedMeta,
+          purpose: "Academic Assignment",
+          density: "balanced",
+          slideCount: 8,
+          theme: {
+            id: "corporate-clean",
+            name: "Academic Clean",
+            category: "Academic",
+            kind: "academic",
+            colors: {
+              primary: aiEnhancedMeta.accentColor || "#1E3A8A",
+              accent: "#3B82F6",
+              bg: "#FFFFFF",
+            },
+            fonts: "Inter",
+            tier: "free",
           },
-          fonts: "Inter",
-          tier: "free",
-        },
-        typography: {
-          fontFamily: "Inter",
-          fontSizePreset: "standard",
-        },
-        slideCount: slides.length,
-        slides,
-        fileSize: 1024 * 120,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 600000,
-        secondsRemaining: 600,
-      };
+        });
 
-      setPresentationSession(session);
-      setCurrentSlideIdx(0);
+        setAiMilestoneIndex(3);
+        setAiProgress(85);
+
+        const clientSession: PresentationSessionData = {
+          id: session.sessionId,
+          title: session.title,
+          purpose: "Academic Assignment",
+          density: "balanced",
+          assignmentMetadata: aiEnhancedMeta,
+          theme: {
+            id: "corporate-clean",
+            name: "Academic Clean",
+            category: "Academic",
+            kind: "academic",
+            colors: { primary: aiEnhancedMeta.accentColor || "#1E3A8A", accent: "#3B82F6", bg: "#FFFFFF" },
+            fonts: "Inter",
+            tier: "free",
+          },
+          typography: { fontFamily: "Inter", fontSizePreset: "standard" },
+          slideCount: session.slides?.length || session.slideCount || 8,
+          slides: session.slides || [],
+          fileSize: 1024 * 120,
+          createdAt: Date.now(),
+          expiresAt: session.expiresAt || (Date.now() + 600000),
+          secondsRemaining: session.secondsRemaining || 600,
+        };
+
+        setPresentationSession(clientSession);
+        setCurrentSlideIdx(0);
+        setAiMilestoneIndex(4);
+        setAiProgress(100);
+      }
+      toast.success("Assignment synthesized successfully with AI!");
+    } catch (err: any) {
+      console.error("AI Assignment Processing error:", err);
+      toast.error(`AI Formatting Error: ${err?.message || "Failed to process content."}`);
+    } finally {
+      setIsAiProcessing(false);
+      setCurrentStage(6);
     }
-
-    await new Promise((r) => setTimeout(r, 300));
-    setIsAiProcessing(false);
-    setCurrentStage(6);
-    toast.success("Assignment formatted with AI!");
   };
 
   // Stage 7: DOCX Export
@@ -2455,6 +2585,52 @@ export function UnifiedAssignmentWorkflow({
               >
                 <span>Proceed to Export</span>
                 <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Interactive Natural Language AI Prompt Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 rounded-2xl border border-primary/20 bg-primary/5 shadow-xs">
+            <div className="flex items-center gap-2 text-xs font-semibold text-primary shrink-0 px-1">
+              <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+              <span>Ask AI to Improve:</span>
+            </div>
+            <div className="flex-1 flex items-center gap-2">
+              <input
+                type="text"
+                value={aiPromptInstruction}
+                onChange={(e) => setAiPromptInstruction(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isApplyingAiPrompt) {
+                    handleApplyAiInstruction();
+                  }
+                }}
+                placeholder={
+                  mode === "document"
+                    ? 'e.g. "Make this more professional", "Add an executive summary", "Convert section 2 into a table", "Use academic serif typography"'
+                    : 'e.g. "Add a metric comparison card", "Make this slide more visual", "Simplify bullet points"'
+                }
+                className="flex-1 px-3 py-1.5 text-xs rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                disabled={isApplyingAiPrompt || !aiPromptInstruction.trim()}
+                onClick={handleApplyAiInstruction}
+                className="text-xs h-8 px-3 gap-1.5 font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs shrink-0"
+              >
+                {isApplyingAiPrompt ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Applying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Apply AI Improvement</span>
+                  </>
+                )}
               </Button>
             </div>
           </div>
