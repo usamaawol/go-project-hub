@@ -504,6 +504,9 @@ export function deriveDocumentMetadata(text: string): {
 
         // Check if line is a clean concise heading
         if (!isConversationalOrLong(cur)) {
+          if (/^(?:[1-5](?:st|nd|rd|th)(?:\s+Year)?|Year\s+[1-5]|Freshman|Sophomore|Junior|Senior|Semester\s+\d+|Term\s+\d+)$/i.test(cur.trim())) {
+            continue;
+          }
           const clean = cur
             .replace(/^(\d+(?:\.\d+)*|[A-Z]\.|\bSection\b|\bChapter\b|#+)\s*[:.]?\s*/i, "")
             .trim();
@@ -1415,7 +1418,7 @@ export function DocumentFormattingWorkflow({
   });
 
   // Active preview tab in Step 3
-  const [previewPage, setPreviewPage] = useState<"all" | "editor" | "single" | "toc" | "cover">("all");
+  const [previewPage, setPreviewPage] = useState<"all" | "editor" | "single" | "toc" | "cover">("editor");
   const [bodyHtml, setBodyHtml] = useState<string>("");
   const [activePageNum, setActivePageNum] = useState<number>(1);
   const [paperMode, setPaperMode] = useState<"standard" | "dark">("standard");
@@ -3842,6 +3845,19 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                           onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
                           effectiveCoverMetadata={effectiveCoverMetadata}
                           zoomScale={effectiveScale}
+                          onUpdateMetadata={(updatedMeta) => {
+                            setAssignmentMetadata(updatedMeta);
+                            setConfig((prev) => ({
+                              ...prev,
+                              assignmentMetadata: updatedMeta,
+                              docTitle: updatedMeta.assignmentTitle || prev.docTitle,
+                              docSubtitle: updatedMeta.courseName || prev.docSubtitle,
+                              authorName: updatedMeta.studentName || prev.authorName,
+                              institution: updatedMeta.universityName || prev.institution,
+                              dateStr: updatedMeta.submissionDate || prev.dateStr,
+                              accentColor: updatedMeta.accentColor || prev.accentColor,
+                            }));
+                          }}
                         />
                       </div>
                     )}
@@ -3897,6 +3913,12 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                   sections={sections}
                                   onNavigatePage={(p) => setActivePageNum(p)}
                                   onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
+                                  onNavigateToEditor={() => {
+                                    if (!bodyHtml && rawText) {
+                                      setBodyHtml(convertSectionsToInitialHtml(sections));
+                                    }
+                                    setPreviewPage("editor");
+                                  }}
                                 />
                               </div>
                             </div>
@@ -3947,6 +3969,12 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                               sections={sections}
                               onNavigatePage={(p) => setActivePageNum(p)}
                               onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
+                              onNavigateToEditor={() => {
+                                if (!bodyHtml && rawText) {
+                                  setBodyHtml(convertSectionsToInitialHtml(sections));
+                                }
+                                setPreviewPage("editor");
+                              }}
                             />
                           </div>
                         </div>
@@ -4005,6 +4033,12 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                       setPreviewPage("single");
                                     }}
                                     onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
+                                    onNavigateToEditor={() => {
+                                      if (!bodyHtml && rawText) {
+                                        setBodyHtml(convertSectionsToInitialHtml(sections));
+                                      }
+                                      setPreviewPage("editor");
+                                    }}
                                   />
                                 </div>
                               </div>
@@ -4063,6 +4097,12 @@ Hybrid optimistic pipelines offer optimal throughput while preserving guaranteed
                                       setPreviewPage("single");
                                     }}
                                     onOpenCanvasEditor={() => setIsCanvasEditorOpen(true)}
+                                    onNavigateToEditor={() => {
+                                      if (!bodyHtml && rawText) {
+                                        setBodyHtml(convertSectionsToInitialHtml(sections));
+                                      }
+                                      setPreviewPage("editor");
+                                    }}
                                   />
                                 </div>
                               </div>
@@ -4349,6 +4389,7 @@ function A4PageCard({
   onNavigatePage,
   onOpenCanvasEditor,
   onContentChange,
+  onNavigateToEditor,
 }: {
   page: DocA4Page;
   config: FormattingConfig;
@@ -4357,6 +4398,7 @@ function A4PageCard({
   onNavigatePage?: (pageNum: number) => void;
   onOpenCanvasEditor?: () => void;
   onContentChange?: () => void;
+  onNavigateToEditor?: () => void;
 }) {
   const marginPadding =
     config.margins === "narrow"
@@ -4414,14 +4456,25 @@ function A4PageCard({
       {/* Running Page Top Header */}
       {!page.isCover && (
         <div className="flex items-center justify-between text-[11px] font-sans text-muted-foreground pb-3 mb-3 border-b border-border/30 shrink-0 select-none">
-          <span className="truncate max-w-[70%] font-medium">
+          <span className="truncate max-w-[60%] font-medium">
             {config.headerText || config.docTitle || "Document"}
           </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
-            {page.isToc
-              ? `Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` (${page.tocPart}/${page.tocTotalParts})` : ""}`
-              : `A4 Page ${page.pageNumber}`}
-          </span>
+          <div className="flex items-center gap-3">
+            {onNavigateToEditor && !page.isToc && (
+              <button
+                type="button"
+                onClick={onNavigateToEditor}
+                className="text-[10px] text-primary hover:underline font-sans cursor-pointer flex items-center gap-1 font-medium"
+              >
+                <Edit3 className="h-3 w-3" /> Edit in Interactive Editor
+              </button>
+            )}
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+              {page.isToc
+                ? `Table of Contents${page.tocTotalParts && page.tocTotalParts > 1 ? ` (${page.tocPart}/${page.tocTotalParts})` : ""}`
+                : `A4 Page ${page.pageNumber}`}
+            </span>
+          </div>
         </div>
       )}
 
@@ -4438,8 +4491,21 @@ function A4PageCard({
               metadata={effectiveCoverMetadata}
               aspectRatio="a4"
             />
-            {onOpenCanvasEditor && (
-              <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 backdrop-blur-md p-1.5 rounded-xl shadow-2xl flex items-center gap-2">
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+              {onNavigateToEditor && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs bg-white/90 dark:bg-zinc-900/90 hover:bg-white text-slate-800 dark:text-slate-100 font-semibold gap-1.5 shadow-md cursor-pointer border border-border"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateToEditor();
+                  }}
+                >
+                  <Edit3 className="h-3.5 w-3.5 text-primary" /> Edit Cover Info
+                </Button>
+              )}
+              {onOpenCanvasEditor && (
                 <Button
                   size="sm"
                   variant="default"
@@ -4451,8 +4517,8 @@ function A4PageCard({
                 >
                   <Wand2 className="h-3.5 w-3.5" /> Customize Cover
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 

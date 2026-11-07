@@ -170,16 +170,22 @@ export function extractAssignmentMetadataFromText(text: string): ExtractedAssign
     // 7. Academic Year & Semester
     if (!suggestions.academicYear) {
       const yearMatch = line.match(
-        /^(?:Academic\s*Year|Study\s*Year|Year)\s*[:=–—]\s*(\d{4}\s*[-–/]\s*\d{2,4}|\d{4})$/i,
+        /^(?:Academic\s*Year|Study\s*Year|Student\s*Year|Academic\s*Session|Year)\s*[:=–—]\s*(.+)$/i,
       );
-      if (yearMatch && yearMatch[1]) {
+      if (yearMatch && yearMatch[1] && yearMatch[1].length < 35) {
         suggestions.academicYear = yearMatch[1].trim();
         suggestions.hasSuggestions = true;
       } else {
-        const directYear = line.match(/\b(20\d{2}\s*[-–/]\s*20\d{2}|20\d{2}\s*[-–/]\s*\d{2})\b/);
-        if (directYear && directYear[1]) {
-          suggestions.academicYear = directYear[1].trim();
+        const studentYearOrdinal = line.match(/\b([1-5](?:st|nd|rd|th)\s+Year|Year\s+[1-5]|Freshman|Sophomore|Junior|Senior)\b/i);
+        if (studentYearOrdinal && studentYearOrdinal[1]) {
+          suggestions.academicYear = studentYearOrdinal[1].trim();
           suggestions.hasSuggestions = true;
+        } else {
+          const directYear = line.match(/\b(20\d{2}\s*[-–/]\s*20\d{2}|20\d{2}\s*[-–/]\s*\d{2})\b/);
+          if (directYear && directYear[1]) {
+            suggestions.academicYear = directYear[1].trim();
+            suggestions.hasSuggestions = true;
+          }
         }
       }
     }
@@ -213,21 +219,24 @@ export function extractAssignmentMetadataFromText(text: string): ExtractedAssign
 
     // 9. Assignment Title
     if (!suggestions.assignmentTitle) {
-      const titleMatch = line.match(
-        /^(?:Assignment\s*Title|Title|Topic|Project\s*Title)\s*[:=–—]\s*(.{4,100})$/i,
-      );
-      if (titleMatch && titleMatch[1]) {
-        suggestions.assignmentTitle = titleMatch[1].trim();
-        suggestions.hasSuggestions = true;
-      } else {
-        // Pattern like: "Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols"
-        // or "... Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols"
-        const assignmentKeywordMatch = line.match(
-          /(?:(?:Midterm|Final|Research|Lab|Term|Course|Individual|Group)?\s*(?:Assignment|Project|Paper|Report|Case\s+Study|Proposal)(?:\s+\d+)?)\s*[:–—-]\s*(.{4,120})$/i,
+      // Do not treat pure academic year or student standing as the assignment title
+      if (!/^(?:[1-5](?:st|nd|rd|th)(?:\s+Year)?|Year\s+[1-5]|Freshman|Sophomore|Junior|Senior)$/i.test(line.trim())) {
+        const titleMatch = line.match(
+          /^(?:Assignment\s*Title|Title|Topic|Project\s*Title)\s*[:=–—]\s*(.{4,100})$/i,
         );
-        if (assignmentKeywordMatch && assignmentKeywordMatch[1]) {
-          suggestions.assignmentTitle = assignmentKeywordMatch[1].trim();
+        if (titleMatch && titleMatch[1]) {
+          suggestions.assignmentTitle = titleMatch[1].trim();
           suggestions.hasSuggestions = true;
+        } else {
+          // Pattern like: "Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols"
+          // or "... Midterm Research Assignment: Byzantine Fault Tolerant Consensus Protocols"
+          const assignmentKeywordMatch = line.match(
+            /(?:(?:Midterm|Final|Research|Lab|Term|Course|Individual|Group)?\s*(?:Assignment|Project|Paper|Report|Case\s+Study|Proposal)(?:\s+\d+)?)\s*[:–—-]\s*(.{4,120})$/i,
+          );
+          if (assignmentKeywordMatch && assignmentKeywordMatch[1]) {
+            suggestions.assignmentTitle = assignmentKeywordMatch[1].trim();
+            suggestions.hasSuggestions = true;
+          }
         }
       }
     }

@@ -11,10 +11,17 @@ import {
   Wand2,
   FileText,
   Sparkles,
+  Sliders,
+  Edit3,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AssignmentCoverRenderer } from "./AssignmentCoverRenderer";
 import type { AssignmentMetadata } from "@/lib/assignment-types";
+import { COVER_TEMPLATES } from "@/lib/assignment-types";
 import type { FormattingConfig } from "./DocumentFormattingWorkflow";
 import { AcademicIdentityHeader } from "./AcademicIdentityHeader";
 
@@ -26,6 +33,7 @@ export interface DocumentRichBodyEditorProps {
   onOpenCanvasEditor?: () => void;
   effectiveCoverMetadata: AssignmentMetadata;
   zoomScale?: number;
+  onUpdateMetadata?: (updated: AssignmentMetadata) => void;
 }
 
 export function DocumentRichBodyEditor({
@@ -36,10 +44,12 @@ export function DocumentRichBodyEditor({
   onOpenCanvasEditor,
   effectiveCoverMetadata,
   zoomScale = 1.0,
+  onUpdateMetadata,
 }: DocumentRichBodyEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [bubblePosition, setBubblePosition] = useState<{ top: number; left: number } | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
+  const [isEditingCoverInfo, setIsEditingCoverInfo] = useState(false);
   const isInternalUpdate = useRef(false);
 
   // Initialize editor HTML
@@ -145,10 +155,212 @@ export function DocumentRichBodyEditor({
             <span className="font-semibold tracking-wider uppercase text-emerald-600 flex items-center gap-1.5">
               <Sparkles className="h-3 w-3" /> A4 Sheet 1 of Document · Canva Cover
             </span>
-            <span className="text-[10px] bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded px-2 py-0.5 font-sans font-medium">
-              Page 1 of Document
-            </span>
+            <div className="flex items-center gap-2">
+              {onUpdateMetadata && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditingCoverInfo(!isEditingCoverInfo)}
+                  className="h-7 text-[11px] px-2.5 gap-1.5 font-medium border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer shadow-xs"
+                >
+                  <Sliders className="h-3 w-3" />
+                  {isEditingCoverInfo ? "Hide Cover Form" : "Edit Cover Details"}
+                </Button>
+              )}
+              {onOpenCanvasEditor && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={onOpenCanvasEditor}
+                  className="h-7 text-[11px] px-2.5 gap-1.5 font-medium bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
+                >
+                  <Wand2 className="h-3 w-3" /> Canvas Designer
+                </Button>
+              )}
+            </div>
           </div>
+
+          {/* Quick Cover Information Edit Drawer */}
+          {isEditingCoverInfo && onUpdateMetadata && (
+            <div
+              className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 p-4 shadow-sm shrink-0 select-none"
+              style={{ width: `${Math.round(794 * zoomScale)}px` }}
+            >
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-emerald-500/20">
+                <span className="text-xs font-bold text-emerald-950 dark:text-emerald-100 flex items-center gap-1.5">
+                  <Edit3 className="h-3.5 w-3.5 text-emerald-600" /> Cover Information Editor
+                </span>
+                <span className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 font-mono">
+                  Edits update live on cover and in exported DOCX & PDF
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Document Title
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.assignmentTitle || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        assignmentTitle: e.target.value,
+                      })
+                    }
+                    placeholder="Enter main document title..."
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Course / Subtitle
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.courseName || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        courseName: e.target.value,
+                      })
+                    }
+                    placeholder="e.g. OOP (OOp-22)"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Academic Year / Standing
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.academicYear || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        academicYear: e.target.value,
+                      })
+                    }
+                    placeholder="e.g. 3rd Year, Junior, 2026-2027"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                  <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                    Kept in student credentials, never attached to title.
+                  </span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Student / Author Name
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.studentName || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        studentName: e.target.value,
+                      })
+                    }
+                    placeholder="e.g. Usama Awol"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Student ID
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.studentId || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        studentId: e.target.value,
+                      })
+                    }
+                    placeholder="e.g. 3265-17"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Instructor / Presented To
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.instructorName || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        instructorName: e.target.value,
+                      })
+                    }
+                    placeholder="e.g. Dame K"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    University / Institution
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.universityName || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        universityName: e.target.value,
+                      })
+                    }
+                    placeholder="e.g. HARAMAYA UNIVERSITY"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Department / Faculty
+                  </label>
+                  <input
+                    type="text"
+                    value={effectiveCoverMetadata.department || ""}
+                    onChange={(e) =>
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        department: e.target.value,
+                      })
+                    }
+                    placeholder="e.g. IT · CCI"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Cover Design Template
+                  </label>
+                  <select
+                    value={effectiveCoverMetadata.coverTemplateId || "canva-salford-wave"}
+                    onChange={(e) => {
+                      const newTpl = COVER_TEMPLATES.find((t) => t.id === e.target.value);
+                      onUpdateMetadata({
+                        ...effectiveCoverMetadata,
+                        coverTemplateId: e.target.value,
+                        accentColor: newTpl?.defaultAccent || effectiveCoverMetadata.accentColor,
+                        customCoverElements: undefined,
+                      });
+                    }}
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium focus:ring-1 focus:ring-emerald-500 outline-hidden"
+                  >
+                    {COVER_TEMPLATES.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div
             className="relative shrink-0 overflow-hidden rounded-xs shadow-paper group"
@@ -174,9 +386,23 @@ export function DocumentRichBodyEditor({
                   aspectRatio="a4"
                 />
 
-                {/* Return to Cover Designer Overlay Button */}
-                {onOpenCanvasEditor && (
-                  <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 backdrop-blur-md p-1.5 rounded-xl shadow-2xl flex items-center gap-2">
+                {/* Cover Quick Action Bar */}
+                <div className="absolute top-4 right-4 z-20 bg-slate-900/85 backdrop-blur-md p-1.5 rounded-xl shadow-xl flex items-center gap-2 border border-white/10">
+                  {onUpdateMetadata && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs bg-white/95 hover:bg-white text-slate-900 font-semibold gap-1.5 shadow-xs cursor-pointer border-none"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsEditingCoverInfo(!isEditingCoverInfo);
+                      }}
+                    >
+                      <Sliders className="h-3.5 w-3.5 text-emerald-600" />
+                      {isEditingCoverInfo ? "Close Form" : "Edit Cover Info"}
+                    </Button>
+                  )}
+                  {onOpenCanvasEditor && (
                     <Button
                       size="sm"
                       variant="default"
@@ -188,8 +414,8 @@ export function DocumentRichBodyEditor({
                     >
                       <Wand2 className="h-3.5 w-3.5" /> Customize Cover
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>

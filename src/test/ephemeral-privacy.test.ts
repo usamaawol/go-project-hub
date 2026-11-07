@@ -1,4 +1,21 @@
 import { describe, expect, it, beforeEach } from "vitest";
+
+if (typeof localStorage === "undefined") {
+  const store: Record<string, string> = {};
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => {
+      store[k] = v;
+    },
+    removeItem: (k: string) => {
+      delete store[k];
+    },
+    clear: () => {
+      Object.keys(store).forEach((k) => delete store[k]);
+    },
+  };
+}
+
 import {
   getWorkspaceJobs,
   addWorkspaceJob,

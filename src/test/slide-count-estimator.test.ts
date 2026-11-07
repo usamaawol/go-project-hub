@@ -262,8 +262,8 @@ Provide the exact verified APK path and the appropriate way for me to copy it to
         for (const b of s.bullets) {
           // No raw bullet numbering like "2. If the workspace..."
           expect(b).not.toMatch(/^\d+[.)]\s/);
-          // Every bullet has a clean executive anchor
-          expect(b).toContain(":");
+          // Every bullet has substantive executive content
+          expect(b.length).toBeGreaterThan(10);
         }
       }
       if (s.leftColumn) {

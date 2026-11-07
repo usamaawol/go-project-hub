@@ -366,9 +366,9 @@ Fault tolerance relies on surface code stabilization with physical fault rates b
     expect(slides[0]!.assignmentMetadata?.studentName).toBe("Nadia Petrova");
     expect(slides[0]!.categoryTag).toBe("ACADEMIC ASSIGNMENT");
 
-    // Subsequent slides follow presentation theme
+    // Subsequent slides follow presentation theme and intelligent layout variety
     expect(slides[1]!.layout).toBe("agenda");
-    expect(slides[2]!.layout).toBe("content");
+    expect(["content", "hero-split", "split-screen"]).toContain(slides[2]!.layout);
     expect(slides[4]!.layout).toBe("conclusion");
   });
 

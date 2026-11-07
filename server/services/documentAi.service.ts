@@ -306,6 +306,9 @@ export function generateDeterministicStructuredDocument(
         // Stop before section headings
         break;
       }
+      if (/^(?:[1-5](?:st|nd|rd|th)(?:\s+Year)?|Year\s+[1-5]|Freshman|Sophomore|Junior|Senior|Semester\s+\d+|Term\s+\d+)$/i.test(line.trim())) {
+        continue;
+      }
       if (line.length > 5 && line.length < 80 && !line.includes(":") && !line.endsWith(".")) {
         docTitle = line;
         break;

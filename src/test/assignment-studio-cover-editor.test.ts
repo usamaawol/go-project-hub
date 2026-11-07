@@ -382,9 +382,9 @@ describe("DocuMind Document Studio 50+ Cover Templates & Native Editor Verificat
       const brYellow = elements.find((e) => e.id === "salford-br-yellow");
       expect(brYellow).toBeDefined();
 
-      // 5. Title & Author
+      // 5. Title & Author (Title is clean and never concatenates academic year/standing)
       const titleEl = elements.find((e) => e.id === "salford-title-main");
-      expect(titleEl?.text).toBe("Project Proposal 2026");
+      expect(titleEl?.text).toBe("Project Proposal");
 
       const authorEl = elements.find((e) => e.id === "salford-meta-name");
       expect(authorEl?.text).toBe("Benjamin Shah");
@@ -463,6 +463,48 @@ describe("DocuMind Document Studio 50+ Cover Templates & Native Editor Verificat
       const dotAccent = elements.find((e) => e.id === "accent-dot-matrix");
       expect(dotAccent).toBeDefined();
       expect(dotAccent?.svgContent).toContain("<circle");
+    });
+
+    it("ensures academic year or standing (e.g. '3rd', '3rd Year') is never concatenated to the title on any cover template", () => {
+      const testMetadata: AssignmentMetadata = {
+        ...getDefaultAssignmentMetadata(),
+        assignmentTitle: "DocuMind",
+        academicYear: "3rd",
+        studentName: "Usama Awol",
+        courseName: "Object Oriented Programming",
+      };
+
+      // Test across multiple top Canva templates
+      const templatesToVerify = [
+        "canva-salford-wave",
+        "canva-aurora-teal",
+        "canva-alpine-frost",
+        "canva-crimson-elegance",
+        "canva-sunset-horizon",
+        "canva-forest-heritage",
+        "canva-monochrome-executive",
+        "canva-nordic-prism",
+        "canva-glassmorphic-executive",
+        "canva-terracotta-editorial",
+        "canva-emerald-prestige",
+        "canva-rose-quartz",
+        "canva-cardinal-vanguard",
+        "canva-oceanic-gradient",
+      ];
+
+      for (const tplId of templatesToVerify) {
+        const tpl = getCoverTemplateById(tplId);
+        const elements = generateDefaultCoverElements(tpl, testMetadata);
+        const titleEl = elements.find(
+          (e) => e.isMetadataField === "assignmentTitle" || (e.id?.toLowerCase().includes("title") && !e.id?.toLowerCase().includes("year"))
+        );
+
+        if (titleEl && titleEl.text) {
+          // The title MUST NOT contain the academic standing "3rd" appended to it
+          expect(titleEl.text).not.toBe("DocuMind 3rd");
+          expect(titleEl.text).toBe("DocuMind");
+        }
+      }
     });
   });
 });

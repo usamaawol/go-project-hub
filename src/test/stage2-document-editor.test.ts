@@ -23,13 +23,13 @@ This is the opening paragraph of the system proposal.
     const sections = parseDocumentSections(raw, "decimal");
     const html = convertSectionsToInitialHtml(sections);
 
-    expect(html).toContain("<h2>1.0 Introduction</h2>");
+    expect(html).toMatch(/<h2[^>]*>1\.0 Introduction<\/h2>/);
     expect(html).toContain("This is the opening paragraph of the system proposal.</p>");
-    expect(html).toContain("<h2>2.0 Architecture Overview</h2>");
-    expect(html).toContain("<ul>");
-    expect(html).toContain("<li>Inverted page tables</li>");
-    expect(html).toContain("<li>Hardware TLB caches</li>");
-    expect(html).toContain("<blockquote>");
+    expect(html).toMatch(/<h2[^>]*>2\.0 Architecture Overview<\/h2>/);
+    expect(html).toMatch(/<ul[^>]*>/);
+    expect(html).toMatch(/<li[^>]*>Inverted page tables<\/li>/);
+    expect(html).toMatch(/<li[^>]*>Hardware TLB caches<\/li>/);
+    expect(html).toMatch(/<blockquote[^>]*>/);
     expect(html).toContain("Crucial architectural requirement");
   });
 
