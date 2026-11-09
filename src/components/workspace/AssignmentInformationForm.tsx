@@ -322,30 +322,99 @@ export function AssignmentInformationForm({
         )}
 
         {metadata.logoDataUrl ? (
-          <div className="flex items-center gap-4 p-3 rounded-lg bg-surface-2 border border-border">
-            <div className="h-16 w-16 rounded-md bg-white p-1.5 border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-              <img
-                src={metadata.logoDataUrl}
-                alt="Selected Logo"
-                className="max-h-full max-w-full object-contain"
-              />
+          <div className="space-y-3 p-3.5 rounded-xl bg-surface-2/60 border border-border">
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-md bg-white p-1.5 border border-border flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                <img
+                  src={metadata.logoDataUrl}
+                  alt="Selected Logo"
+                  className="max-h-full max-w-full object-contain"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-foreground truncate">
+                  {metadata.logoFileName || "Attached University Emblem"}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Transparency preserved • Native aspect ratio maintained • Embedded in cover
+                </p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-xs p-0 h-auto text-primary"
+                  >
+                    Replace logo
+                  </Button>
+                  <span className="text-muted-foreground text-xs">•</span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={handleRemoveLogo}
+                    className="text-xs p-0 h-auto text-destructive hover:underline"
+                  >
+                    Remove logo
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-foreground truncate">
-                {metadata.logoFileName || "Attached University Emblem"}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Transparency preserved • Native aspect ratio maintained • Temporary session only
-              </p>
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                className="text-xs p-0 h-auto text-primary mt-1"
-              >
-                Change logo image
-              </Button>
+
+            {/* Logo Placement & Size Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border/50">
+              <div>
+                <label className="text-[11px] font-semibold text-foreground block mb-1">
+                  Logo Placement on Cover
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateField("logoPlacement", "top-left")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border text-center transition-all cursor-pointer ${
+                      metadata.logoPlacement !== "top-right"
+                        ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                        : "bg-background text-muted-foreground border-border hover:bg-surface-2"
+                    }`}
+                  >
+                    Upper-Left
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateField("logoPlacement", "top-right")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border text-center transition-all cursor-pointer ${
+                      metadata.logoPlacement === "top-right"
+                        ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                        : "bg-background text-muted-foreground border-border hover:bg-surface-2"
+                    }`}
+                  >
+                    Upper-Right
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-foreground block mb-1">
+                  Logo Dimensions
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["small", "medium", "large"] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => updateField("logoSize", s)}
+                      className={`px-2 py-1.5 rounded-lg text-xs font-medium capitalize border text-center transition-all cursor-pointer ${
+                        (metadata.logoSize || "medium") === s
+                          ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                          : "bg-background text-muted-foreground border-border hover:bg-surface-2"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         ) : (
@@ -388,35 +457,50 @@ export function AssignmentInformationForm({
             <span className="text-[10px] text-destructive font-mono font-bold">* Required Fields</span>
           </div>
 
-          {/* If Individual: Student Name + Student ID */}
+          {/* If Individual: Assignment Title + Student Name + Student ID */}
           {!isGroup ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-foreground block mb-1">
-                  Student's Full Name <span className="text-destructive">*</span>
+                  Assignment Title <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g., Alex Johnson"
-                  value={metadata.studentName || ""}
-                  onChange={(e) => updateField("studentName", e.target.value)}
+                  placeholder="e.g., Analysis of Machine Learning Architectures in Edge Computing"
+                  value={metadata.assignmentTitle || ""}
+                  onChange={(e) => updateField("assignmentTitle", e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                   required
                 />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-foreground block mb-1">
+                    Student's Full Name <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Alex Johnson"
+                    value={metadata.studentName || ""}
+                    onChange={(e) => updateField("studentName", e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Student ID <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g., STU-2025-8841"
-                  value={metadata.studentId || ""}
-                  onChange={(e) => updateField("studentId", e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  required
-                />
+                <div>
+                  <label className="text-xs font-semibold text-foreground block mb-1">
+                    Student ID <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., STU-2025-8841"
+                    value={metadata.studentId || ""}
+                    onChange={(e) => updateField("studentId", e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    required
+                  />
+                </div>
               </div>
             </div>
           ) : (

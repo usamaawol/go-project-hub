@@ -84,6 +84,8 @@ export interface AssignmentMetadata {
   // University / Group Logo
   logoDataUrl?: string; // base64 or object URL
   logoFileName?: string;
+  logoPlacement?: "top-left" | "top-right";
+  logoSize?: "small" | "medium" | "large";
 
   // Cover Page Template Selection (50+ Templates)
   coverTemplateId: string;

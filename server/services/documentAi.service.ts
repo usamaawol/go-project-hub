@@ -9,11 +9,25 @@ import { getActiveProvider, getEffectiveGeminiApiKey, getEffectiveOpenAIApiKey }
 import { cleanDocumentPageNoise, parsePlainTextToBlocks } from "../../src/lib/document-synthesizer";
 import { extractAssignmentMetadataFromText } from "../../src/lib/assignment-metadata-extractor";
 import type { AssignmentMetadata } from "../../src/lib/assignment-types";
+import { generateDocumentWithExaone, getExaoneApiKey } from "./exaone.service";
 
 export interface AiDocBlock {
-  type: "paragraph" | "lead" | "callout" | "list" | "table" | "image";
+  type:
+    | "paragraph"
+    | "lead"
+    | "callout"
+    | "list"
+    | "table"
+    | "image"
+    | "bento-grid"
+    | "stat-grid"
+    | "comparison"
+    | "process"
+    | "quote"
+    | "definition"
+    | "code";
   content: string;
-  calloutType?: "critical" | "warning" | "note" | "requirement";
+  calloutType?: "critical" | "warning" | "note" | "requirement" | "axiom" | "takeaway";
   calloutTitle?: string;
   listItems?: string[];
   tableData?: {
@@ -22,6 +36,43 @@ export interface AiDocBlock {
   };
   imageUrl?: string;
   imageAlt?: string;
+  cards?: Array<{
+    title: string;
+    description: string;
+    tag?: string;
+  }>;
+  metrics?: Array<{
+    value: string;
+    label: string;
+    description?: string;
+  }>;
+  comparison?: {
+    leftTitle: string;
+    leftItems: string[];
+    rightTitle: string;
+    rightItems: string[];
+  };
+  processSteps?: Array<{
+    stepNumber: number;
+    title: string;
+    description: string;
+  }>;
+  quoteData?: {
+    quote: string;
+    author?: string;
+    roleOrSource?: string;
+  };
+  definitionData?: {
+    term: string;
+    category?: string;
+    definition: string;
+    example?: string;
+  };
+  codeData?: {
+    language?: string;
+    code: string;
+    caption?: string;
+  };
 }
 
 export interface AiDocSection {
@@ -77,10 +128,26 @@ export async function generateAiDocument(input: GenerateAiDocumentInput): Promis
   const cleanedContent = cleanDocumentPageNoise(content);
 
   const activeProvider = getActiveProvider();
+  const effectiveExaoneKey = getExaoneApiKey();
   const effectiveGeminiKey = input.geminiApiKey || getEffectiveGeminiApiKey();
   const effectiveOpenAiKey = input.openAiApiKey || getEffectiveOpenAIApiKey();
 
-  // 2. Try Gemini AI Provider if available
+  // 2. EXAONE: Dedicated primary engine for Documentation Studio
+  if (effectiveExaoneKey && activeProvider !== "offline") {
+    try {
+      const exaoneResult = await generateDocumentWithExaone({
+        ...input,
+        content: cleanedContent,
+      });
+      if (exaoneResult && exaoneResult.sections && exaoneResult.sections.length > 0) {
+        return sanitizeAiDocumentResult(exaoneResult, input);
+      }
+    } catch (err) {
+      console.warn("[Documentation Studio] EXAONE generation failed, cascading to fallback:", err);
+    }
+  }
+
+  // 3. Try Gemini AI Provider if available
   if (effectiveGeminiKey && activeProvider !== "offline") {
     try {
       const geminiResult = await generateWithGemini(cleanedContent, input, effectiveGeminiKey);
@@ -92,7 +159,7 @@ export async function generateAiDocument(input: GenerateAiDocumentInput): Promis
     }
   }
 
-  // 3. Try OpenAI if configured
+  // 4. Try OpenAI if configured
   if (effectiveOpenAiKey && activeProvider === "openai") {
     try {
       const openAiResult = await generateWithOpenAI(cleanedContent, input, effectiveOpenAiKey);
@@ -260,6 +327,93 @@ ${content.slice(0, 30000)}`;
 }
 
 /**
+ * Detects the academic or professional domain to synthesize a tailored visual theme,
+ * modern palette, and appropriate layout archetype inspired by Gamma-grade design.
+ */
+export function detectSubjectDomain(
+  content: string,
+  title?: string,
+  subtitle?: string,
+): {
+  domain: "cs-tech" | "business" | "engineering" | "scientific" | "humanities";
+  accentColor: string;
+  coverTemplateId: string;
+  archetype: "academic" | "executive" | "tech-spec" | "creative";
+  fontFamily: "academic" | "serif" | "sans" | "mono";
+} {
+  const corpus = `${title || ""} ${subtitle || ""} ${content.slice(0, 5000)}`.toLowerCase();
+
+  // 1. Computer Science & Software Engineering
+  if (
+    /distributed system|algorithm|data structure|machine learning|artificial intelligence|\bapi\b|microservices|frontend|backend|database|\bsql\b|\bcloud\b|kubernetes|\bdocker\b|\bpython\b|\bjavascript\b|\btypescript\b|\boop\b|object-oriented|concurrency|networking|cybersecurity|blockchain|compiler|\brfc\b|\bhttp\b|\bserver\b|computing|software/i.test(
+      corpus,
+    )
+  ) {
+    return {
+      domain: "cs-tech",
+      accentColor: "#1E40AF", // Deep Tech Navy / Electric Blue
+      coverTemplateId: "canva-tokyo-neomodern",
+      archetype: "tech-spec",
+      fontFamily: "academic",
+    };
+  }
+
+  // 2. Business, Economics & Strategic Management
+  if (
+    /market|finance|revenue|profit|economics|accounting|ebitda|stakeholder|customer|supply chain|strategy|business plan|case study|investment|valuation|quarterly|roi|portfolio|marketing/i.test(
+      corpus,
+    )
+  ) {
+    return {
+      domain: "business",
+      accentColor: "#1B365D", // Editorial Oxford Navy
+      coverTemplateId: "canva-emerald-proposal",
+      archetype: "executive",
+      fontFamily: "serif",
+    };
+  }
+
+  // 3. Engineering & Physical Systems
+  if (
+    /thermodynamic|fluid dynamic|circuit|resistor|voltage|mechanical|structural|tensile|robotics|aerospace|finite element|\bcad\b|stress-strain|kinematics|embedded system|mechatronics|civil engineering/i.test(
+      corpus,
+    )
+  ) {
+    return {
+      domain: "engineering",
+      accentColor: "#0F766E", // Deep Industrial Teal
+      coverTemplateId: "canva-salford-wave",
+      archetype: "tech-spec",
+      fontFamily: "academic",
+    };
+  }
+
+  // 4. Biological & Natural Sciences / Healthcare
+  if (
+    /biology|cellular|molecular|genetics|dna|rna|protein|enzyme|pharmacology|pathology|clinical|biochemistry|ecology|organism|ecosystem|neuron|physiology|medical|patient|diagnosis/i.test(
+      corpus,
+    )
+  ) {
+    return {
+      domain: "scientific",
+      accentColor: "#065F46", // Forest Emerald
+      coverTemplateId: "academic-thesis",
+      archetype: "academic",
+      fontFamily: "academic",
+    };
+  }
+
+  // 5. Humanities, Social Sciences, Law & General University
+  return {
+    domain: "humanities",
+    accentColor: "#1E3A8A", // Classic University Navy
+    coverTemplateId: "classic-university",
+    archetype: "academic",
+    fontFamily: "academic",
+  };
+}
+
+/**
  * Intelligent Deterministic Semantic Document Engine
  * Used when offline, during network timeouts, or zero API credentials.
  * Deeply parses headings, tabular data, bullet lists, callouts, and academic identity.
@@ -320,6 +474,8 @@ export function generateDeterministicStructuredDocument(
     docTitle = isAssignment ? "Academic Assignment & Research Study" : "Executive Analysis & Implementation Document";
   }
 
+  const domainInfo = detectSubjectDomain(content, docTitle, docSubtitle);
+
   // Parse Sections from Content
   const rawBlocks = parsePlainTextToBlocks(content);
   const sections: AiDocSection[] = [];
@@ -352,28 +508,127 @@ export function generateDeterministicStructuredDocument(
 
     if (block.type === "paragraph") {
       const text = block.text || "";
-      // Check if text is a comparison or metric data line: e.g. "Message Complexity: PBFT scales quadratically with O(n^2)..."
-      const metricMatch = text.match(/^([A-Za-z\s]{3,35})\s*[:]\s*(.+)$/);
-      if (metricMatch && metricMatch[1] && metricMatch[2] && metricMatch[1].length < 30) {
+
+      // 1. Metric Callout Detection (e.g. "P99 latency: 120ms" or "68% time wasted")
+      const metricLine = text.match(/(?:^|\b)(\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?[MBK]?|\d+(?:,\d+)?(?:\s*(?:ms|fps|s|GB|MB|KB|users|req\/sec|ops\/sec)))\s*[:–—-]\s*(.+)$/i);
+      if (metricLine && metricLine[1] && metricLine[2]) {
+        currentSection.blocks.push({
+          type: "stat-grid",
+          content: text,
+          metrics: [
+            {
+              value: metricLine[1].trim(),
+              label: metricLine[2].trim().slice(0, 45),
+              description: metricLine[2].trim(),
+            },
+          ],
+        });
+        continue;
+      }
+
+      // 2. Sequential Process Step (e.g. "Step 1: ...", "Phase 1: ...")
+      const stepMatch = text.match(/^(?:Step|Phase|Stage|Module)\s*(\d+)[:–—-]\s*([^–—\n]+?)(?:[:–—-]\s*(.+))?$/i);
+      if (stepMatch && stepMatch[1]) {
+        currentSection.blocks.push({
+          type: "process",
+          content: text,
+          processSteps: [
+            {
+              stepNumber: parseInt(stepMatch[1], 10) || 1,
+              title: stepMatch[2]?.trim() || `Step ${stepMatch[1]}`,
+              description: stepMatch[3]?.trim() || text,
+            },
+          ],
+        });
+        continue;
+      }
+
+      // 3. Comparison block detection (e.g. "Raft vs Paxos: ...")
+      const compMatch = text.match(/^([A-Za-z0-9\s—–-]+?)\s+(?:vs\.?|versus)\s+([A-Za-z0-9\s—–-]+?)[:–—-]\s*(.+)$/i);
+      if (compMatch && compMatch[1] && compMatch[2]) {
+        const leftTitle = compMatch[1].trim();
+        const rightTitle = compMatch[2].trim();
+        const details = compMatch[3] ? compMatch[3].split(/(?<=\.)\s+/) : [text];
+        currentSection.blocks.push({
+          type: "comparison",
+          content: text,
+          comparison: {
+            leftTitle,
+            leftItems: [details[0] || `${leftTitle} characteristics`],
+            rightTitle,
+            rightItems: [details[1] || details[0] || `${rightTitle} characteristics`],
+          },
+        });
+        continue;
+      }
+
+      // 4. Technical Axiom / Callout
+      const calloutMatch = text.match(/^(?:CRITICAL|IMPORTANT|NOTE|WARNING|REQUIREMENT|AXIOM|TAKEAWAY)[:–—-]\s*(.+)$/i);
+      if (calloutMatch && calloutMatch[1]) {
+        const rawType = text.split(/[:–—-]/)[0]?.trim().toLowerCase();
+        const calloutType = rawType?.includes("critical")
+          ? "critical"
+          : rawType?.includes("warning")
+            ? "warning"
+            : rawType?.includes("requirement")
+              ? "requirement"
+              : "note";
         currentSection.blocks.push({
           type: "callout",
-          content: metricMatch[2].trim(),
-          calloutType: "note",
-          calloutTitle: metricMatch[1].trim(),
+          content: calloutMatch[1].trim(),
+          calloutType,
+          calloutTitle: rawType?.toUpperCase() || "Important Context",
+        });
+        continue;
+      }
+
+      // 5. Quotation block
+      if (text.startsWith(">") || text.startsWith('"') || text.startsWith('“')) {
+        const cleanQuote = text.replace(/^[>"\s“]+|[”"\s]+$/g, "").trim();
+        const quoteParts = cleanQuote.split(/\s*[-–—]\s*/);
+        currentSection.blocks.push({
+          type: "quote",
+          content: text,
+          quoteData: {
+            quote: quoteParts[0]?.trim() || cleanQuote,
+            author: quoteParts[1]?.trim() || "Source Reference",
+          },
+        });
+        continue;
+      }
+
+      // 5. Standard paragraph with lead detection
+      currentSection.paragraphs.push(text);
+      currentSection.blocks.push({
+        type: currentSection.blocks.length === 0 ? "lead" : "paragraph",
+        content: text,
+      });
+    } else if (block.type === "list") {
+      const items = block.items || [];
+      // If list has 3-4 structured items with bold headers, treat as bento grid for visual richness
+      const hasCardLikeItems = items.length >= 3 && items.length <= 6 && items.every((it) => it.includes(":") || it.includes("**"));
+      if (hasCardLikeItems) {
+        currentSection.blocks.push({
+          type: "bento-grid",
+          content: "",
+          cards: items.map((it) => {
+            const parts = it.split(/[:–—-]/);
+            const title = parts[0]?.replace(/\*\*/g, "").trim() || "Pillar";
+            const desc = parts.slice(1).join(" ").trim() || it;
+            return {
+              title,
+              description: desc,
+              tag: "CORE PILLAR",
+            };
+          }),
         });
       } else {
-        currentSection.paragraphs.push(text);
         currentSection.blocks.push({
-          type: currentSection.blocks.length === 0 ? "lead" : "paragraph",
-          content: text,
+          type: "list",
+          content: "",
+          listItems: items,
         });
       }
-    } else if (block.type === "list") {
-      currentSection.blocks.push({
-        type: "list",
-        content: "",
-        listItems: block.items || [],
-      });
     } else if (block.type === "table") {
       currentSection.blocks.push({
         type: "table",
@@ -410,28 +665,33 @@ export function generateDeterministicStructuredDocument(
     });
   }
 
+  // Strict scope restriction: Table of Contents is included ONLY for multi-section assignments
+  // Never automatically on standard documents unless explicitly requested!
+  const includeToc = Boolean(isAssignment && sections.length >= 2);
+
   const result: AiDocumentResult = {
     docTitle,
     docSubtitle,
     authorName,
     institution,
     dateStr,
-    layoutArchetype: isAssignment ? "academic" : "executive",
-    fontFamily: input.preferredFont || (isAssignment ? "academic" : "serif"),
+    layoutArchetype: isAssignment ? domainInfo.archetype : ((input.docType as any) || domainInfo.archetype),
+    fontFamily: input.preferredFont || domainInfo.fontFamily,
     baseFontSize: "11pt",
     lineSpacing: "1.5",
     margins: "normal",
-    accentColor: input.preferredAccent || input.metadata?.accentColor || "#1E3A8A",
-    coverTemplateId: input.preferredCoverTemplate || input.metadata?.coverTemplateId || (isAssignment ? "canva-hanover-red-geometric" : "canva-salford-wave"),
+    accentColor: input.preferredAccent || input.metadata?.accentColor || domainInfo.accentColor,
+    coverTemplateId:
+      input.preferredCoverTemplate || input.metadata?.coverTemplateId || domainInfo.coverTemplateId,
     hasCoverPage: true,
-    includeToc: true,
+    includeToc,
     sections,
     assignmentMetadata: {
       isAssignment,
       assignmentType: input.metadata?.assignmentType || (suggestions.groupMembers && suggestions.groupMembers.length > 1 ? "group" : "individual"),
       assignmentTitle: docTitle,
       courseName: docSubtitle,
-      courseCode: suggestions.courseCode || "",
+      courseCode: suggestions.courseCode || input.metadata?.courseCode || "",
       studentName: authorName,
       studentId: input.metadata?.studentId || suggestions.studentId || "",
       instructorName: input.metadata?.instructorName || suggestions.instructorName || "",
@@ -441,11 +701,11 @@ export function generateDeterministicStructuredDocument(
       academicYear: input.metadata?.academicYear || suggestions.academicYear || "2026",
       semester: input.metadata?.semester || suggestions.semester || "Fall 2026",
       submissionDate: dateStr,
-      coverTemplateId: input.preferredCoverTemplate || input.metadata?.coverTemplateId || "canva-hanover-red-geometric",
-      accentColor: input.preferredAccent || input.metadata?.accentColor || "#1E3A8A",
+      coverTemplateId: input.preferredCoverTemplate || input.metadata?.coverTemplateId || domainInfo.coverTemplateId,
+      accentColor: input.preferredAccent || input.metadata?.accentColor || domainInfo.accentColor,
       groupMembers: suggestions.groupMembers || input.metadata?.groupMembers || [],
     },
-    aiNotes: "Structured using DocuMind Semantic Document Engine.",
+    aiNotes: `Designed with DocuMind Gamma-grade AI Document Architect tailored to ${domainInfo.domain}.`,
   };
 
   return sanitizeAiDocumentResult(result, input);
@@ -486,7 +746,39 @@ export async function refineAiDocument(
   else if (instructionLower.includes("emerald") || instructionLower.includes("green")) currentDocument.accentColor = "#065F46";
   else if (instructionLower.includes("violet") || instructionLower.includes("purple")) currentDocument.accentColor = "#6D28D9";
 
-  // 2. If user requests structural changes (e.g. "Add an executive summary", "Add conclusion")
+  // 2. Structural & Layout transformations via natural language prompts
+  if (instructionLower.includes("metric") || instructionLower.includes("stat") || instructionLower.includes("kpi")) {
+    const targetSec = currentDocument.sections[0];
+    if (targetSec && !targetSec.blocks.some((b) => b.type === "stat-grid")) {
+      targetSec.blocks.unshift({
+        type: "stat-grid",
+        content: "Quantitative Performance Telemetry",
+        metrics: [
+          { value: "98.5%", label: "Accuracy Score", description: "Empirical verification baseline" },
+          { value: "3.2x", label: "Throughput Multiplier", description: "Measured pipeline acceleration" },
+          { value: "< 15ms", label: "Response Latency", description: "p99 benchmark stability" },
+        ],
+      });
+    }
+  }
+
+  if (instructionLower.includes("bento") || instructionLower.includes("grid") || instructionLower.includes("quadrant")) {
+    const targetSec = currentDocument.sections[Math.min(1, currentDocument.sections.length - 1)];
+    if (targetSec && !targetSec.blocks.some((b) => b.type === "bento-grid")) {
+      targetSec.blocks.push({
+        type: "bento-grid",
+        content: "Core Architectural Quadrants",
+        cards: [
+          { title: "Ingestion Engine", description: "Stream processing pipeline", tag: "INGEST" },
+          { title: "Transformation", description: "Semantic schema normalization", tag: "TRANSFORM" },
+          { title: "Persistence", description: "Distributed linearizable storage", tag: "STORAGE" },
+          { title: "Telemetry", description: "Real-time metrics and alerting", tag: "MONITOR" },
+        ],
+      });
+    }
+  }
+
+  // 3. If user requests structural changes (e.g. "Add an executive summary", "Add conclusion")
   if (instructionLower.includes("executive summary") || instructionLower.includes("summary")) {
     const hasSummary = currentDocument.sections.some((s) => /summary|executive/i.test(s.title));
     if (!hasSummary) {

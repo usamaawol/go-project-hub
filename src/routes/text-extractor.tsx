@@ -27,7 +27,12 @@ import { toast } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
-import { extractDocumentText } from "@/lib/api-client";
+import {
+  extractDocumentText,
+  validateExtractionWithAi,
+  enhanceExtractedTextWithAi,
+  type ClientExtractionValidation,
+} from "@/lib/api-client";
 import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
 
 import {
@@ -590,6 +595,25 @@ function TextExtractorPage() {
                 </div>
               </div>
 
+              {/* EXAONE AI Optical Audit — Planned Integration (Coming Soon) */}
+              <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-surface-2/40 to-primary/5 p-4 text-xs space-y-1.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 font-semibold text-primary">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span>LG EXAONE Optical Audit & Uncertainty Detection</span>
+                    <span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary font-bold">
+                      Coming Soon
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono text-muted-foreground">
+                    Planned AI Integration · Regional Access Pending
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Automated OCR uncertainty detection and deep contextual auditing powered by EXAONE is scheduled for future release. Text is currently extracted verbatim with built-in high-accuracy OCR filtering.
+                </p>
+              </div>
+
               {/* View Switcher Tabs & Quick Smart Tools Toolbar */}
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -712,6 +736,19 @@ function TextExtractorPage() {
                       <span>Revert Changes</span>
                     </button>
                   )}
+                </div>
+
+                {/* EXAONE AI Smart Tools (Planned Integration - Coming Soon) */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/60">
+                  <span className="text-[11px] font-mono uppercase text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" /> EXAONE AI Assist:
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary font-bold">
+                    Coming Soon
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Deep semantic summarization and structural reformatting are scheduled for upcoming release.
+                  </span>
                 </div>
               </div>
 

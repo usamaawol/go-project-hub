@@ -204,9 +204,25 @@ export interface DocTableData {
 }
 
 export interface DocBlock {
-  type: "paragraph" | "lead" | "callout" | "parameter" | "palette" | "scene" | "list" | "table" | "image";
+  type:
+    | "paragraph"
+    | "lead"
+    | "callout"
+    | "parameter"
+    | "palette"
+    | "scene"
+    | "list"
+    | "table"
+    | "image"
+    | "bento-grid"
+    | "stat-grid"
+    | "comparison"
+    | "process"
+    | "quote"
+    | "definition"
+    | "code";
   content: string;
-  calloutType?: "critical" | "warning" | "note" | "requirement";
+  calloutType?: "critical" | "warning" | "note" | "requirement" | "axiom" | "takeaway";
   calloutTitle?: string;
   key?: string;
   value?: string;
@@ -216,6 +232,43 @@ export interface DocBlock {
   tableData?: DocTableData;
   imageUrl?: string;
   imageAlt?: string;
+  cards?: Array<{
+    title: string;
+    description: string;
+    tag?: string;
+  }>;
+  metrics?: Array<{
+    value: string;
+    label: string;
+    description?: string;
+  }>;
+  comparison?: {
+    leftTitle: string;
+    leftItems: string[];
+    rightTitle: string;
+    rightItems: string[];
+  };
+  processSteps?: Array<{
+    stepNumber: number;
+    title: string;
+    description: string;
+  }>;
+  quoteData?: {
+    quote: string;
+    author?: string;
+    roleOrSource?: string;
+  };
+  definitionData?: {
+    term: string;
+    category?: string;
+    definition: string;
+    example?: string;
+  };
+  codeData?: {
+    language?: string;
+    code: string;
+    caption?: string;
+  };
 }
 
 export interface DocSection {
@@ -1260,6 +1313,20 @@ export function paginateSectionsIntoA4Pages(
         blockHeight = 60 + Math.ceil((block.content?.length || 40) / 75) * 18;
       } else if (block.type === "image") {
         blockHeight = 210;
+      } else if (block.type === "bento-grid") {
+        blockHeight = 50 + Math.ceil((block.cards?.length || 2) / 2) * 65;
+      } else if (block.type === "stat-grid") {
+        blockHeight = 55 + (block.metrics?.length || 2) * 35;
+      } else if (block.type === "comparison") {
+        blockHeight = 110;
+      } else if (block.type === "process") {
+        blockHeight = 45 + (block.processSteps?.length || 2) * 40;
+      } else if (block.type === "quote") {
+        blockHeight = 65;
+      } else if (block.type === "definition") {
+        blockHeight = 60;
+      } else if (block.type === "code") {
+        blockHeight = 75;
       } else if (block.type === "scene") {
         blockHeight = 140;
       } else if (block.type === "palette") {
@@ -4649,6 +4716,159 @@ export function renderDocBlock(
     );
   }
 
+  if (block.type === "bento-grid" && block.cards && block.cards.length > 0) {
+    return (
+      <div key={bIdx} className="my-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {block.cards.map((c, cIdx) => (
+          <div
+            key={cIdx}
+            className={`p-3 rounded-xl border transition-all ${
+              paperMode === "dark" ? "bg-zinc-800/70 border-zinc-700/80" : "bg-stone-50 border-stone-200"
+            }`}
+          >
+            {c.tag && (
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-primary px-1.5 py-0.5 rounded bg-primary/10 mb-1.5 inline-block">
+                {c.tag}
+              </span>
+            )}
+            <h4 className="text-xs sm:text-sm font-bold text-foreground mb-1">{c.title}</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">{renderRichInline(c.description)}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (block.type === "stat-grid" && block.metrics && block.metrics.length > 0) {
+    return (
+      <div key={bIdx} className="my-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        {block.metrics.map((m, mIdx) => (
+          <div
+            key={mIdx}
+            className={`p-3.5 rounded-xl border flex flex-col justify-between ${
+              paperMode === "dark" ? "bg-zinc-800/80 border-zinc-700" : "bg-stone-50/90 border-stone-200 shadow-xs"
+            }`}
+          >
+            <div className="font-mono text-xl sm:text-2xl font-black text-primary tracking-tight">
+              {m.value}
+            </div>
+            <div className="text-xs font-bold text-foreground mt-1 line-clamp-1">{m.label}</div>
+            {m.description && (
+              <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+                {m.description}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (block.type === "comparison" && block.comparison) {
+    return (
+      <div key={bIdx} className="my-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className={`p-3.5 rounded-xl border ${paperMode === "dark" ? "bg-zinc-800/60 border-zinc-700" : "bg-stone-50 border-stone-200"}`}>
+          <div className="text-xs font-bold uppercase tracking-wider text-primary mb-2 flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-primary" />
+            <span>{block.comparison.leftTitle}</span>
+          </div>
+          <ul className="space-y-1.5 text-xs text-foreground">
+            {block.comparison.leftItems.map((item, idx) => (
+              <li key={idx} className="flex items-start gap-1.5">
+                <span className="text-primary font-bold">•</span>
+                <span>{renderRichInline(item)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className={`p-3.5 rounded-xl border ${paperMode === "dark" ? "bg-zinc-800/60 border-zinc-700" : "bg-stone-50 border-stone-200"}`}>
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-muted-foreground" />
+            <span>{block.comparison.rightTitle}</span>
+          </div>
+          <ul className="space-y-1.5 text-xs text-foreground">
+            {block.comparison.rightItems.map((item, idx) => (
+              <li key={idx} className="flex items-start gap-1.5">
+                <span className="text-muted-foreground font-bold">•</span>
+                <span>{renderRichInline(item)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "process" && block.processSteps && block.processSteps.length > 0) {
+    return (
+      <div key={bIdx} className="my-3 space-y-2">
+        {block.processSteps.map((step, sIdx) => (
+          <div
+            key={sIdx}
+            className={`p-3 rounded-xl border flex items-start gap-3 ${
+              paperMode === "dark" ? "bg-zinc-800/50 border-zinc-700" : "bg-stone-50/70 border-stone-200"
+            }`}
+          >
+            <span className="h-6 w-6 rounded-md bg-primary text-primary-foreground font-mono font-bold text-xs flex items-center justify-center shrink-0">
+              0{step.stepNumber || sIdx + 1}
+            </span>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs font-bold text-foreground">{step.title}</h4>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{renderRichInline(step.description)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (block.type === "quote" && block.quoteData) {
+    return (
+      <figure key={bIdx} className="my-3.5 pl-4 py-2 border-l-4 border-primary bg-primary/5 rounded-r-xl pr-4">
+        <blockquote className="text-xs sm:text-sm font-medium italic text-foreground leading-relaxed">
+          "{block.quoteData.quote}"
+        </blockquote>
+        {block.quoteData.author && (
+          <figcaption className="text-[11px] font-semibold text-muted-foreground mt-1">
+            — {block.quoteData.author}{block.quoteData.roleOrSource ? `, ${block.quoteData.roleOrSource}` : ""}
+          </figcaption>
+        )}
+      </figure>
+    );
+  }
+
+  if (block.type === "definition" && block.definitionData) {
+    return (
+      <div key={bIdx} className="my-3 p-3.5 rounded-xl border border-border bg-card shadow-xs">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-bold text-xs sm:text-sm text-foreground">{block.definitionData.term}</span>
+          {block.definitionData.category && (
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface-2 text-muted-foreground border border-border">
+              {block.definitionData.category}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{renderRichInline(block.definitionData.definition)}</p>
+        {block.definitionData.example && (
+          <p className="text-[11px] italic text-primary/90 mt-1">Example: {block.definitionData.example}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (block.type === "code" && block.codeData) {
+    return (
+      <div key={bIdx} className="my-3 rounded-xl border border-border/70 overflow-hidden bg-slate-900 text-slate-100 font-mono text-xs">
+        {block.codeData.language && (
+          <div className="px-3 py-1 bg-slate-800 text-[10px] text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-700">
+            {block.codeData.language}
+          </div>
+        )}
+        <pre className="p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed">{block.codeData.code}</pre>
+      </div>
+    );
+  }
+
   if (block.type === "table" && block.tableData) {
     return (
       <div key={bIdx} className="my-4 overflow-x-auto rounded-lg border border-border/80 shadow-xs">
@@ -4917,9 +5137,27 @@ export function convertSectionsToInitialHtml(sections: DocSection[]): string {
         if (block.type === "list" && block.listItems) {
           secHtml += `<ul style="margin: 8px 0 12px 0; padding-left: 24px; list-style-type: disc;">\n${block.listItems.map((li) => `  <li style="margin-bottom: 4px; line-height: 1.5;">${formatInlineMarkdownToHtml(li)}</li>`).join("\n")}\n</ul>\n`;
         } else if (block.type === "callout") {
-          secHtml += `<blockquote style="margin: 12px 0; padding: 10px 16px; border-left: 4px solid #1e3a8a; background: #f8fafc; border-radius: 4px;"><strong>${escapeHtml(block.calloutTitle || "Note")}:</strong> ${formatInlineMarkdownToHtml(block.content)}</blockquote>\n`;
+          const borderClr = block.calloutType === "critical" ? "#dc2626" : block.calloutType === "warning" ? "#d97706" : "#1e3a8a";
+          const bgClr = block.calloutType === "critical" ? "#fef2f2" : block.calloutType === "warning" ? "#fffbeb" : "#f8fafc";
+          secHtml += `<blockquote style="margin: 12px 0; padding: 10px 16px; border-left: 4px solid ${borderClr}; background: ${bgClr}; border-radius: 4px;"><strong>${escapeHtml(block.calloutTitle || "Note")}:</strong> ${formatInlineMarkdownToHtml(block.content)}</blockquote>\n`;
         } else if (block.type === "lead") {
           secHtml += `<p style="font-size: 1.15em; font-weight: 500; line-height: 1.6; margin: 10px 0;">${formatInlineMarkdownToHtml(block.content)}</p>\n`;
+        } else if (block.type === "bento-grid" && block.cards && block.cards.length > 0) {
+          secHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 14px 0;">\n${block.cards.map((c) => `  <div style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;">${c.tag ? `<span style="font-size: 10px; font-weight: 700; color: #1e40af; text-transform: uppercase;">${escapeHtml(c.tag)}</span><br/>` : ""}<strong style="color: #0f172a; font-size: 13px;">${escapeHtml(c.title)}</strong><p style="margin: 4px 0 0 0; font-size: 12px; color: #475569; line-height: 1.5;">${formatInlineMarkdownToHtml(c.description)}</p></div>`).join("\n")}\n</div>\n`;
+        } else if (block.type === "stat-grid" && block.metrics && block.metrics.length > 0) {
+          secHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 14px 0;">\n${block.metrics.map((m) => `  <div style="padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; text-align: left;"><div style="font-size: 22px; font-weight: 800; color: #1e3a8a; font-family: monospace;">${escapeHtml(m.value)}</div><div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-top: 4px;">${escapeHtml(m.label)}</div>${m.description ? `<div style="font-size: 10px; color: #64748b; margin-top: 2px;">${escapeHtml(m.description)}</div>` : ""}</div>`).join("\n")}\n</div>\n`;
+        } else if (block.type === "comparison" && block.comparison) {
+          secHtml += `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0;">\n  <div style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;"><strong style="font-size: 12px; color: #1e3a8a; text-transform: uppercase;">${escapeHtml(block.comparison.leftTitle)}</strong><ul style="margin: 8px 0 0 0; padding-left: 18px; font-size: 12px;">${block.comparison.leftItems.map((li) => `<li>${formatInlineMarkdownToHtml(li)}</li>`).join("")}</ul></div>\n  <div style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;"><strong style="font-size: 12px; color: #64748b; text-transform: uppercase;">${escapeHtml(block.comparison.rightTitle)}</strong><ul style="margin: 8px 0 0 0; padding-left: 18px; font-size: 12px;">${block.comparison.rightItems.map((li) => `<li>${formatInlineMarkdownToHtml(li)}</li>`).join("")}</ul></div>\n</div>\n`;
+        } else if (block.type === "process" && block.processSteps && block.processSteps.length > 0) {
+          secHtml += `<div style="margin: 12px 0;">\n${block.processSteps.map((step) => `  <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; background: #ffffff;"><span style="display: inline-block; width: 24px; height: 24px; border-radius: 4px; background: #1e3a8a; color: #ffffff; font-weight: 700; font-size: 11px; text-align: center; line-height: 24px;">0${step.stepNumber}</span><div><strong style="font-size: 13px; color: #0f172a;">${escapeHtml(step.title)}</strong><p style="margin: 2px 0 0 0; font-size: 12px; color: #475569;">${formatInlineMarkdownToHtml(step.description)}</p></div></div>`).join("\n")}\n</div>\n`;
+        } else if (block.type === "quote" && block.quoteData) {
+          secHtml += `<blockquote style="margin: 14px 0; padding: 12px 18px; border-left: 4px solid #1e3a8a; background: #f1f5f9; border-radius: 0 8px 8px 0; font-style: italic; color: #1e293b;"><p style="margin: 0; font-size: 14px; line-height: 1.5;">"${escapeHtml(block.quoteData.quote)}"</p>${block.quoteData.author ? `<footer style="margin-top: 6px; font-size: 11px; font-style: normal; font-weight: 600; color: #64748b;">— ${escapeHtml(block.quoteData.author)}</footer>` : ""}</blockquote>\n`;
+        } else if (block.type === "definition" && block.definitionData) {
+          secHtml += `<div style="margin: 12px 0; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;"><strong style="color: #0f172a; font-size: 13px;">${escapeHtml(block.definitionData.term)}</strong>${block.definitionData.category ? ` <span style="font-size: 10px; font-family: monospace; padding: 2px 6px; border-radius: 4px; background: #e2e8f0; color: #475569;">${escapeHtml(block.definitionData.category)}</span>` : ""}<p style="margin: 4px 0 0 0; font-size: 12px; color: #334155; line-height: 1.5;">${formatInlineMarkdownToHtml(block.definitionData.definition)}</p>${block.definitionData.example ? `<p style="margin: 4px 0 0 0; font-size: 11px; font-style: italic; color: #1e40af;">Example: ${escapeHtml(block.definitionData.example)}</p>` : ""}</div>\n`;
+        } else if (block.type === "table" && block.tableData) {
+          const hdrs = (block.tableData.headers || []).map((h) => `<th style="padding: 8px 12px; border: 1px solid #cbd5e1; background: #f1f5f9; font-weight: 700; text-align: left; font-size: 12px;">${formatInlineMarkdownToHtml(h)}</th>`).join("");
+          const bodyRows = (block.tableData.rows || []).map((row, rIdx) => `<tr style="${rIdx % 2 === 1 ? "background: #f8fafc;" : "background: #ffffff;"}">${row.map((cell) => `<td style="padding: 8px 12px; border: 1px solid #cbd5e1; font-size: 12px; color: #334155;">${formatInlineMarkdownToHtml(cell)}</td>`).join("")}</tr>`).join("\n");
+          secHtml += `<table style="width: 100%; border-collapse: collapse; margin: 14px 0;"><thead><tr>${hdrs}</tr></thead><tbody>${bodyRows}</tbody></table>\n`;
         } else {
           secHtml += `<p style="line-height: 1.6; margin: 8px 0;">${formatInlineMarkdownToHtml(block.content)}</p>\n`;
         }

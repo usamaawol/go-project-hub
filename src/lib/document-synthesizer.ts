@@ -808,7 +808,8 @@ async function rasterizeSvgToPngBytes(
   });
 }
 
-export function renderCoverElementsDirectlyToPdf(
+export async function renderCoverElementsDirectlyToPdf(
+  pdfDoc: PDFDocument,
   coverPage: PDFPage,
   elements: CanvasCoverElement[],
   pageWidth: number,
@@ -827,7 +828,35 @@ export function renderCoverElementsDirectlyToPdf(
     const height = el.height * scaleY;
     const y = pageHeight - (el.y * scaleY + height);
 
-    if (el.type === "shape" || el.type === "divider") {
+    if (el.type === "image" && el.imageUrl) {
+      try {
+        let imgBytes: Uint8Array | null = null;
+        let isJpg = false;
+        if (el.imageUrl.startsWith("data:image/png;base64,")) {
+          const b64 = el.imageUrl.replace(/^data:image\/png;base64,/, "");
+          imgBytes = Buffer.from(b64, "base64");
+        } else if (
+          el.imageUrl.startsWith("data:image/jpeg;base64,") ||
+          el.imageUrl.startsWith("data:image/jpg;base64,")
+        ) {
+          const b64 = el.imageUrl.replace(/^data:image\/jpe?g;base64,/, "");
+          imgBytes = Buffer.from(b64, "base64");
+          isJpg = true;
+        }
+        if (imgBytes && pdfDoc) {
+          const embedded = isJpg ? await pdfDoc.embedJpg(imgBytes) : await pdfDoc.embedPng(imgBytes);
+          coverPage.drawImage(embedded, {
+            x: Math.max(0, x),
+            y: Math.max(0, y),
+            width: Math.min(pageWidth, width),
+            height: Math.min(pageHeight, height),
+            opacity: el.opacity ?? 1,
+          });
+        }
+      } catch (e) {
+        console.warn("Direct PDF logo embedding failed:", e);
+      }
+    } else if (el.type === "shape" || el.type === "divider") {
       let fillColor = el.fillColor;
       if (!fillColor && el.svgContent) {
         fillColor = `rgb(${Math.round(accentRgb.r * 255)}, ${Math.round(accentRgb.g * 255)}, ${Math.round(accentRgb.b * 255)})`;
@@ -2229,7 +2258,8 @@ export async function renderExecutivePdf(
     }
 
     if (!renderedRaster) {
-      renderCoverElementsDirectlyToPdf(
+      await renderCoverElementsDirectlyToPdf(
+        pdfDoc,
         coverPage,
         elements,
         pageWidth,
@@ -2242,13 +2272,18 @@ export async function renderExecutivePdf(
   }
 
   // 2. Dedicated Table of Contents Page
+  // Strict scope: Formatted Table of Contents for multi-section assignments, never automatically on standard docs!
   const tocHeadings = blocks.filter(
     (b) =>
       b.type === "heading1" ||
       b.type === "heading2" ||
       (b.type === "heading3" && blocks.filter((x) => x.type === "heading1" || x.type === "heading2").length < 4),
   );
-  const shouldRenderToc = options?.includeToc !== false && tocHeadings.length > 0;
+  const isAssignmentDoc = Boolean(meta?.isAssignment || options?.coverMetadata?.isAssignment);
+  const shouldRenderToc =
+    options?.includeToc !== undefined
+      ? options.includeToc && tocHeadings.length > 0
+      : isAssignmentDoc && tocHeadings.length >= 2;
   let tocPage: PDFPage | null = null;
   if (shouldRenderToc) {
     tocPage = pdfDoc.addPage([pageWidth, pageHeight]);
@@ -3998,7 +4033,11 @@ export async function renderExecutiveDocx(
       b.type === "heading2" ||
       (b.type === "heading3" && blocks.filter((x) => x.type === "heading1" || x.type === "heading2").length < 4),
   );
-  const shouldRenderToc = options?.includeToc !== false && tocHeadings.length > 0;
+  const isAssignmentDoc = Boolean(meta?.isAssignment || options?.coverMetadata?.isAssignment);
+  const shouldRenderToc =
+    options?.includeToc !== undefined
+      ? options.includeToc && tocHeadings.length > 0
+      : isAssignmentDoc && tocHeadings.length >= 2;
 
   let coverSection: any = null;
   if (hasCoverPage) {
@@ -4064,6 +4103,37 @@ export async function renderExecutiveDocx(
         }),
       );
     } else {
+      // If logo is attached, render it in the chosen corner (upper-left or upper-right)
+      if (meta?.logoDataUrl) {
+        try {
+          const base64Data = meta.logoDataUrl.replace(/^data:image\/[a-z]+;base64,/, "");
+          const logoBuffer = Buffer.from(base64Data, "base64");
+          const logoAlign =
+            meta.logoPlacement === "top-right"
+              ? AlignmentType.RIGHT
+              : AlignmentType.LEFT;
+          const logoW = meta.logoSize === "small" ? 80 : meta.logoSize === "large" ? 140 : 110;
+          const logoH = meta.logoSize === "small" ? 40 : meta.logoSize === "large" ? 70 : 55;
+          coverChildren.push(
+            new Paragraph({
+              children: [
+                new ImageRun({
+                  data: logoBuffer,
+                  transformation: {
+                    width: logoW,
+                    height: logoH,
+                  },
+                }),
+              ],
+              alignment: logoAlign,
+              spacing: { before: 180, after: 240 },
+            }),
+          );
+        } catch (e) {
+          console.warn("DOCX logo embed skipped:", e);
+        }
+      }
+
       // Top University / Institution Name
       const institutionName = options?.institution || meta?.universityName || "";
       if (institutionName) {

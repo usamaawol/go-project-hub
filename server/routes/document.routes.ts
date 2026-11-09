@@ -8,6 +8,10 @@ import {
   handleAiGuidance,
   handleAiDocumentDesign,
   handleAiDocumentEdit,
+  handleConversionAiAssistance,
+  handleConversionValidation,
+  handleExtractionValidation,
+  handleExtractionOptionalEnhance,
 } from "../controllers/document.controller";
 import { optionalAuth } from "../middleware/auth";
 
@@ -28,5 +32,11 @@ router.post("/documents/presentation", optionalAuth, handleGeneratePresentation)
 router.post("/documents/guide", optionalAuth, handleAiGuidance);
 router.post("/documents/ai-design", optionalAuth, handleAiDocumentDesign);
 router.post("/documents/ai-edit", optionalAuth, handleAiDocumentEdit);
+
+// EXAONE Dedicated AI Engine Endpoints (Restricted to Authorized Modules)
+router.post("/documents/convert/assist", optionalAuth, handleConversionAiAssistance);
+router.post("/documents/convert/validate", optionalAuth, handleConversionValidation);
+router.post("/documents/extract/validate", optionalAuth, handleExtractionValidation);
+router.post("/documents/extract/enhance", optionalAuth, handleExtractionOptionalEnhance);
 
 export default router;

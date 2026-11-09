@@ -376,3 +376,160 @@ export async function handleAiDocumentEdit(
     next(error);
   }
 }
+
+/**
+ * EXAONE Assistance Handler for File Converter
+ * Evaluates format pair compatibility and provides technical fidelity guidance.
+ */
+export async function handleConversionAiAssistance(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { sourceFormat, targetFormat, filename, fileSizeBytes, wordCount, pageCount, sampleText } = req.body;
+    const requestedModule = (req.headers["x-documind-module"] as string) || req.body.module || "file_converter";
+
+    const { enforceExaoneModuleAuthorization } = await import("../services/aiRouter.service");
+    enforceExaoneModuleAuthorization(requestedModule);
+
+    if (!sourceFormat || !targetFormat) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Both sourceFormat and targetFormat are required." },
+      });
+    }
+
+    const { analyzeConversionWithExaone } = await import("../services/exaone.service");
+    const analysis = await analyzeConversionWithExaone({
+      sourceFormat: String(sourceFormat),
+      targetFormat: String(targetFormat),
+      filename: String(filename || "document"),
+      fileSizeBytes: Number(fileSizeBytes) || 0,
+      wordCount: Number(wordCount) || 0,
+      pageCount: Number(pageCount) || 1,
+      sampleText: typeof sampleText === "string" ? sampleText : undefined,
+    });
+
+    res.json({
+      success: true,
+      data: analysis,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * EXAONE Post-Conversion Fidelity Validator
+ * Verifies that text, numbers, and structural elements were preserved without data loss.
+ */
+export async function handleConversionValidation(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { sourceText, convertedText, sourceFormat, targetFormat, originalWordCount, convertedWordCount } = req.body;
+    const requestedModule = (req.headers["x-documind-module"] as string) || req.body.module || "file_converter";
+
+    const { enforceExaoneModuleAuthorization } = await import("../services/aiRouter.service");
+    enforceExaoneModuleAuthorization(requestedModule);
+
+    const { validateConversionWithExaone } = await import("../services/exaone.service");
+    const validation = await validateConversionWithExaone({
+      sourceText: String(sourceText || ""),
+      convertedText: String(convertedText || ""),
+      sourceFormat: String(sourceFormat || "PDF"),
+      targetFormat: String(targetFormat || "DOCX"),
+      originalWordCount: Number(originalWordCount) || 0,
+      convertedWordCount: Number(convertedWordCount) || 0,
+    });
+
+    res.json({
+      success: true,
+      data: validation,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * EXAONE Text Extraction Fidelity & Uncertainty Inspector
+ * Verifies verbatim fidelity and detects OCR smudge/smear without altering the original text.
+ */
+export async function handleExtractionValidation(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { extractedText, sourceFormat, filename, wordCount } = req.body;
+    const requestedModule = (req.headers["x-documind-module"] as string) || req.body.module || "text_extractor";
+
+    const { enforceExaoneModuleAuthorization } = await import("../services/aiRouter.service");
+    enforceExaoneModuleAuthorization(requestedModule);
+
+    if (!extractedText || typeof extractedText !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: { message: "extractedText is required for validation." },
+      });
+    }
+
+    const { validateExtractionWithExaone } = await import("../services/exaone.service");
+    const validation = await validateExtractionWithExaone({
+      extractedText,
+      sourceFormat: String(sourceFormat || "PDF"),
+      filename: String(filename || "document"),
+      wordCount: Number(wordCount) || extractedText.split(/\s+/).filter(Boolean).length,
+    });
+
+    res.json({
+      success: true,
+      data: validation,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * EXAONE Separate Optional Text Enhancement Handler
+ * Only invoked when the user explicitly triggers an enhancement action in the UI.
+ */
+export async function handleExtractionOptionalEnhance(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { text, action } = req.body;
+    const requestedModule = (req.headers["x-documind-module"] as string) || req.body.module || "text_extractor";
+
+    const { enforceExaoneModuleAuthorization } = await import("../services/aiRouter.service");
+    enforceExaoneModuleAuthorization(requestedModule);
+
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Text payload is required for enhancement." },
+      });
+    }
+
+    const validAction = action === "summarize" || action === "structure" || action === "key-takeaways"
+      ? action
+      : "structure";
+
+    const { enhanceExtractedTextWithExaone } = await import("../services/exaone.service");
+    const result = await enhanceExtractedTextWithExaone(text, validAction);
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}

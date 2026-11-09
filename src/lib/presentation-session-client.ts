@@ -934,6 +934,9 @@ export function buildSlideDeckContent(
   density: "concise" | "balanced" | "detailed",
   purpose: string,
   assignmentMetadata?: AssignmentMetadata,
+  options?: {
+    includeAgenda?: boolean;
+  },
 ): SlidePreviewItem[] {
   const slides: SlidePreviewItem[] = [];
 
@@ -982,31 +985,49 @@ export function buildSlideDeckContent(
 
   const totalSlots = Math.min(60, Math.max(3, slideCount));
   const hasConclusion = totalSlots >= 4;
-  const contentSlotCount = Math.max(1, totalSlots - (hasConclusion ? 3 : 2));
+
+  const explicitAgendaRequested = /\b(agenda|table of contents|toc|presentation outline|overview slide|topics covered|agenda slide)\b/i.test(
+    rawContent,
+  );
+
+  // Agenda slide scope restriction:
+  // Standard short decks (< 5 slides) must NOT have an unnecessary agenda slide.
+  // For 5+ slide decks or when explicitly requested, include an agenda slide.
+  const includeAgenda =
+    options?.includeAgenda !== undefined
+      ? options.includeAgenda
+      : explicitAgendaRequested || totalSlots >= 5;
+
+  const contentSlotCount = Math.max(
+    1,
+    totalSlots - 1 - (includeAgenda ? 1 : 0) - (hasConclusion ? 1 : 0),
+  );
 
   // 2. Parse rawContent into structured sections
   const sections = parseContentIntoSections(rawContent, contentSlotCount, density, cleanTitle);
 
-  // 3. Slide 2: Agenda
-  const agendaTopics = sections.map((s) => s.title);
-  if (hasConclusion) {
-    agendaTopics.push("Conclusion & Next Steps");
-  }
+  // 3. Optional Slide 2: Agenda (only when appropriate or requested)
+  if (includeAgenda) {
+    const agendaTopics = sections.map((s) => s.title);
+    if (hasConclusion) {
+      agendaTopics.push("Conclusion & Next Steps");
+    }
 
-  slides.push({
-    id: "slide-2",
-    slideNumber: 2,
-    layout: "agenda",
-    title: "Agenda & Structural Roadmap",
-    subtitle: "Core topics and analytical checkpoints covered in this deck",
-    categoryTag: "AGENDA",
-    bullets: agendaTopics.slice(0, 6),
-    notes: `Briefly outline the presentation roadmap for ${cleanTitle}.`,
-  });
+    slides.push({
+      id: `slide-${slides.length + 1}`,
+      slideNumber: slides.length + 1,
+      layout: "agenda",
+      title: "Agenda & Structural Roadmap",
+      subtitle: "Core topics and analytical checkpoints covered in this deck",
+      categoryTag: "AGENDA",
+      bullets: agendaTopics.slice(0, 6),
+      notes: `Briefly outline the presentation roadmap for ${cleanTitle}.`,
+    });
+  }
 
   // 4. Intermediate Content Slides
   for (let i = 0; i < sections.length; i++) {
-    const slideNumber = i + 3;
+    const slideNumber = slides.length + 1;
     const s = sections[i]!;
 
     if (s.metrics && s.metrics.length >= 1) {

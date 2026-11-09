@@ -6,6 +6,12 @@ export const ENV = {
   PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 5000,
   NODE_ENV: process.env.NODE_ENV || "development",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || "",
+
+  // LG AI Research EXAONE Configuration (Server-Side Only)
+  EXAONE_API_KEY: process.env.EXAONE_API_KEY || "",
+  EXAONE_BASE_URL: process.env.EXAONE_BASE_URL || process.env.EXAONE_API_BASE_URL || "https://api.exaone.ai/v1",
+  EXAONE_MODEL: process.env.EXAONE_MODEL || "k-exaone_v2.5",
+
   CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
   ADMIN_SECRET_KEY: process.env.ADMIN_SECRET_KEY || "documind-admin-secret",
 

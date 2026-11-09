@@ -21,6 +21,11 @@ import {
 } from "./adminSettings.service";
 import { ENV } from "../config/env";
 import type { AssignmentMetadata } from "../../src/lib/assignment-types";
+import {
+  generatePresentationPlanWithExaone,
+  redesignSlideWithExaone,
+  getExaoneApiKey,
+} from "./exaone.service";
 
 export type { SlideLayoutType };
 export type SlideData = SlidePreviewItem;
@@ -465,8 +470,55 @@ export async function createPresentationSession(
 
   let slides: SlideData[] = [];
 
-  // 1. If provider is set to offline or zero external APIs
-  if (activeProvider === "offline") {
+  // 1. EXAONE: Dedicated primary engine for Presentation Maker
+  const effectiveExaoneKey = getExaoneApiKey();
+  if (effectiveExaoneKey && activeProvider !== "offline") {
+    try {
+      const exaoneSlides = await generatePresentationPlanWithExaone({
+        title: input.title,
+        content: input.content,
+        slideCount,
+        density,
+        purpose,
+        audience: input.audience,
+        language: input.language,
+        additionalInstructions: input.additionalInstructions,
+        assignmentMetadata: input.assignmentMetadata,
+      });
+      if (exaoneSlides && exaoneSlides.length >= 3) {
+        if (exaoneSlides.length === slideCount) {
+          slides = exaoneSlides;
+        } else if (exaoneSlides.length > slideCount) {
+          slides = exaoneSlides.slice(0, slideCount);
+        } else {
+          const needed = slideCount - exaoneSlides.length;
+          const fallbackDeck = buildSlideDeckContent(
+            input.title,
+            input.content,
+            slideCount,
+            density,
+            purpose,
+            input.assignmentMetadata,
+          );
+          const midFillers = fallbackDeck.slice(2, 2 + needed);
+          slides = [
+            ...exaoneSlides.slice(0, -1),
+            ...midFillers,
+            exaoneSlides[exaoneSlides.length - 1]!,
+          ].slice(0, slideCount).map((s, idx) => ({
+            ...s,
+            id: `slide-${idx + 1}`,
+            slideNumber: idx + 1,
+          }));
+        }
+      }
+    } catch (exErr) {
+      console.warn("[Presentation Maker] EXAONE generation failed, cascading to fallback:", exErr);
+    }
+  }
+
+  // 2. If provider is set to offline or zero external APIs
+  if (slides.length === 0 && activeProvider === "offline") {
     slides = buildSlideDeckContent(
       input.title,
       input.content,
@@ -476,8 +528,8 @@ export async function createPresentationSession(
       input.assignmentMetadata,
     );
   }
-  // 2. If provider is set to OpenAI
-  else if (activeProvider === "openai" && effectiveOpenAiKey) {
+  // 3. If provider is set to OpenAI
+  else if (slides.length === 0 && activeProvider === "openai" && effectiveOpenAiKey) {
     const oSlides = await generateSlidesWithOpenAI(
       input.title,
       input.content,
@@ -499,8 +551,8 @@ export async function createPresentationSession(
       );
     }
   }
-  // 3. Default: Gemini provider with automatic deterministic fallback
-  else {
+  // 4. Default: Gemini provider with automatic deterministic fallback
+  else if (slides.length === 0) {
     if (effectiveApiKey) {
       const aiSlides = await generateSlidesWithGemini(
         input.title,
@@ -1020,6 +1072,26 @@ export async function regenerateSlideWithAI(
   if (!session || !session.slides[slideIndex]) return null;
 
   const currentSlide = session.slides[slideIndex]!;
+
+  // 1. EXAONE: Dedicated primary engine for Presentation Maker slide redesign
+  const exaoneKey = getExaoneApiKey();
+  if (exaoneKey && instruction && instruction.trim().length > 0) {
+    try {
+      const exaoneSlide = await redesignSlideWithExaone(currentSlide, instruction, {
+        title: session.title,
+        slideCount: session.slides.length,
+      });
+      if (exaoneSlide) {
+        session.slides[slideIndex] = exaoneSlide;
+        session.updatedAt = Date.now();
+        await generatePptxFile(session, session.filePath);
+        return session;
+      }
+    } catch (err) {
+      console.warn("[Presentation Maker] EXAONE slide redesign fallback:", err);
+    }
+  }
+
   const effectiveKey = apiKey || getEffectiveGeminiApiKey() || ENV.GEMINI_API_KEY;
 
   if (effectiveKey && instruction && instruction.trim().length > 0) {

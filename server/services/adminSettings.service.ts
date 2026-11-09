@@ -32,6 +32,9 @@ export interface AdminSystemSettings {
   imagenModel: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  exaoneApiKey?: string;
+  exaoneBaseUrl?: string;
+  exaoneModel?: string;
   aiEngineMode: "full" | "balanced" | "local";
   maxSlideCount: number;
   aiTimeoutSeconds: number;
@@ -54,6 +57,9 @@ const DEFAULT_SETTINGS: AdminSystemSettings = {
   imagenModel: "imagen-3.0-generate-002",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   openaiModel: "gpt-4o-mini",
+  exaoneApiKey: ENV.EXAONE_API_KEY || "",
+  exaoneBaseUrl: ENV.EXAONE_BASE_URL || "https://api.exaone.ai/v1",
+  exaoneModel: ENV.EXAONE_MODEL || "k-exaone_v2.5",
   aiEngineMode: "full",
   maxSlideCount: 50,
   aiTimeoutSeconds: 15,
@@ -255,6 +261,32 @@ export function getEffectiveGeminiApiKey(): string {
  */
 export function getEffectiveOpenAIApiKey(): string {
   return (activeSettings.openaiApiKey || process.env.OPENAI_API_KEY || "").trim();
+}
+
+/**
+ * Returns the effective unmasked EXAONE API key
+ */
+export function getEffectiveExaoneApiKey(): string {
+  return (activeSettings.exaoneApiKey || ENV.EXAONE_API_KEY || process.env.EXAONE_API_KEY || "").trim();
+}
+
+/**
+ * Returns the effective EXAONE Model identifier
+ */
+export function getEffectiveExaoneModel(): string {
+  return (activeSettings.exaoneModel || ENV.EXAONE_MODEL || process.env.EXAONE_MODEL || "k-exaone_v2.5").trim();
+}
+
+/**
+ * Returns the effective EXAONE Base URL
+ */
+export function getEffectiveExaoneBaseUrl(): string {
+  return (
+    activeSettings.exaoneBaseUrl ||
+    ENV.EXAONE_BASE_URL ||
+    process.env.EXAONE_BASE_URL ||
+    "https://api.exaone.ai/v1"
+  ).trim();
 }
 
 /**

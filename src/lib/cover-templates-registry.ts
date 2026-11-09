@@ -52,53 +52,83 @@ function postProcessCoverElements(
   const is169 = pageH <= 800; // 16:9 widescreen presentation canvas (e.g. 1333x750)
   const processed = [...elements];
 
-  // 1. Enforce Logo Placement in Top-Left Corner
+  // 1. Intelligent Logo Placement (Top-Left or Top-Right Corner)
   if (meta.logoDataUrl) {
     const existingLogoIdx = processed.findIndex(
       (e) => e.id === "cover-logo" || e.name?.toLowerCase().includes("logo"),
     );
-    const logoX = 60;
-    const logoY = is169 ? 35 : 45;
-    const logoW = 140;
-    const logoH = is169 ? 60 : 65;
 
-    if (existingLogoIdx >= 0) {
-      processed[existingLogoIdx] = {
-        ...processed[existingLogoIdx]!,
-        x: logoX,
-        y: logoY,
-        width: logoW,
-        height: logoH,
-        imageUrl: meta.logoDataUrl,
-        imageFit: "contain",
-      };
-    } else {
-      const maxZ = Math.max(...processed.map((e) => e.zIndex || 1), 10) + 1;
-      processed.push({
-        id: "cover-logo",
-        type: "image",
-        name: "Institutional Logo",
-        x: logoX,
-        y: logoY,
-        width: logoW,
-        height: logoH,
-        imageUrl: meta.logoDataUrl,
-        imageFit: "contain",
-        zIndex: maxZ,
-      });
+    // Compute dimensions according to scale & preference
+    const size = meta.logoSize || "medium";
+    let logoW = is169 ? 140 : 135;
+    let logoH = is169 ? 65 : 65;
+    if (size === "small") {
+      logoW = is169 ? 110 : 100;
+      logoH = is169 ? 50 : 50;
+    } else if (size === "large") {
+      logoW = is169 ? 180 : 165;
+      logoH = is169 ? 80 : 80;
     }
 
-    // Prevent logo & text / shapes overlapping in top-left
+    // Determine placement: user choice or intelligent cover-design layout decision
+    let isTopRight = meta.logoPlacement === "top-right";
+    if (!meta.logoPlacement) {
+      // Auto-detect: if template has prominent title or branding occupying the top-left, place in top-right
+      const hasTopLeftContent = processed.some(
+        (el) =>
+          el.id !== "cover-logo" &&
+          (el.type === "text" || el.type === "badge") &&
+          el.x < 240 &&
+          el.y < 130 &&
+          (el.text?.trim()?.length || 0) > 0,
+      );
+      if (hasTopLeftContent) {
+        isTopRight = true;
+      }
+    }
+
+    const marginX = is169 ? 60 : 55;
+    const logoX = isTopRight ? pageW - logoW - marginX : marginX;
+    const logoY = is169 ? 35 : 45;
+
+    const logoElement: CanvasCoverElement = {
+      id: "cover-logo",
+      type: "image",
+      name: "Institutional Logo",
+      x: logoX,
+      y: logoY,
+      width: logoW,
+      height: logoH,
+      imageUrl: meta.logoDataUrl,
+      imageFit: "contain",
+      zIndex: Math.max(...processed.map((e) => e.zIndex || 1), 10) + 1,
+    };
+
+    if (existingLogoIdx >= 0) {
+      processed[existingLogoIdx] = logoElement;
+    } else {
+      processed.push(logoElement);
+    }
+
+    // Strict Overlap Prevention: ensure logo does not collide with titles, headers, or cards
     for (let i = 0; i < processed.length; i++) {
       const el = processed[i]!;
-      if (el.id === "cover-logo") continue;
+      if (el.id === "cover-logo" || el.id === "canvas-bg") continue;
       if (el.type === "text" || el.type === "badge") {
-        if (el.x < 220 && el.y < 110) {
-          if (el.isMetadataField === "assignmentTitle" || el.id?.includes("title")) {
-            el.y = Math.max(el.y, is169 ? 120 : 135);
-          } else {
-            el.x = 220;
-            el.width = Math.max(200, Math.min(el.width, pageW - 240));
+        if (isTopRight) {
+          // If logo is top-right, ensure elements don't intrude into top-right corner
+          if (el.x + el.width > logoX - 20 && el.y < logoY + logoH + 20) {
+            el.width = Math.max(120, logoX - 25 - el.x);
+          }
+        } else {
+          // If logo is top-left, ensure elements don't intrude into top-left corner
+          if (el.x < logoX + logoW + 20 && el.y < logoY + logoH + 20) {
+            if (el.isMetadataField === "assignmentTitle" || el.id?.includes("title")) {
+              el.y = Math.max(el.y, logoY + logoH + 25);
+            } else {
+              el.x = logoX + logoW + 25;
+              el.width = Math.max(160, Math.min(el.width, pageW - el.x - marginX));
+            }
           }
         }
       }
