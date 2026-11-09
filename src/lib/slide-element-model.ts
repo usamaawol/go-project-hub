@@ -85,8 +85,10 @@ export interface SlideElement {
  */
 export function convertSlideToElements(
   slide: SlidePreviewItem,
-  tokens: ThemeTokens,
+  tokens?: ThemeTokens,
 ): SlideElement[] {
+  if (!slide) return [];
+
   // If slide already has manual elements, return them
   if (slide.elements && slide.elements.length > 0) {
     return slide.elements;
@@ -96,16 +98,17 @@ export function convertSlideToElements(
   const W = SLIDE_CANVAS_WIDTH;
   const H = SLIDE_CANVAS_HEIGHT;
 
-  const fontTitle = tokens.fontTitle || "Inter";
-  const fontBody = tokens.fontBody || "Inter";
-  const textPrimary = tokens.textPrimary || "#0F172A";
-  const textSecondary = tokens.textSecondary || "#475569";
-  const textMuted = tokens.textMuted || "#94A3B8";
-  const accent = tokens.accent || "#2563EB";
-  const cardBg = tokens.cardBg || (tokens.isDark ? "#1E293B" : "#F8FAFC");
-  const cardBorder = tokens.cardBorder || (tokens.isDark ? "#334155" : "#E2E8F0");
-  const cardText = tokens.cardText || textPrimary;
-  const cardMuted = tokens.cardMuted || textSecondary;
+  const safeTokens = tokens || ({} as ThemeTokens);
+  const fontTitle = safeTokens.fontTitle || "Inter";
+  const fontBody = safeTokens.fontBody || "Inter";
+  const textPrimary = safeTokens.textPrimary || "#0F172A";
+  const textSecondary = safeTokens.textSecondary || "#475569";
+  const textMuted = safeTokens.textMuted || "#94A3B8";
+  const accent = safeTokens.accent || "#2563EB";
+  const cardBg = safeTokens.cardBg || (safeTokens.isDark ? "#1E293B" : "#F8FAFC");
+  const cardBorder = safeTokens.cardBorder || (safeTokens.isDark ? "#334155" : "#E2E8F0");
+  const cardText = safeTokens.cardText || textPrimary;
+  const cardMuted = safeTokens.cardMuted || textSecondary;
 
   let zIndex = 1;
 
@@ -255,6 +258,7 @@ export function convertSlideToElements(
       zIndex: zIndex++,
     });
 
+    const titleStr = slide.title || "Untitled Slide";
     elements.push({
       id: `${slide.id}-title`,
       type: "text",
@@ -263,9 +267,9 @@ export function convertSlideToElements(
       y: 175,
       width: 680,
       height: 170,
-      text: slide.title,
+      text: titleStr,
       fontFamily: fontTitle,
-      fontSize: slide.title.length > 50 ? 32 : 40,
+      fontSize: titleStr.length > 50 ? 32 : 40,
       fontWeight: "800",
       textColor: textPrimary,
       lineHeight: 1.15,
@@ -322,7 +326,8 @@ export function convertSlideToElements(
     });
   } else {
     // Standard Title & Subtitle
-    const titleH = slide.title.length > 60 ? 75 : 55;
+    const titleStr = slide.title || "Untitled Slide";
+    const titleH = titleStr.length > 60 ? 75 : 55;
     elements.push({
       id: `${slide.id}-title`,
       type: "text",
@@ -331,9 +336,9 @@ export function convertSlideToElements(
       y: 85,
       width: 1133,
       height: titleH,
-      text: slide.title,
+      text: titleStr,
       fontFamily: fontTitle,
-      fontSize: slide.title.length > 60 ? 24 : 30,
+      fontSize: titleStr.length > 60 ? 24 : 30,
       fontWeight: "800",
       textColor: textPrimary,
       lineHeight: 1.2,
@@ -1452,6 +1457,7 @@ export function syncElementsToSlide(
   elements: SlideElement[],
   slide: SlidePreviewItem,
 ): SlidePreviewItem {
+  if (!slide) return slide;
   const updatedSlide = { ...slide, elements: [...elements] };
 
   // Sync title

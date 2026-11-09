@@ -1259,18 +1259,57 @@ export function buildSlideDeckContent(
 // In-memory fallback if sessionStorage is unavailable
 const memoryStore = new Map<string, PresentationSessionData>();
 
+function pruneExpiredLocalSessions(): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(STORAGE_PREFIX)) {
+        try {
+          const item = JSON.parse(window.localStorage.getItem(key) || "{}");
+          if (item.expiresAt && Date.now() > item.expiresAt) {
+            toRemove.push(key);
+          }
+        } catch {
+          toRemove.push(key);
+        }
+      }
+    }
+    for (const key of toRemove) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Non-fatal if localStorage is restricted
+  }
+}
+
 export function saveClientSession(session: PresentationSessionData): void {
   memoryStore.set(session.id, session);
-  if (typeof window !== "undefined" && window.sessionStorage) {
+  if (typeof window !== "undefined") {
+    // 1. Session Storage
     try {
-      window.sessionStorage.setItem(`${STORAGE_PREFIX}${session.id}`, JSON.stringify(session));
+      if (window.sessionStorage) {
+        window.sessionStorage.setItem(`${STORAGE_PREFIX}${session.id}`, JSON.stringify(session));
+      }
     } catch (e) {
       console.warn("Could not save presentation to sessionStorage:", e);
+    }
+
+    // 2. Local Storage (persists across page reloads and new tabs)
+    try {
+      if (window.localStorage) {
+        pruneExpiredLocalSessions();
+        window.localStorage.setItem(`${STORAGE_PREFIX}${session.id}`, JSON.stringify(session));
+      }
+    } catch (e) {
+      console.warn("Could not save presentation to localStorage:", e);
     }
   }
 }
 
 export function getClientSession(sessionId: string): PresentationSessionData | null {
+  // 1. In-memory fast cache
   if (memoryStore.has(sessionId)) {
     const item = memoryStore.get(sessionId)!;
     if (Date.now() > item.expiresAt) {
@@ -1280,18 +1319,41 @@ export function getClientSession(sessionId: string): PresentationSessionData | n
     return item;
   }
 
-  if (typeof window !== "undefined" && window.sessionStorage) {
-    try {
-      const stored = window.sessionStorage.getItem(`${STORAGE_PREFIX}${sessionId}`);
-      if (!stored) return null;
-      const parsed: PresentationSessionData = JSON.parse(stored);
-      if (Date.now() > parsed.expiresAt) {
-        window.sessionStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
-        return null;
+  if (typeof window !== "undefined") {
+    // 2. Try sessionStorage
+    if (window.sessionStorage) {
+      try {
+        const stored = window.sessionStorage.getItem(`${STORAGE_PREFIX}${sessionId}`);
+        if (stored) {
+          const parsed: PresentationSessionData = JSON.parse(stored);
+          if (Date.now() > parsed.expiresAt) {
+            window.sessionStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
+          } else {
+            memoryStore.set(sessionId, parsed);
+            return parsed;
+          }
+        }
+      } catch {
+        // Ignored
       }
-      return parsed;
-    } catch {
-      return null;
+    }
+
+    // 3. Fallback to localStorage (ensures sessions survive refreshes, new tabs, and direct preview links)
+    if (window.localStorage) {
+      try {
+        const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${sessionId}`);
+        if (stored) {
+          const parsed: PresentationSessionData = JSON.parse(stored);
+          if (Date.now() > parsed.expiresAt) {
+            window.localStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
+          } else {
+            memoryStore.set(sessionId, parsed);
+            return parsed;
+          }
+        }
+      } catch {
+        // Ignored
+      }
     }
   }
 
@@ -1300,9 +1362,14 @@ export function getClientSession(sessionId: string): PresentationSessionData | n
 
 export function removeClientSession(sessionId: string): void {
   memoryStore.delete(sessionId);
-  if (typeof window !== "undefined" && window.sessionStorage) {
+  if (typeof window !== "undefined") {
     try {
-      window.sessionStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
+      window.sessionStorage?.removeItem(`${STORAGE_PREFIX}${sessionId}`);
+    } catch {
+      // Ignored
+    }
+    try {
+      window.localStorage?.removeItem(`${STORAGE_PREFIX}${sessionId}`);
     } catch {
       // Ignored
     }

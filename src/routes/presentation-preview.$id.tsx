@@ -75,7 +75,80 @@ export const Route = createFileRoute("/presentation-preview/$id")({
     ],
   }),
   component: PresentationPreviewPage,
+  errorComponent: PresentationPreviewErrorFallback,
 });
+
+function PresentationPreviewErrorFallback({ error, reset }: { error: any; reset: () => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const errMsg =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "Failed to load presentation preview.";
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
+      <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
+
+      <div
+        className={`flex-1 transition-all duration-300 ${
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        } flex flex-col items-center justify-center p-6 sm:p-12`}
+      >
+        <div className="max-w-lg rounded-3xl border border-border bg-card p-8 sm:p-10 text-center shadow-lift">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+            <Clock className="h-7 w-7" />
+          </div>
+
+          <span className="mt-4 inline-block rounded-full bg-surface-2 px-3 py-1 font-mono text-[10px] uppercase font-bold text-muted-foreground">
+            Slide Deck Session
+          </span>
+
+          <h1 className="mt-3 font-serif text-2xl sm:text-3xl font-bold text-foreground">
+            Presentation Preview Unavailable
+          </h1>
+
+          <p className="mt-3 text-xs sm:text-sm text-muted-foreground leading-relaxed">
+            This temporary presentation session has expired or the browser storage was reset. DocuMind keeps sessions active for a 10-minute temporary lifespan for privacy.
+          </p>
+
+          {errMsg && (
+            <div className="mt-4 p-3 rounded-xl border border-border bg-muted/40 text-[11px] font-mono text-muted-foreground text-left max-h-24 overflow-auto">
+              {errMsg}
+            </div>
+          )}
+
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Button variant="hero" className="w-full sm:w-auto min-h-[46px] px-6 text-xs" asChild>
+              <Link to="/presentation-maker">
+                <RotateCcw className="h-4 w-4 mr-2" /> Create a New Presentation
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto min-h-[46px] px-6 text-xs"
+              onClick={() => {
+                reset();
+                window.location.reload();
+              }}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" /> Reload Page
+            </Button>
+            <Button
+              variant="glass"
+              className="w-full sm:w-auto min-h-[46px] px-6 text-xs"
+              asChild
+            >
+              <Link to="/">Return to Home</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+      <Footer />
+    </div>
+  );
+}
 
 export function PresentationPreviewPage() {
   const { id: sessionId } = Route.useParams();
@@ -92,6 +165,27 @@ export function PresentationPreviewPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [viewMode, setViewMode] = useState<"editor" | "preview">("editor");
+
+  // Active Presentation Preview Tokens & Mesh (Unconditionally declared for React Hooks rule compliance)
+  const tokens = computeThemeTokens(
+    session?.theme || {
+      id: "modern",
+      name: "Modern",
+      category: "General",
+      kind: "business",
+      colors: { primary: "#0F172A", accent: "#2563EB", bg: "#FFFFFF" },
+      fonts: "Inter",
+      tier: "free",
+    },
+    session?.typography,
+  );
+
+  const meshDataUrl = useMemo(() => {
+    return generateGamma3DMeshSvg({
+      isDark: tokens.isDark,
+      accentColor: tokens.accent,
+    }).dataUrl;
+  }, [tokens.isDark, tokens.accent]);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -520,15 +614,18 @@ export function PresentationPreviewPage() {
         setLoading(true);
         const data = await fetchPresentationPreviewApi(sessionId);
         if (isMounted) {
-          setSession(data);
-          setSecondsRemaining(999999);
+          if (data && data.slides && data.slides.length > 0) {
+            setSession(data);
+            setSecondsRemaining(999999);
+          } else {
+            setIsExpired(true);
+            setSession(null);
+          }
         }
       } catch (err: unknown) {
         if (!isMounted) return;
-        const errObj = err as { code?: string; message?: string };
-        toast.error("Failed to load presentation preview", {
-          description: errObj.message || "Session not found or server offline.",
-        });
+        setIsExpired(true);
+        setSession(null);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -685,7 +782,7 @@ export function PresentationPreviewPage() {
   }
 
   // Expired Screen (Server Enforced & Client Verified)
-  if (isExpired || !session) {
+  if (isExpired || !session || !session.slides || session.slides.length === 0 || !currentSlide) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
         <AppSidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
@@ -750,20 +847,12 @@ export function PresentationPreviewPage() {
     );
   }
 
-  // Active Presentation Preview Screen — Tokens computed from unified theme design system
-  const tokens = computeThemeTokens(session.theme, session.typography);
+  // Active Presentation Preview Screen — Design tokens computed from unified theme design system
   const theme = session.theme;
   const primaryColor = tokens.textPrimary;
   const accentColor = tokens.accent;
   const bgColor = tokens.bg;
   const fontFamily = tokens.fontBody;
-
-  const meshDataUrl = useMemo(() => {
-    return generateGamma3DMeshSvg({
-      isDark: tokens.isDark,
-      accentColor: tokens.accent,
-    }).dataUrl;
-  }, [tokens.isDark, tokens.accent]);
 
   const renderSlideHeader = (slide: SlidePreviewItem) => (
     <div dir={slide.isRtl ? "rtl" : "ltr"}>
@@ -978,8 +1067,8 @@ export function PresentationPreviewPage() {
                   onDownloadPptx={handleDownloadPptx}
                   onEditCoverMetadata={() => {
                     setTempCoverMeta(
-                      currentSlide.assignmentMetadata ||
-                        session.assignmentMetadata ||
+                      currentSlide?.assignmentMetadata ||
+                        session?.assignmentMetadata ||
                         getDefaultAssignmentMetadata(),
                     );
                     setCoverEditModalOpen(true);
@@ -1023,7 +1112,7 @@ export function PresentationPreviewPage() {
                       variant="glass"
                       size="sm"
                       onClick={() => handleMoveSlide("down")}
-                      disabled={currentSlideIdx === session.slides.length - 1}
+                      disabled={currentSlideIdx === slides.length - 1}
                       className="h-8 px-2 text-[11px]"
                       title="Move slide later in deck"
                     >
@@ -1042,7 +1131,7 @@ export function PresentationPreviewPage() {
                       variant="glass"
                       size="sm"
                       onClick={handleDeleteCurrentSlide}
-                      disabled={session.slides.length <= 2}
+                      disabled={slides.length <= 2}
                       className="h-8 px-2 text-[11px] text-destructive hover:bg-destructive/10"
                       title="Delete this slide"
                     >

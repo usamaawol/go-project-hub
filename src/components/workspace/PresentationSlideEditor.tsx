@@ -190,21 +190,23 @@ export function PresentationSlideEditor({
   const [aiPromptInput, setAiPromptInput] = useState("");
 
   // Slide Background Color
-  const currentBg = slide.customBgColor || tokens.bg;
+  const currentBg = slide?.customBgColor || tokens?.bg || "#FFFFFF";
 
   // When active slide changes from outside (e.g. user clicked thumbnail or slide navigation)
   useEffect(() => {
+    if (!slide) return;
     const freshElements = convertSlideToElements(slide, tokens);
     setElements(freshElements);
     setHistory([]);
     setFuture([]);
     setSelectedId(null);
     setEditingTextId(null);
-  }, [slide.id, slideIndex]);
+  }, [slide?.id, slideIndex]);
 
   // Push element changes to history & parent
   const commitElements = useCallback(
     (newElements: SlideElement[], recordHistory = true) => {
+      if (!slide) return;
       if (recordHistory) {
         setHistory((prev) => [...prev.slice(-30), elements]);
         setFuture([]);
@@ -218,7 +220,7 @@ export function PresentationSlideEditor({
 
   // Undo / Redo
   const handleUndo = useCallback(() => {
-    if (history.length === 0) return;
+    if (!slide || history.length === 0) return;
     const previous = history[history.length - 1]!;
     setHistory((prev) => prev.slice(0, prev.length - 1));
     setFuture((prev) => [elements, ...prev]);
@@ -229,7 +231,7 @@ export function PresentationSlideEditor({
   }, [history, elements, slide, onUpdateSlide]);
 
   const handleRedo = useCallback(() => {
-    if (future.length === 0) return;
+    if (!slide || future.length === 0) return;
     const next = future[0]!;
     setFuture((prev) => prev.slice(1));
     setHistory((prev) => [...prev, elements]);
@@ -823,6 +825,14 @@ export function PresentationSlideEditor({
       commitElements(elements);
     }
   }, [dragState, resizeState, elements, commitElements]);
+
+  if (!slide) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-border bg-card">
+        <p className="text-sm text-muted-foreground">No slide selected.</p>
+      </div>
+    );
+  }
 
   return (
     <div
