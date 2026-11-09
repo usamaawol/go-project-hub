@@ -548,7 +548,7 @@ function postProcessCoverElements(
           y: rowY,
           width: 200,
           height: 24,
-          text: m.fullName || "Student Name",
+          text: m.fullName || "",
           fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
           fontSize: is169 ? 13 : 15,
           fontWeight: "600",
@@ -556,35 +556,37 @@ function postProcessCoverElements(
           zIndex: 22,
         });
 
-        processed.push({
-          id: `cover-member-line-${idx}`,
-          type: "shape",
-          name: `Member Leader Line ${idx + 1}`,
-          shapeType: "rectangle",
-          x: lineStartX,
-          y: rowY + (is169 ? 8 : 10),
-          width: lineW,
-          height: 2,
-          fillColor: accent,
-          opacity: 0.85,
-          zIndex: 21,
-        });
+        if (m.studentId) {
+          processed.push({
+            id: `cover-member-line-${idx}`,
+            type: "shape",
+            name: `Member Leader Line ${idx + 1}`,
+            shapeType: "rectangle",
+            x: lineStartX,
+            y: rowY + (is169 ? 8 : 10),
+            width: lineW,
+            height: 2,
+            fillColor: accent,
+            opacity: 0.85,
+            zIndex: 21,
+          });
 
-        processed.push({
-          id: `cover-member-id-${idx}`,
-          type: "text",
-          name: `Member ID ${idx + 1}`,
-          x: colIdX,
-          y: rowY,
-          width: 140,
-          height: 24,
-          text: m.studentId || "N/A",
-          fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
-          fontSize: is169 ? 13 : 15,
-          fontWeight: "600",
-          textColor: accent,
-          zIndex: 22,
-        });
+          processed.push({
+            id: `cover-member-id-${idx}`,
+            type: "text",
+            name: `Member ID ${idx + 1}`,
+            x: colIdX,
+            y: rowY,
+            width: 140,
+            height: 24,
+            text: m.studentId,
+            fontFamily: meta.coverFontFamily || "Inter, Montserrat, sans-serif",
+            fontSize: is169 ? 13 : 15,
+            fontWeight: "600",
+            textColor: accent,
+            zIndex: 22,
+          });
+        }
       });
 
       currY += validMembers.slice(0, 8).length * rowH + (is169 ? 16 : 22);
@@ -704,7 +706,13 @@ function postProcessCoverElements(
     }
   }
 
-  return processed;
+  // Filter out any text elements with empty text to prevent empty placeholders
+  return processed.filter((el) => {
+    if (el.type === "text" && (!el.text || !el.text.trim())) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function generateDefaultCoverElements(
@@ -1289,7 +1297,7 @@ export function generateDefaultCoverElements(
         y: rowY,
         width: pageW - 160,
         height: 22,
-        text: `${idx + 1}. ${m.fullName || "Student Name"}  —  ID: ${m.studentId || "N/A"}`,
+        text: m.studentId ? `${idx + 1}. ${m.fullName || "Member"}  —  ID: ${m.studentId}` : `${idx + 1}. ${m.fullName || "Member"}`,
         fontFamily: font,
         fontSize: 11,
         fontWeight: "500",
@@ -1299,42 +1307,44 @@ export function generateDefaultCoverElements(
     });
   } else {
     // Individual Student Section (Clean Typography, No Clunky Boxes)
-    elements.push({
-      id: "text-submitted-by-label",
-      type: "text",
-      name: "Submitted By Label",
-      x: univAlign === "left" ? 64 : pageW / 2 - 140,
-      y: studentStartY,
-      width: 280,
-      height: 18,
-      text: "SUBMITTED BY",
-      fontFamily: font,
-      fontSize: 9,
-      fontWeight: "700",
-      textAlign: univAlign,
-      textColor: accent,
-      letterSpacing: 1.5,
-      textTransform: "uppercase",
-      zIndex: zIndex++,
-    });
+    if (meta.studentName?.trim()) {
+      elements.push({
+        id: "text-submitted-by-label",
+        type: "text",
+        name: "Submitted By Label",
+        x: univAlign === "left" ? 64 : pageW / 2 - 140,
+        y: studentStartY,
+        width: 280,
+        height: 18,
+        text: "SUBMITTED BY",
+        fontFamily: font,
+        fontSize: 9,
+        fontWeight: "700",
+        textAlign: univAlign,
+        textColor: accent,
+        letterSpacing: 1.5,
+        textTransform: "uppercase",
+        zIndex: zIndex++,
+      });
 
-    elements.push({
-      id: "text-student-name",
-      type: "text",
-      name: "Student Full Name",
-      x: univAlign === "left" ? 64 : pageW / 2 - 140,
-      y: studentStartY + 20,
-      width: 280,
-      height: 26,
-      text: meta.studentName?.trim() || "Student Full Name",
-      fontFamily: font,
-      fontSize: 15,
-      fontWeight: "700",
-      textAlign: univAlign,
-      textColor: "#0F172A",
-      isMetadataField: "studentName",
-      zIndex: zIndex++,
-    });
+      elements.push({
+        id: "text-student-name",
+        type: "text",
+        name: "Student Full Name",
+        x: univAlign === "left" ? 64 : pageW / 2 - 140,
+        y: studentStartY + 20,
+        width: 280,
+        height: 26,
+        text: meta.studentName.trim(),
+        fontFamily: font,
+        fontSize: 15,
+        fontWeight: "700",
+        textAlign: univAlign,
+        textColor: "#0F172A",
+        isMetadataField: "studentName",
+        zIndex: zIndex++,
+      });
+    }
 
     if (meta.studentId?.trim()) {
       elements.push({
@@ -1613,7 +1623,7 @@ export function generateCanvaSalfordWave(
       y: is169 ? 340 : (subtitle ? 425 : 385),
       width: 480,
       height: 30,
-      text: author || (isGroup ? "Project Team" : "Student Name"),
+      text: author || "",
       fontFamily: "Inter, Montserrat, sans-serif",
       fontSize: 20,
       fontWeight: "800",
@@ -1983,7 +1993,7 @@ export function generateCanvaHanoverRedGeometric(
       y: byY + 22,
       width: 260,
       height: 26,
-      text: author || (isGroup ? "Project Team" : "Student Name"),
+      text: author || "",
       fontFamily: "Inter, sans-serif",
       fontSize: 15,
       fontWeight: "700",

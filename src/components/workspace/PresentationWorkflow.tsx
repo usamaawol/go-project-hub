@@ -567,40 +567,14 @@ export function PresentationWorkflow({
     }
 
     if (assignmentMode) {
-      const isGroup = assignmentMetadata.assignmentType === "group";
-      if (!isGroup) {
-        if (
-          !assignmentMetadata.studentName?.trim() ||
-          !assignmentMetadata.studentId?.trim() ||
-          !assignmentMetadata.courseName?.trim() ||
-          !assignmentMetadata.instructorName?.trim()
-        ) {
-          toast.error("Required Assignment Information Missing", {
-            description:
-              "Please complete Student Full Name, Student ID, Course Name, and Instructor Name (*).",
-          });
-          return;
-        }
-      } else {
-        if (
-          !assignmentMetadata.assignmentTitle?.trim() ||
-          !assignmentMetadata.courseName?.trim() ||
-          !assignmentMetadata.instructorName?.trim()
-        ) {
-          toast.error("Required Group Information Missing", {
-            description: "Please complete Group Title, Course Name, and Instructor Name (*).",
-          });
-          return;
-        }
-        const validMembers = assignmentMetadata.groupMembers.filter(
-          (m) => m.fullName.trim() && m.studentId.trim(),
-        );
-        if (validMembers.length === 0) {
-          toast.error("Group Members Required", {
-            description: "Please provide at least one group member with Full Name and Student ID.",
-          });
-          return;
-        }
+      // In assignment mode, all metadata fields (student name, student ID, course, instructor, university, group members) are optional.
+      // Auto-populate assignment title if left blank
+      if (!assignmentMetadata.assignmentTitle?.trim()) {
+        const detectedTitle = title.trim() || detectTitleFromText(pastedText) || "Academic Assignment";
+        setAssignmentMetadata((prev) => ({
+          ...prev,
+          assignmentTitle: detectedTitle,
+        }));
       }
     }
 

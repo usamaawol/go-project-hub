@@ -12,6 +12,7 @@ import {
   type SlideLayoutType,
 } from "../../src/lib/presentation-theme";
 import { renderSlideDeckToPptx } from "../../src/lib/presentation-renderer";
+import { verifyAndSanitizeImage } from "../../src/lib/image-verifier";
 import { generateSlideVisual } from "./geminiVisual.service";
 import { imageProviderManager } from "./imageProviders/imageProviderManager";
 import {
@@ -716,6 +717,45 @@ export async function createPresentationSession(
     }
   }
 
+  // Verification & Sanitization pass (Requirement 1)
+  // "Never display an invisible image placeholder as if an image were successfully generated."
+  // "If an image-generation provider fails or produces an unusable result, remove the failed image and use an editable diagram, shapes, icons, or a clean text-based layout instead."
+  for (const s of slides) {
+    if (s.layout === "text-visual" || s.layout === "image-led") {
+      if (!s.visual?.imageUrl) {
+        if (s.bullets && s.bullets.length >= 3) {
+          s.layout = "bento-grid";
+          s.bentoGrid = s.bullets.slice(0, 4).map((b, idx) => ({
+            title: `Key Aspect 0${idx + 1}`,
+            description: b,
+            tag: `PILLAR 0${idx + 1}`,
+          }));
+        } else {
+          s.layout = "content";
+        }
+        s.visual = undefined;
+      } else {
+        const verification = await verifyAndSanitizeImage(s.visual.imageUrl);
+        if (!verification.valid || !verification.dataUrl) {
+          console.warn(`[ImageVerifier] Rejected unviable image on slide "${s.title}": ${verification.error}`);
+          if (s.bullets && s.bullets.length >= 3) {
+            s.layout = "bento-grid";
+            s.bentoGrid = s.bullets.slice(0, 4).map((b, idx) => ({
+              title: `Key Analysis 0${idx + 1}`,
+              description: b,
+              tag: `PILLAR 0${idx + 1}`,
+            }));
+          } else {
+            s.layout = "content";
+          }
+          s.visual = undefined;
+        } else {
+          s.visual.imageUrl = verification.dataUrl;
+        }
+      }
+    }
+  }
+
   const derivedTitle = input.title.trim() || slides[0]?.title || "Presentation";
   const pptxFilePath = path.join(sessionDir, "presentation.pptx");
 
@@ -947,17 +987,22 @@ export async function regenerateSlideVisual(
     aspectRatio: "16:9",
   });
 
-  slide.visual = {
-    type: imgResult.format === "svg+xml" ? "diagram" : "picture",
-    concept,
-    caption: slide.visual?.caption || `Visual: ${concept}`,
-    imageUrl: imgResult.imageUrl,
-    imagePrompt: prompt,
-  };
-
-  // Ensure slide has text-visual layout if it was standard content
-  if (slide.layout === "content" || slide.layout === "agenda") {
-    slide.layout = "text-visual";
+  if (imgResult && imgResult.imageUrl) {
+    const verification = await verifyAndSanitizeImage(imgResult.imageUrl);
+    if (verification.valid && verification.dataUrl) {
+      slide.visual = {
+        type: verification.format === "svg+xml" ? "diagram" : "picture",
+        concept,
+        caption: slide.visual?.caption || `Visual: ${concept}`,
+        imageUrl: verification.dataUrl,
+        imagePrompt: prompt,
+      };
+      if (slide.layout === "content" || slide.layout === "agenda") {
+        slide.layout = "text-visual";
+      }
+    } else {
+      console.warn(`[ImageVerifier] Regenerated image failed verification: ${verification.error}`);
+    }
   }
 
   // Re-generate PPTX file on disk
@@ -1195,13 +1240,22 @@ Respond strictly in valid JSON matching this schema:
                 aspectRatio: "16:9",
               });
               if (imgRes && imgRes.imageUrl) {
-                updatedSlide.visual = {
-                  type: imgRes.format === "svg+xml" ? "diagram" : "picture",
-                  concept,
-                  caption: updatedSlide.subtitle || `Visual: ${concept}`,
-                  imageUrl: imgRes.imageUrl,
-                  imagePrompt: vPrompt,
-                };
+                const verification = await verifyAndSanitizeImage(imgRes.imageUrl);
+                if (verification.valid && verification.dataUrl) {
+                  updatedSlide.visual = {
+                    type: verification.format === "svg+xml" ? "diagram" : "picture",
+                    concept,
+                    caption: updatedSlide.subtitle || `Visual: ${concept}`,
+                    imageUrl: verification.dataUrl,
+                    imagePrompt: vPrompt,
+                  };
+                } else {
+                  console.warn(`[ImageVerifier] AI slide visual failed verification: ${verification.error}`);
+                  if (updatedSlide.layout === "text-visual" || updatedSlide.layout === "image-led") {
+                    updatedSlide.layout = "bento-grid";
+                  }
+                  updatedSlide.visual = undefined;
+                }
               }
             } catch (err) {
               console.warn("Image generation fallback for AI slide redesign:", err);

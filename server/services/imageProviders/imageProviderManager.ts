@@ -469,13 +469,6 @@ export class ImageProviderManager {
       .filter((p) => {
         if (!p.enabled) return false;
         if (!p.apiKey || p.apiKey.trim().length < 6) return false;
-        if (
-          p.apiKey.includes("customPresentationTestKey") ||
-          p.apiKey.includes("mock_cascade_key") ||
-          p.apiKey.includes("test_mock")
-        ) {
-          return false;
-        }
         const cooldownUntil = this.cooldowns.get(p.id);
         if (cooldownUntil && cooldownUntil > now) return false;
         return true;

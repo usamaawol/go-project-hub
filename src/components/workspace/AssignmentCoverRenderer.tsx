@@ -37,7 +37,7 @@ export function AssignmentCoverRenderer({
     (isGroup ? "Group Assignment Submission" : "Individual Course Assignment");
 
   const course = safeMeta.courseName?.trim() || "Course Name Not Specified";
-  const instructor = safeMeta.instructorName?.trim() || "Instructor Name";
+  const instructor = safeMeta.instructorName?.trim() || "";
   const university = safeMeta.universityName?.trim() || "";
   const department = safeMeta.department?.trim() || "";
   const faculty = safeMeta.collegeOrFaculty?.trim() || "";
@@ -52,8 +52,8 @@ export function AssignmentCoverRenderer({
       ? safeMeta.groupMembers.filter((m) => m && (m.fullName?.trim() || m.studentId?.trim()))
       : [];
 
-  const studentName = safeMeta.studentName?.trim() || (isGroup ? "Group Project" : "Student Name");
-  const studentId = safeMeta.studentId?.trim() || (isGroup ? "" : "Student ID");
+  const studentName = safeMeta.studentName?.trim() || "";
+  const studentId = safeMeta.studentId?.trim() || "";
 
   // Container styling depending on aspect ratio
   const containerStyle: React.CSSProperties = {

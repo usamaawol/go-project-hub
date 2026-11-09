@@ -12,6 +12,57 @@ import { getCoverTemplateById, generateDefaultCoverElements } from "./cover-temp
 import { getDefaultAssignmentMetadata } from "./assignment-types";
 
 /**
+ * Safely adds an image to a PPTX slide with format verification and error containment.
+ * Prevents crashes, 0-byte corrupt assets, and broken/invisible placeholders.
+ */
+export function safeAddImageToSlide(
+  slide: any,
+  _pptx: any,
+  imgSource: string | undefined,
+  opts: { x: number; y: number; w: number; h: number },
+  fallback?: () => void,
+): boolean {
+  if (!imgSource || typeof imgSource !== "string" || imgSource.trim().length === 0) {
+    fallback?.();
+    return false;
+  }
+
+  const trimmed = imgSource.trim();
+  try {
+    if (trimmed.startsWith("data:image/")) {
+      // Reject webp format as PowerPoint desktop cannot render webp natively
+      if (trimmed.startsWith("data:image/webp")) {
+        fallback?.();
+        return false;
+      }
+      slide.addImage({
+        data: trimmed,
+        x: opts.x,
+        y: opts.y,
+        w: opts.w,
+        h: opts.h,
+      });
+      return true;
+    } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      slide.addImage({
+        path: trimmed,
+        x: opts.x,
+        y: opts.y,
+        w: opts.w,
+        h: opts.h,
+      });
+      return true;
+    }
+  } catch (err) {
+    console.warn("Failed to insert image into PPTX slide, invoking graceful fallback:", err);
+    fallback?.();
+    return false;
+  }
+  fallback?.();
+  return false;
+}
+
+/**
  * Dynamically computes non-overlapping vertical coordinates for titles,
  * subtitles, and body cards based on text length and typography hierarchy.
  */
@@ -85,7 +136,92 @@ export async function renderSlideDeckToPptx(
 
   for (const s of slides) {
     const slide = pptx.addSlide();
-    slide.background = { color: tokens.bgHex };
+    slide.background = { color: stripHex(s.customBgColor || tokens.bgHex) };
+
+    // If slide contains structured elements from the interactive slide editor:
+    if (s.elements && s.elements.length > 0) {
+      const sorted = [...s.elements].sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
+
+      for (const el of sorted) {
+        // Convert canvas coordinates (1333 x 750) to inches (13.333 x 7.5): 100px = 1 inch
+        const x = el.x / 100;
+        const y = el.y / 100;
+        const w = el.width / 100;
+        const h = el.height / 100;
+
+        if (el.type === "shape" || el.type === "card") {
+          const isCircle = el.shapeType === "circle";
+          const isRounded = el.shapeType === "roundRect" || el.shapeType === "pill" || Boolean(el.borderRadius);
+          const shapeType = isCircle
+            ? pptx.ShapeType.ellipse
+            : isRounded
+              ? pptx.ShapeType.roundRect
+              : pptx.ShapeType.rect;
+
+          slide.addShape(shapeType, {
+            x,
+            y,
+            w,
+            h: Math.max(0.04, h),
+            fill: el.fillColor && el.fillColor !== "transparent" ? { color: stripHex(el.fillColor) } : undefined,
+            line: el.borderWidth && el.borderColor ? { color: stripHex(el.borderColor), width: el.borderWidth } : undefined,
+          });
+        } else if (el.type === "line") {
+          slide.addShape(pptx.ShapeType.rect, {
+            x,
+            y,
+            w,
+            h: Math.max(0.04, h),
+            fill: { color: stripHex(el.fillColor || tokens.accentHex) },
+          });
+        } else if (el.type === "image" && el.imageUrl) {
+          safeAddImageToSlide(slide, pptx, el.imageUrl, { x, y, w, h }, () => {
+            slide.addShape(pptx.ShapeType.roundRect, {
+              x,
+              y,
+              w,
+              h,
+              fill: { color: tokens.cardBgHex },
+              line: { color: tokens.cardBorderHex, width: 1 },
+            });
+            if (el.altText) {
+              slide.addText(el.altText, {
+                x: x + 0.2,
+                y: y + h / 2 - 0.2,
+                w: w - 0.4,
+                h: 0.4,
+                fontSize: 10,
+                color: tokens.cardMutedHex,
+                align: "center",
+              });
+            }
+          });
+        } else if (el.type === "text" && el.text && el.text.trim()) {
+          const fontSize = el.fontSize || 14;
+          slide.addText(el.text, {
+            x,
+            y,
+            w,
+            h,
+            fontSize,
+            bold: el.fontWeight === "bold" || el.fontWeight === "700" || el.fontWeight === "800",
+            italic: el.fontStyle === "italic",
+            underline: el.underline || false,
+            color: el.textColor ? stripHex(el.textColor) : tokens.textPrimaryHex,
+            fontFace: el.fontFamily || fontBody,
+            align: el.textAlign || "left",
+            valign: "top",
+            charSpacing: el.letterSpacing,
+          });
+        }
+      }
+
+      if (s.notes) {
+        slide.addNotes(s.notes);
+      }
+
+      continue;
+    }
 
     // Common footer on all slides except cover
     const isCover = s.layout === "title" || s.layout === "assignment-cover";
@@ -1323,12 +1459,31 @@ export async function renderSlideDeckToPptx(
             isDark: tokens.isDark,
           }).imageUrl;
 
-        slide.addImage({
-          data: visualImg,
+        safeAddImageToSlide(slide, pptx, visualImg, {
           x: visualX + 0.3,
           y: startY + 0.55,
           w: rightW - 0.6,
           h: cardH - 1.15,
+        }, () => {
+          // Graceful vector diagram card fallback
+          slide.addShape(pptx.ShapeType.roundRect, {
+            x: visualX + 0.3,
+            y: startY + 0.55,
+            w: rightW - 0.6,
+            h: cardH - 1.15,
+            fill: { color: tokens.cardBgHex },
+            line: { color: tokens.cardBorderHex, width: 1 },
+          });
+          slide.addText("📊 CONCEPT TOPOLOGY", {
+            x: visualX + 0.5,
+            y: startY + cardH / 2 - 0.3,
+            w: rightW - 1.0,
+            h: 0.5,
+            fontSize: 12,
+            bold: true,
+            color: tokens.accentHex,
+            align: "center",
+          });
         });
 
         // Caption / Notes below diagram

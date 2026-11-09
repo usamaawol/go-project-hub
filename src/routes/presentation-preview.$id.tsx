@@ -60,6 +60,7 @@ import { AssignmentInformationForm } from "@/components/workspace/AssignmentInfo
 import { CoverTemplateGallery } from "@/components/workspace/CoverTemplateGallery";
 import { getDefaultAssignmentMetadata, type AssignmentMetadata } from "@/lib/assignment-types";
 import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
+import { PresentationSlideEditor } from "@/components/workspace/PresentationSlideEditor";
 
 
 export const Route = createFileRoute("/presentation-preview/$id")({
@@ -90,8 +91,54 @@ export function PresentationPreviewPage() {
   const [zoomLevel, setZoomLevel] = useState<"fit" | 75 | 100 | 125>("fit");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [viewMode, setViewMode] = useState<"editor" | "preview">("editor");
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSlideCanvasUpdate = useCallback(
+    (updatedSlide: SlidePreviewItem) => {
+      if (!session) return;
+      const updatedSlides = [...session.slides];
+      updatedSlides[currentSlideIdx] = updatedSlide;
+      const updatedSession: PresentationSessionData = {
+        ...session,
+        slides: updatedSlides,
+        title: currentSlideIdx === 0 && updatedSlide.title ? updatedSlide.title : session.title,
+      };
+      setSession(updatedSession);
+      saveClientSession(updatedSession);
+
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await updatePresentationSlideApi(sessionId, currentSlideIdx, updatedSlide);
+        } catch (e) {
+          console.warn("Backend slide sync warning:", e);
+        }
+      }, 400);
+    },
+    [session, currentSlideIdx, sessionId],
+  );
+
+  const handleDuplicateCurrentSlide = async () => {
+    if (!session || !session.slides[currentSlideIdx]) return;
+    const current = session.slides[currentSlideIdx]!;
+    const duplicated: SlidePreviewItem = {
+      ...current,
+      id: `slide-${Date.now()}`,
+      slideNumber: currentSlideIdx + 2,
+      title: `${current.title} (Copy)`,
+    };
+    const updatedSlides = [...session.slides];
+    updatedSlides.splice(currentSlideIdx + 1, 0, duplicated);
+    const renumbered = updatedSlides.map((s, idx) => ({ ...s, slideNumber: idx + 1 }));
+    const updatedSession = { ...session, slides: renumbered, slideCount: renumbered.length };
+    setSession(updatedSession);
+    saveClientSession(updatedSession);
+    setCurrentSlideIdx(currentSlideIdx + 1);
+    toast.success(`Slide ${currentSlideIdx + 1} duplicated!`);
+  };
 
   // Interactive Slide Editor State
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -798,22 +845,52 @@ export function PresentationPreviewPage() {
               </div>
             </div>
 
-            {/* Live Session Badge & Download PPTX Button */}
-            <div className="flex items-center gap-3">
+            {/* Live Session Badge, View Mode Toggle & Download PPTX Button */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* View Mode Switcher: Full Interactive Slide Editor vs Presentation View */}
+              <div className="flex items-center gap-1 rounded-xl border border-border bg-surface-2 p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("editor")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    viewMode === "editor"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Full manual slide editor with drag, resize, formatting, and element controls"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  <span>Slide Editor</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("preview")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    viewMode === "preview"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Clean presentation preview"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  <span>Preview View</span>
+                </button>
+              </div>
+
               {/* Active Session Indicator */}
               <div
-                className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs font-mono font-medium text-emerald-700 dark:text-emerald-400 shadow-xs"
+                className="hidden sm:flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-mono font-medium text-emerald-700 dark:text-emerald-400 shadow-xs"
                 title="Your presentation stays active in your browser until you refresh or leave the page."
               >
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Live Editor Session</span>
+                <span>Live Session</span>
               </div>
 
               {/* Download PPTX Button */}
               <Button
                 data-tour="tour-preview-download"
                 variant="hero"
-                className="min-h-[46px] px-5 text-xs font-semibold gap-2 shadow-xs"
+                className="min-h-[44px] px-4 text-xs font-semibold gap-2 shadow-xs"
                 disabled={downloading || !session}
                 onClick={handleDownloadPptx}
               >
@@ -877,8 +954,41 @@ export function PresentationPreviewPage() {
 
             {/* Slide Presentation Viewport */}
             <div className="order-1 lg:order-2 flex flex-col gap-4">
-              {/* AI Slide Assistant & Quick Actions Bar */}
-              <div className="rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-background to-accent/10 p-3.5 sm:p-4 shadow-xs space-y-3">
+              {viewMode === "editor" ? (
+                <PresentationSlideEditor
+                  slide={currentSlide}
+                  slideIndex={currentSlideIdx}
+                  totalSlides={slides.length}
+                  tokens={tokens}
+                  theme={session.theme}
+                  onUpdateSlide={handleSlideCanvasUpdate}
+                  onPrevSlide={handlePrevSlide}
+                  onNextSlide={handleNextSlide}
+                  onAddNewSlide={handleAddNewSlide}
+                  onDuplicateSlide={handleDuplicateCurrentSlide}
+                  onDeleteSlide={handleDeleteCurrentSlide}
+                  onMoveSlide={handleMoveSlide}
+                  onRegenerateWithAI={async (instruction: string) => {
+                    await handleRegenerateSlideWithAI(instruction);
+                  }}
+                  isRegeneratingAI={isRegeneratingWithAI}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={toggleFullscreen}
+                  downloading={downloading}
+                  onDownloadPptx={handleDownloadPptx}
+                  onEditCoverMetadata={() => {
+                    setTempCoverMeta(
+                      currentSlide.assignmentMetadata ||
+                        session.assignmentMetadata ||
+                        getDefaultAssignmentMetadata(),
+                    );
+                    setCoverEditModalOpen(true);
+                  }}
+                />
+              ) : (
+                <>
+                  {/* AI Slide Assistant & Quick Actions Bar */}
+                  <div className="rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-background to-accent/10 p-3.5 sm:p-4 shadow-xs space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2">
                     <span className="h-7 w-7 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
@@ -2346,6 +2456,8 @@ export function PresentationPreviewPage() {
                   </Button>
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
         </main>

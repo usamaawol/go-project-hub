@@ -100,10 +100,6 @@ export function AssignmentInformationForm({
   };
 
   const handleRemoveMember = (index: number) => {
-    if (groupMembers.length <= 1) {
-      toast.error("At least one group member is required for group assignments.");
-      return;
-    }
     const updated = groupMembers.filter((_, i) => i !== index);
     updateField("groupMembers", updated);
   };
@@ -447,14 +443,14 @@ export function AssignmentInformationForm({
 
       {/* Primary Required & Optional Fields Form */}
       <div className="space-y-4">
-        {/* SECTION 1: Required Student / Group Credentials */}
+        {/* SECTION 1: Student / Group Credentials (All Optional) */}
         <div className="rounded-xl border border-border bg-card p-4 space-y-3.5">
           <div className="border-b border-border pb-2 flex items-center justify-between">
             <h4 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
               {isGroup ? <Users className="h-4 w-4 text-primary" /> : <User className="h-4 w-4 text-primary" />}
-              {isGroup ? "Group Identification & Members" : "Student Identification"}
+              {isGroup ? "Group Identification & Members (Optional)" : "Student Identification (Optional)"}
             </h4>
-            <span className="text-[10px] text-destructive font-mono font-bold">* Required Fields</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-semibold">All Fields Optional</span>
           </div>
 
           {/* If Individual: Assignment Title + Student Name + Student ID */}
@@ -462,7 +458,7 @@ export function AssignmentInformationForm({
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-foreground block mb-1">
-                  Assignment Title <span className="text-destructive">*</span>
+                  Assignment Title (Optional)
                 </label>
                 <input
                   type="text"
@@ -470,35 +466,32 @@ export function AssignmentInformationForm({
                   value={metadata.assignmentTitle || ""}
                   onChange={(e) => updateField("assignmentTitle", e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  required
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="text-xs font-semibold text-foreground block mb-1">
-                    Student's Full Name <span className="text-destructive">*</span>
+                    Student's Full Name (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g., Alex Johnson"
+                    placeholder="e.g., Alex Johnson (Leave blank to omit)"
                     value={metadata.studentName || ""}
                     onChange={(e) => updateField("studentName", e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    required
                   />
                 </div>
 
                 <div>
                   <label className="text-xs font-semibold text-foreground block mb-1">
-                    Student ID <span className="text-destructive">*</span>
+                    Student ID (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g., STU-2025-8841"
+                    placeholder="e.g., STU-2025-8841 (Leave blank to omit)"
                     value={metadata.studentId || ""}
                     onChange={(e) => updateField("studentId", e.target.value)}
                     className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    required
                   />
                 </div>
               </div>
@@ -509,7 +502,7 @@ export function AssignmentInformationForm({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="text-xs font-semibold text-foreground block mb-1">
-                    Group Assignment Title <span className="text-destructive">*</span>
+                    Group Assignment Title (Optional)
                   </label>
                   <input
                     type="text"
@@ -517,7 +510,6 @@ export function AssignmentInformationForm({
                     value={metadata.assignmentTitle || ""}
                     onChange={(e) => updateField("assignmentTitle", e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    required
                   />
                 </div>
                 <div>
@@ -526,7 +518,7 @@ export function AssignmentInformationForm({
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g., Team Alpha, Systems Syndicate"
+                    placeholder="e.g., Team Alpha, Systems Syndicate (Optional)"
                     value={metadata.groupName || ""}
                     onChange={(e) => updateField("groupName", e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
@@ -538,7 +530,7 @@ export function AssignmentInformationForm({
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-foreground">
-                    Team Members Directory (At least 1 required)
+                    Team Members Directory (Optional — Leave blank to omit)
                   </span>
                   <Button
                     type="button"
@@ -563,14 +555,14 @@ export function AssignmentInformationForm({
                       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <input
                           type="text"
-                          placeholder="Member Full Name *"
+                          placeholder="Member Full Name (Optional)"
                           value={member.fullName || ""}
                           onChange={(e) => handleUpdateMember(idx, "fullName", e.target.value)}
                           className="px-2.5 py-1.5 text-xs rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <input
                           type="text"
-                          placeholder="Student ID *"
+                          placeholder="Student ID (Optional)"
                           value={member.studentId || ""}
                           onChange={(e) => handleUpdateMember(idx, "studentId", e.target.value)}
                           className="px-2.5 py-1.5 text-xs font-mono rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -595,16 +587,14 @@ export function AssignmentInformationForm({
                         >
                           <ArrowDown className="h-3.5 w-3.5" />
                         </button>
-                        {(safeMetadata.groupMembers || []).length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMember(idx)}
-                            className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-1"
-                            title="Remove member"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(idx)}
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-1"
+                          title="Remove member"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -613,33 +603,31 @@ export function AssignmentInformationForm({
             </div>
           )}
 
-          {/* Course Name & Instructor Name (Both required for both modes) */}
+          {/* Course Name & Instructor Name (Both Optional) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
             <div>
               <label className="text-xs font-semibold text-foreground block mb-1">
-                Course Name or Subject <span className="text-destructive">*</span>
+                Course Name or Subject (Optional)
               </label>
               <input
                 type="text"
-                placeholder="e.g., Computer Architecture & Systems"
+                placeholder="e.g., Computer Architecture & Systems (Optional)"
                 value={metadata.courseName || ""}
                 onChange={(e) => updateField("courseName", e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                required
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold text-foreground block mb-1">
-                Submitted To: Instructor's Name <span className="text-destructive">*</span>
+                Submitted To: Instructor's Name (Optional)
               </label>
               <input
                 type="text"
-                placeholder="e.g., Dr. Eleanor Vance, Ph.D."
+                placeholder="e.g., Dr. Eleanor Vance, Ph.D. (Optional)"
                 value={metadata.instructorName || ""}
                 onChange={(e) => updateField("instructorName", e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                required
               />
             </div>
           </div>

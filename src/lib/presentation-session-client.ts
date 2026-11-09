@@ -2,8 +2,9 @@ import { type SlideLayoutType, computeThemeTokens, type RawThemeInput } from "./
 import { renderSlideDeckToPptx } from "./presentation-renderer";
 import { buildContextualVisual } from "./presentation-visual-generator";
 import type { AssignmentMetadata } from "./assignment-types";
+import type { SlideElement } from "./slide-element-model";
 
-export type { SlideLayoutType };
+export type { SlideLayoutType, SlideElement };
 
 export interface SlidePreviewItem {
   id: string;
@@ -67,6 +68,8 @@ export interface SlidePreviewItem {
   isSubtitleItalic?: boolean;
   textColor?: string;
   cardBgColor?: string;
+  customBgColor?: string;
+  elements?: SlideElement[];
 }
 
 export interface PresentationSessionData {
