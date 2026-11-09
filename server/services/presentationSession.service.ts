@@ -198,68 +198,51 @@ async function generateSlidesWithGemini(
     const language = options?.language || "English";
     const additionalInstructions = options?.additionalInstructions || "";
 
-    const prompt = `You are DocuMind's Senior Presentation Architect & Elite Creative Director.
-Your task is to transform the provided source document into a visually compelling, professionally designed, modern ${slideCount}-slide presentation deck.
+    const isArabicOrRtl = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(content + " " + title);
+    const targetLang = isArabicOrRtl ? "Arabic" : (language || "English");
+
+    const prompt = `You are DocuMind's Chief AI Presentation Designer & Visual Storytelling Architect.
+Your benchmark is the visual elegance, information density, and modern editorial craft of Gamma.ai.
+Your mission is to transform the user's source text into a breathtaking, publication-grade ${slideCount}-slide presentation deck.
 
 PRESENTATION PARAMETERS:
-- Requested Title: "${title || "Detect optimal executive title from source"}"
+- Title: "${title || "Detect optimal title from source"}"
 - Target Slide Count: Exactly ${slideCount} slides
-- Presentation Type: ${isAssignment ? "ACADEMIC ASSIGNMENT PRESENTATION" : "STANDARD MODERN PRESENTATION"}
+- Presentation Type: ${isAssignment ? "ACADEMIC ASSIGNMENT PRESENTATION" : "MODERN EDITORIAL DECK"}
 - Primary Purpose: "${purpose}"
 - Target Audience: "${audience}"
-- Presentation Language: "${language}"
+- Presentation Language: "${targetLang}" (CRITICAL: Match source language perfectly. If Arabic, write 100% fluent, culturally elegant Arabic with zero English placeholder leakage!)
 - Content Density: "${density}"
-${additionalInstructions ? `- User Design & Content Directives: "${additionalInstructions}"` : ""}
-
-${
-  isAssignment
-    ? `ACADEMIC ASSIGNMENT RIGOR:
-- Maintain academic precision, theoretical models, methodology, and citations if present.
-- Follow logical academic progression: Problem Statement/Thesis, Literature Context, Methodology, Empirical Data & Analysis, Critical Discussion, Key Conclusions & Recommendations.
-- Respect course and subject boundaries without inventing false empirical data.`
-    : `STANDARD PRESENTATION NARRATIVE:
-- Create a compelling narrative arc: Executive Opening, Problem Landscape, Core Architecture/Pillars, Deep Dives, Strategic Telemetry/Milestones, Synthesis & Call to Action.
-- Focus on clarity, punchy articulation, modern typography, and information design.`
-}
+${additionalInstructions ? `- User Directives: "${additionalInstructions}"` : ""}
 
 SOURCE MATERIAL TO ANALYZE AND TRANSFORM:
 """
 ${documentBrief}
 """
 
-DESIGN INSTRUCTIONS — NO BORING OR REPETITIVE SLIDES:
-1. NEVER use the same layout consecutively. Produce a dynamic, varied visual rhythm.
-2. Select the optimal layout for each individual slide from this rich palette:
-   - "title": Presentation hero cover (Slide 1).
-   - "agenda": Structural roadmap (Slide 2).
-   - "hero-split": Modern split-screen layout with a prominent left hero container (bold headline + highlight) and 2-3 structured right takeaway cards. Best for decisive mandates or architectural foundations.
-   - "bento-grid": 4-quadrant feature matrix (2x2 grid) with distinct titles, tags, and concise descriptions. Fills the slide perfectly with zero empty space. Best for 4 pillars or modular systems.
-   - "headline-hero": Large high-impact statement banner + 2-3 supporting takeaway cards below. Best for central insights, key facts, or major takeaways.
-   - "two-column": Comparative analysis (In-scope vs out-of-scope, Before vs After, Pros vs Cons).
-   - "three-card": 3 distinct vertical pillar cards with tags and descriptions.
-   - "metrics": KPI telemetry and quantitative performance indicators with numeric values and labels.
-   - "timeline": Chronological phases, milestones, or evolution steps.
-   - "process": Sequential numbered workflow steps.
-   - "quote": Powerful executive takeaway or decisive quote.
-   - "diagram-explainer": Deep technical specification with labeled components and side explanation.
-   - "text-visual": Content combined with an AI-generated image or vector diagram.
-   - "image-led": High-impact visual-first slide with image prompt.
-   - "conclusion": Final synthesis and forward roadmap (Last slide).
-3. INTELLIGENT WHITESPACE USAGE:
-   - Eliminate accidental, empty, or unbalanced whitespace.
-   - Distribute content into structured cards, metrics, or split-screen layouts rather than leaving vast blank areas.
-4. AI VISUAL ASSET GENERATION:
-   - Identify at least one slide (and up to 3 slides for longer decks) that would strongly benefit from visual explanation (e.g. diagrams, illustrations, charts, topology).
-   - For these slides, use layout "text-visual", "diagram-explainer", or "image-led", and provide a vivid "imagePrompt" in the "visual" field:
-     "visual": {
-       "type": "picture"|"diagram"|"chart",
-       "concept": "concise concept title",
-       "caption": "explanatory caption",
-       "imagePrompt": "Detailed prompt describing a clean, modern, professional 16:9 presentation visual asset: minimal aesthetic, vibrant accents, studio lighting, no text watermarks."
-     }
-5. Return exactly ${slideCount} slides with slide numbers from 1 to ${slideCount}.
+GAMMA-BENCHMARK DESIGN RULES — ZERO ROBOTIC OUTPUT:
+1. DYNAMIC EDITORIAL RHYTHM:
+   - NEVER generate repetitive, monotone slides.
+   - Every slide must tell a part of the story with an intentional layout:
+     * "title": Slide 1 Hero Cover. Set visualMesh: true. Punchy title + evocative subtitle.
+     * "agenda": Slide 2 Structural Roadmap.
+     * "hero-split": 50/50 Editorial Split Screen. Left has bold question or thesis + visualMesh: true. Right has 2-3 structured modern cards + bottom callout pill.
+     * "bento-grid": 4-quadrant feature matrix (2x2 grid). Each card MUST have an insightful title, description, and an icon/emoji (e.g. 📚, 🎧, 📱, 🤖 or ⚡, 🛡️, 📊, 🚀). NEVER name cards "Pillar 01" or "Pillar 02"!
+     * "quote": Sacred verses (Quran, Hadith with chapter/verse citation), keynote quotes, or central thesis. Fill "quoteBox": { "text": "...", "citation": "...", "badge": "..." }.
+     * "two-column": Comparative examination (e.g., "قديمًا" vs "اليوم", or "Traditional" vs "AI-Powered", "In-Scope" vs "Out-of-Scope").
+     * "process": Numbered sequential journey (01, 02, 03, 04) with neon accent progression.
+     * "headline-hero": Massive bold statement + bottom insight takeaways.
+     * "diagram-explainer" / "text-visual": Deep architectural workflow with visual topology prompt.
+     * "conclusion": Master synthesis & forward roadmap (Last slide).
 
-Respond in JSON adhering strictly to this schema:
+2. GROUNDING CALLOUTS & WARNINGS:
+   - For slides highlighting caveats, verification rules, or limitations, include "alertCallout": { "title": "تنبيه هام / Critical Warning", "text": "...", "icon": "⚠️" }.
+   - For slides posing big questions or central takeaways, include "calloutPill": { "text": "...", "type": "accent"|"warning"|"success" }.
+
+3. MULTILINGUAL & RTL EXCELLENCE:
+   - If the source is Arabic, set "isRtl": true and write in high-prestige, flawless Arabic.
+
+Respond strictly in valid JSON format:
 {
   "title": "string",
   "slides": [
@@ -269,6 +252,8 @@ Respond in JSON adhering strictly to this schema:
       "title": "string",
       "subtitle": "string",
       "categoryTag": "string",
+      "visualMesh": true,
+      "isRtl": ${isArabicOrRtl},
       "notes": "string"
     },
     ...
@@ -296,16 +281,22 @@ Respond in JSON adhering strictly to this schema:
       categoryTag?: string;
       bullets?: string[];
       heroSplit?: { headline: string; highlight: string; details: string[] };
-      bentoGrid?: Array<{ title: string; description: string; tag?: string }>;
+      bentoGrid?: Array<{ title: string; description: string; tag?: string; icon?: string }>;
       statCallout?: { stat: string; label: string; context: string; bullets?: string[] };
       leftColumn?: { title: string; bullets: string[] };
       rightColumn?: { title: string; bullets: string[] };
-      cards?: Array<{ title: string; description: string; tag?: string }>;
+      cards?: Array<{ title: string; description: string; tag?: string; icon?: string }>;
       metrics?: Array<{ label: string; value: string; description?: string }>;
       timeline?: Array<{ phase: string; title: string; description: string }>;
       processSteps?: Array<{ stepNumber: number; title: string; description: string }>;
       quote?: { text: string; author?: string; role?: string };
+      calloutPill?: { text: string; icon?: string; type?: "info" | "warning" | "success" | "accent" };
+      alertCallout?: { title?: string; text: string; icon?: string };
+      quoteBox?: { text: string; citation?: string; badge?: string };
+      workflowSteps?: Array<{ stepNumber: number; title: string; subtitle?: string; icon?: string }>;
       visual?: SlidePreviewItem["visual"];
+      isRtl?: boolean;
+      visualMesh?: boolean;
       notes?: string;
     }
 
@@ -349,7 +340,13 @@ Respond in JSON adhering strictly to this schema:
             timeline: s.timeline,
             processSteps: s.processSteps,
             quote: s.quote,
+            calloutPill: s.calloutPill,
+            alertCallout: s.alertCallout,
+            quoteBox: s.quoteBox,
+            workflowSteps: s.workflowSteps,
             visual: s.visual,
+            visualMesh: s.visualMesh || (idx === 0 || s.layout === "hero-split"),
+            isRtl: s.isRtl !== undefined ? s.isRtl : isArabicOrRtl,
             notes: s.notes,
           }));
         }

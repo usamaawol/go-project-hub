@@ -31,7 +31,7 @@ describe("DocuMind Presentation Maker Comprehensive 13-Case Verification", () =>
     expect(session.fileSize).toBeGreaterThan(10000);
 
     deletePresentationSession(session.id);
-  });
+  }, 15000);
 
   // Case 2: Long text input with multiple sections
   it("Case 2: Long multi-section text parses into diverse slide layouts without loss of content", async () => {

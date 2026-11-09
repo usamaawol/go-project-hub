@@ -1026,10 +1026,20 @@ export async function renderSlideDeckToPptx(
           s.bullets && s.bullets.length >= 4
             ? s.bullets.slice(0, 4).map((b, idx) => {
                 const parts = b.split(/:\s*/);
+                let itemTitle = "";
+                let itemDesc = "";
+                if (parts.length > 1) {
+                  itemTitle = parts[0]!.trim();
+                  itemDesc = parts.slice(1).join(": ").trim();
+                } else {
+                  const words = b.split(/\s+/);
+                  itemTitle = words.slice(0, 3).join(" ");
+                  itemDesc = b;
+                }
                 return {
-                  title: parts.length > 1 ? parts[0]! : `Component 0${idx + 1}`,
-                  description: parts.length > 1 ? parts.slice(1).join(": ") : b,
-                  tag: `PILLAR 0${idx + 1}`,
+                  title: itemTitle,
+                  description: itemDesc,
+                  tag: `0${idx + 1}`,
                 };
               })
             : defaultBento

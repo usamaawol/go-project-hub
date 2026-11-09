@@ -38,6 +38,13 @@ export interface SlidePreviewItem {
   processSteps?: Array<{ stepNumber: number; title: string; description: string }>;
   // Quote & Standout Takeaway
   quote?: { text: string; author?: string; role?: string };
+  // Gamma-Grade Modern Presentation Components
+  calloutPill?: { text: string; icon?: string; type?: "info" | "warning" | "success" | "accent" };
+  alertCallout?: { title?: string; text: string; icon?: string };
+  quoteBox?: { text: string; citation?: string; badge?: string };
+  workflowSteps?: Array<{ stepNumber: number; title: string; subtitle?: string; icon?: string }>;
+  isRtl?: boolean;
+  visualMesh?: boolean;
   // Table / Matrix
   table?: {
     headers: string[];
@@ -575,15 +582,15 @@ function parseContentIntoSections(
       cleanBody = cleanBody.slice(0, 135).replace(/[,;:\s]+$/, "") + "...";
     }
 
+    // Do NOT prepend English anchors to non-Latin / Arabic / Multilingual text
+    const isNonLatin = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u4E00-\u9FFF\u3040-\u30FF]/.test(cleanBody);
+    if (isNonLatin) {
+      return cleanBody;
+    }
+
     // Only prepend anchor if it adds genuine value and does NOT repeat the sentence itself
     if (anchor && !cleanBody.toLowerCase().startsWith(anchor.toLowerCase())) {
       return `${anchor}: ${cleanBody}`;
-    }
-
-    // If text is short (< 5 words), add a professional contextual anchor
-    const words = cleanBody.split(/\s+/);
-    if (words.length <= 4 && !cleanBody.includes(":")) {
-      return `Core Standard: ${cleanBody}`;
     }
 
     return cleanBody;
@@ -647,16 +654,11 @@ function parseContentIntoSections(
         }
       }
 
-      // Ensure every slide has 3-4 rich, substantive points filling the layout
+      // If still empty, add genuine contextual exploration of topic
       if (list.length === 0) {
-        list.push(`Strategic Baseline: Core operational objective and scope for ${cleanT}`);
-        list.push(`Execution Pipeline: Implementation parameters and workflow criteria`);
-        list.push(`Verification Gate: Automated quality benchmarks and release validation`);
-      } else if (list.length === 1) {
-        list.push(`Execution Framework: Operational workflows and implementation parameters for ${cleanT}`);
-        list.push(`Verification Standards: Quality benchmarks, test coverage, and delivery validation`);
-      } else if (list.length === 2) {
-        list.push(`Operational Readiness: Ongoing telemetry, performance monitoring, and milestone sign-off`);
+        list.push(`Core conceptual mandate and scope for ${cleanT}`);
+        list.push(`Execution standards and architectural framework`);
+        list.push(`Deliverables and outcome validation benchmarks`);
       }
     }
 
@@ -953,6 +955,11 @@ export function buildSlideDeckContent(
     cleanTitle = detected;
   }
 
+  // Detect RTL languages (Arabic, Hebrew, Persian, Urdu)
+  const isRtl = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+    rawContent + " " + cleanTitle,
+  );
+
   // Slide 1: Assignment Cover OR Standard Title Slide
   if (assignmentMetadata?.isAssignment) {
     const isGroup = assignmentMetadata.assignmentType === "group";
@@ -967,6 +974,7 @@ export function buildSlideDeckContent(
       subtitle: sub,
       categoryTag: "ACADEMIC ASSIGNMENT",
       assignmentMetadata,
+      isRtl,
       notes: `Assignment Submission for ${assignmentMetadata.courseName || cleanTitle}. Submitted to ${
         assignmentMetadata.instructorName || "Instructor"
       }.`,
@@ -977,8 +985,10 @@ export function buildSlideDeckContent(
       slideNumber: 1,
       layout: "title",
       title: cleanTitle,
-      subtitle: `${purpose.toUpperCase()}  //  Executive Presentation`,
+      subtitle: isRtl ? (purpose || "عرض تقديمي تنفيذي") : `${purpose.toUpperCase()}  //  Executive Presentation`,
       categoryTag: purpose,
+      isRtl,
+      visualMesh: true,
       notes: `Welcome the audience and introduce the core thesis of ${cleanTitle}.`,
     });
   }
@@ -1136,10 +1146,20 @@ export function buildSlideDeckContent(
         // Modern 4-card Bento Grid layout
         const bentoGrid = s.bullets.map((b, idx) => {
           const parts = b.split(/:\s*/);
+          let itemTitle = "";
+          let itemDesc = "";
+          if (parts.length > 1) {
+            itemTitle = parts[0]!.trim();
+            itemDesc = parts.slice(1).join(": ").trim();
+          } else {
+            const words = b.split(/\s+/);
+            itemTitle = words.slice(0, 3).join(" ");
+            itemDesc = b;
+          }
           return {
-            title: parts.length > 1 ? parts[0]! : `Pillar 0${idx + 1}`,
-            description: parts.length > 1 ? parts.slice(1).join(": ") : b,
-            tag: `PILLAR 0${idx + 1}`,
+            title: itemTitle,
+            description: itemDesc,
+            tag: `0${idx + 1}`,
           };
         });
         slides.push({
@@ -1147,14 +1167,15 @@ export function buildSlideDeckContent(
           slideNumber,
           layout: "bento-grid",
           title: s.title,
-          subtitle: s.subtitle || `Section 0${i + 1} — Architectural Quadrants`,
+          subtitle: s.subtitle || `Section 0${i + 1} — Core Matrix`,
           categoryTag: "FOUNDATIONS",
           bullets: s.bullets,
           bentoGrid,
-          notes: `Walk through each quadrant supporting ${s.title}.`,
+          isRtl,
+          notes: `Walk through each dimension supporting ${s.title}.`,
         });
       } else if (i % 3 === 0 && s.bullets.length >= 3) {
-        // Modern Editorial Hero Split Screen
+        // Modern Editorial Hero Split Screen with 3D Wireframe Mesh
         slides.push({
           id: `slide-${slideNumber}`,
           slideNumber,
@@ -1168,6 +1189,8 @@ export function buildSlideDeckContent(
             details: s.bullets.slice(0, 3),
           },
           bullets: s.bullets,
+          isRtl,
+          visualMesh: true,
           notes: `Emphasize the core strategic mandate of ${s.title}.`,
         });
       } else {

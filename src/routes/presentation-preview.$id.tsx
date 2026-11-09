@@ -54,7 +54,7 @@ import {
 } from "@/lib/api-client";
 import { generateAndDownloadClientPptx, saveClientSession } from "@/lib/presentation-session-client";
 import { computeThemeTokens } from "@/lib/presentation-theme";
-import { buildContextualVisual } from "@/lib/presentation-visual-generator";
+import { buildContextualVisual, generateGamma3DMeshSvg } from "@/lib/presentation-visual-generator";
 import { AssignmentCoverRenderer } from "@/components/workspace/AssignmentCoverRenderer";
 import { AssignmentInformationForm } from "@/components/workspace/AssignmentInformationForm";
 import { CoverTemplateGallery } from "@/components/workspace/CoverTemplateGallery";
@@ -711,8 +711,15 @@ export function PresentationPreviewPage() {
   const bgColor = tokens.bg;
   const fontFamily = tokens.fontBody;
 
+  const meshDataUrl = useMemo(() => {
+    return generateGamma3DMeshSvg({
+      isDark: tokens.isDark,
+      accentColor: tokens.accent,
+    }).dataUrl;
+  }, [tokens.isDark, tokens.accent]);
+
   const renderSlideHeader = (slide: SlidePreviewItem) => (
-    <div>
+    <div dir={slide.isRtl ? "rtl" : "ltr"}>
       <h2
         className={`${
           slide.title.length > 70
@@ -1027,13 +1034,23 @@ export function PresentationPreviewPage() {
                     className="flex items-center justify-between text-[11px] font-mono tracking-wider uppercase pb-2.5 border-b shrink-0"
                     style={{ borderColor: tokens.dividerColor }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2.5">
                       <span
-                        className="h-2 w-2 rounded-full"
+                        className="h-2 w-2 rounded-full animate-pulse"
                         style={{ backgroundColor: tokens.accent }}
                       />
-                      <span style={{ color: tokens.accent }} className="font-bold">
-                        Slide 0{currentSlide.slideNumber} // {currentSlide.layout}
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border"
+                        style={{
+                          backgroundColor: `${tokens.accent}15`,
+                          borderColor: `${tokens.accent}30`,
+                          color: tokens.accent,
+                        }}
+                      >
+                        {currentSlide.categoryTag || "OVERVIEW"}
+                      </span>
+                      <span className="text-[11px] font-mono opacity-60">
+                        Slide {currentSlide.slideNumber} of {slides.length}
                       </span>
                     </div>
 
@@ -1076,41 +1093,52 @@ export function PresentationPreviewPage() {
                       </div>
                     )}
 
-                    {/* 1. TITLE / COVER */}
+                    {/* 1. TITLE / COVER (GAMMA BENCHMARK) */}
                     {currentSlide.layout === "title" && (
-                      <div className="max-w-4xl space-y-4">
-                        <div
-                          className="inline-flex items-center gap-2 px-3 py-1 rounded-lg border text-[11px] font-mono font-bold tracking-wider uppercase"
-                          style={{
-                            backgroundColor: tokens.cardBg,
-                            borderColor: tokens.accent,
-                            color: tokens.accent,
-                          }}
-                        >
-                          {(
-                            currentSlide.categoryTag ||
-                            session.purpose ||
-                            "STRATEGIC OVERVIEW"
-                          ).toUpperCase()}
-                        </div>
-                        <h2
-                          className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-tight"
-                          style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
-                        >
-                          {currentSlide.title}
-                        </h2>
-                        {currentSlide.subtitle && (
-                          <p
-                            className="text-base sm:text-xl font-medium"
-                            style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                      <div
+                        className="w-full h-full grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr] gap-6 items-center"
+                        dir={currentSlide.isRtl ? "rtl" : "ltr"}
+                      >
+                        <div className="space-y-4 max-w-xl">
+                          <div
+                            className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] font-mono font-bold tracking-wider uppercase shadow-xs"
+                            style={{
+                              backgroundColor: `${tokens.accent}15`,
+                              borderColor: `${tokens.accent}40`,
+                              color: tokens.accent,
+                            }}
                           >
-                            {currentSlide.subtitle}
-                          </p>
-                        )}
-                        <div
-                          className="h-1 w-24 rounded-full mt-4"
-                          style={{ backgroundColor: tokens.accent }}
-                        />
+                            {(currentSlide.categoryTag || session.purpose || "EXECUTIVE OVERVIEW").toUpperCase()}
+                          </div>
+                          <h2
+                            className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight"
+                            style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                          >
+                            {currentSlide.title}
+                          </h2>
+                          {currentSlide.subtitle && (
+                            <p
+                              className="text-base sm:text-lg font-medium opacity-85 leading-relaxed"
+                              style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                            >
+                              {currentSlide.subtitle}
+                            </p>
+                          )}
+                          <div
+                            className="h-1.5 w-24 rounded-full mt-4"
+                            style={{ backgroundColor: tokens.accent }}
+                          />
+                        </div>
+
+                        {/* Right side: 3D Undulating Wireframe Mesh */}
+                        <div className="relative w-full h-[240px] sm:h-[320px] rounded-2xl overflow-hidden border border-cyan-500/25 shadow-2xl">
+                          <img
+                            src={currentSlide.visual?.imageUrl || meshDataUrl}
+                            alt="Visual Concept"
+                            className="w-full h-full object-cover object-center"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+                        </div>
                       </div>
                     )}
 
@@ -1318,99 +1346,107 @@ export function PresentationPreviewPage() {
                       </div>
                     )}
 
-                    {/* HERO-SPLIT (High-impact editorial split screen) */}
+                    {/* HERO-SPLIT (High-impact editorial split screen with 3D Wireframe Mesh - Gamma Benchmark) */}
                     {currentSlide.layout === "hero-split" && (
-                      <div className="space-y-4 h-full flex flex-col justify-between">
+                      <div
+                        className="space-y-4 h-full flex flex-col justify-between"
+                        dir={currentSlide.isRtl ? "rtl" : "ltr"}
+                      >
                         {renderSlideHeader(currentSlide)}
-                        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.3fr] gap-6 items-stretch pt-2 flex-1">
-                          {/* Left Hero Box */}
-                          <div
-                            className="rounded-2xl border p-6 sm:p-7 flex flex-col justify-between relative overflow-hidden shadow-xs"
-                            style={{
-                              backgroundColor: tokens.isDark ? "#1E293B" : "#F1F5F9",
-                              borderColor: tokens.accent,
-                              borderWidth: "1.5px",
-                            }}
-                          >
-                            <div
-                              className="absolute top-0 left-0 bottom-0 w-2"
-                              style={{ backgroundColor: tokens.accent }}
+                        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-6 items-stretch pt-1 flex-1">
+                          {/* Visual Side: 3D Undulating Wireframe Mesh or Visual Asset */}
+                          <div className="rounded-2xl border border-cyan-500/25 overflow-hidden relative shadow-lg min-h-[220px] flex items-center justify-center">
+                            <img
+                              src={currentSlide.visual?.imageUrl || meshDataUrl}
+                              alt="3D Neural Mesh"
+                              className="w-full h-full object-cover object-center"
                             />
-                            <div className="space-y-3">
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none flex flex-col justify-end p-4">
                               <span
-                                className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold text-white uppercase"
+                                className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-white uppercase inline-block w-fit shadow-xs"
                                 style={{ backgroundColor: tokens.accent }}
                               >
-                                {currentSlide.categoryTag || "STRATEGIC IMPERATIVE"}
+                                {currentSlide.categoryTag || "FOUNDATIONAL CONCEPT"}
                               </span>
-                              <h3
-                                className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight leading-snug"
-                                style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
-                              >
-                                {currentSlide.heroSplit?.headline || currentSlide.title}
-                              </h3>
                             </div>
-                            <p
-                              className="text-xs sm:text-sm leading-relaxed italic mt-4 pt-4 border-t"
-                              style={{
-                                color: tokens.textSecondary,
-                                fontFamily: tokens.fontBody,
-                                borderColor: tokens.dividerColor,
-                              }}
-                            >
-                              {currentSlide.heroSplit?.highlight || currentSlide.subtitle || currentSlide.bullets?.[0]}
-                            </p>
                           </div>
 
-                          {/* Right Detail Cards */}
+                          {/* Detail Side: Question/Headline + Stacked Glass Cards + Callout */}
                           <div className="flex flex-col justify-between gap-3">
-                            {(currentSlide.heroSplit?.details || currentSlide.bullets?.slice(0, 3) || [
-                              "Operational validation across execution checkpoints.",
-                              "Targeted architectural framework supporting end-to-end deliverables.",
-                            ]).map((detail, dIdx) => (
-                              <div
-                                key={dIdx}
-                                className="rounded-2xl border p-4 sm:p-5 flex items-start gap-4 shadow-2xs"
-                                style={{
-                                  backgroundColor: tokens.cardBg,
-                                  borderColor: tokens.cardBorder,
-                                }}
-                              >
-                                <span
-                                  className="h-7 w-7 rounded-lg text-white font-mono text-xs font-bold flex items-center justify-center shrink-0 mt-0.5"
-                                  style={{ backgroundColor: tokens.accent }}
+                            <div className="space-y-2.5">
+                              {(currentSlide.heroSplit?.headline || currentSlide.subtitle) && (
+                                <h3
+                                  className="text-base sm:text-xl font-bold tracking-tight leading-snug"
+                                  style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
                                 >
-                                  0{dIdx + 1}
-                                </span>
-                                <p
-                                  className="text-xs sm:text-sm font-medium leading-relaxed"
-                                  style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
-                                >
-                                  {detail}
+                                  {currentSlide.heroSplit?.headline || currentSlide.subtitle}
+                                </h3>
+                              )}
+
+                              {/* Stacked Cards */}
+                              <div className="space-y-2.5">
+                                {(currentSlide.heroSplit?.details || currentSlide.bullets?.slice(0, 3) || [
+                                  "Targeted execution framework supporting end-to-end deliverables.",
+                                  "Continuous verification pipeline and automated quality gates.",
+                                ]).map((detail, dIdx) => (
+                                  <div
+                                    key={dIdx}
+                                    className="rounded-xl border p-3.5 sm:p-4 flex items-start gap-3.5 shadow-xs transition-all hover:border-cyan-500/40"
+                                    style={{
+                                      backgroundColor: tokens.isDark ? "rgba(15, 23, 42, 0.75)" : tokens.cardBg,
+                                      borderColor: tokens.cardBorder,
+                                    }}
+                                  >
+                                    <span
+                                      className="h-6 w-6 rounded-lg text-white font-mono text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-xs"
+                                      style={{ backgroundColor: tokens.accent }}
+                                    >
+                                      0{dIdx + 1}
+                                    </span>
+                                    <p
+                                      className="text-xs sm:text-sm font-medium leading-relaxed"
+                                      style={{ color: tokens.cardText, fontFamily: tokens.fontBody }}
+                                    >
+                                      {detail}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Bottom Takeaway Callout Pill Bar */}
+                            {(currentSlide.calloutPill || currentSlide.heroSplit?.highlight) && (
+                              <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 flex items-center gap-2.5 shadow-xs">
+                                <span className="text-base">{currentSlide.calloutPill?.icon || "💡"}</span>
+                                <p className="text-xs font-semibold text-emerald-300">
+                                  {currentSlide.calloutPill?.text || currentSlide.heroSplit?.highlight}
                                 </p>
                               </div>
-                            ))}
+                            )}
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {/* BENTO-GRID (4 Quadrants / Feature Matrix) */}
+                    {/* BENTO-GRID (4 Quadrants / Feature Matrix - Gamma Benchmark) */}
                     {currentSlide.layout === "bento-grid" && (
-                      <div className="space-y-4">
+                      <div
+                        className="space-y-4"
+                        dir={currentSlide.isRtl ? "rtl" : "ltr"}
+                      >
                         {renderSlideHeader(currentSlide)}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                           {(currentSlide.bentoGrid || [
-                            { title: "Core Architecture", description: currentSlide.bullets?.[0] || "Foundational operational service layer and interface boundaries.", tag: "FOUNDATION" },
-                            { title: "Strategic Workflow", description: currentSlide.bullets?.[1] || "Continuous integration pipeline and automated verification gates.", tag: "WORKFLOW" },
-                            { title: "Telemetry & Metrics", description: currentSlide.bullets?.[2] || "Real-time indicators tracking throughput and operational thresholds.", tag: "TELEMETRY" },
-                            { title: "Target Deliverable", description: currentSlide.bullets?.[3] || "Production validation benchmarks and milestone release readiness.", tag: "DELIVERABLE" },
+                            { title: "Core Architecture", description: currentSlide.bullets?.[0] || "Foundational service layer and interface boundaries.", tag: "01", icon: "🏛️" },
+                            { title: "Strategic Workflow", description: currentSlide.bullets?.[1] || "Continuous integration pipeline and verification gates.", tag: "02", icon: "⚡" },
+                            { title: "Telemetry & Metrics", description: currentSlide.bullets?.[2] || "Real-time indicators tracking throughput and thresholds.", tag: "03", icon: "📊" },
+                            { title: "Target Deliverable", description: currentSlide.bullets?.[3] || "Production validation benchmarks and milestone release.", tag: "04", icon: "🎯" },
                           ]).slice(0, 4).map((bento, bIdx) => (
                             <div
                               key={bIdx}
-                              className="rounded-2xl border p-5 space-y-2.5 relative overflow-hidden shadow-2xs"
+                              className="rounded-2xl border p-4 sm:p-5 space-y-2 relative overflow-hidden shadow-xs transition-all hover:border-cyan-500/40"
                               style={{
-                                backgroundColor: tokens.cardBg,
+                                backgroundColor: tokens.isDark ? "rgba(15, 23, 42, 0.75)" : tokens.cardBg,
                                 borderColor: tokens.cardBorder,
                               }}
                             >
@@ -1419,21 +1455,24 @@ export function PresentationPreviewPage() {
                                 style={{ backgroundColor: tokens.accent }}
                               />
                               <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  {bento.icon && <span className="text-lg">{bento.icon}</span>}
+                                  <h4
+                                    className="text-sm sm:text-base font-bold"
+                                    style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                                  >
+                                    {bento.title}
+                                  </h4>
+                                </div>
                                 <span
-                                  className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+                                  className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded"
                                   style={{ backgroundColor: `${tokens.accent}15`, color: tokens.accent }}
                                 >
-                                  {bento.tag || `PILLAR 0${bIdx + 1}`}
+                                  {bento.tag && !bento.tag.toLowerCase().startsWith("pillar") ? bento.tag : `0${bIdx + 1}`}
                                 </span>
                               </div>
-                              <h4
-                                className="text-base font-bold"
-                                style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
-                              >
-                                {bento.title}
-                              </h4>
                               <p
-                                className="text-xs leading-relaxed"
+                                className="text-xs leading-relaxed opacity-85"
                                 style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
                               >
                                 {bento.description}
@@ -1441,6 +1480,26 @@ export function PresentationPreviewPage() {
                             </div>
                           ))}
                         </div>
+
+                        {/* Bottom Takeaway Callout if present */}
+                        {currentSlide.calloutPill && (
+                          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 flex items-center gap-2.5 shadow-xs mt-3">
+                            <span className="text-base">{currentSlide.calloutPill.icon || "💡"}</span>
+                            <p className="text-xs font-semibold text-emerald-300">
+                              {currentSlide.calloutPill.text}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Bottom Warning Alert if present */}
+                        {currentSlide.alertCallout && (
+                          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 flex items-center gap-2.5 shadow-xs mt-3">
+                            <span className="text-base">⚠️</span>
+                            <p className="text-xs font-semibold text-amber-200">
+                              {currentSlide.alertCallout.text}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1664,75 +1723,128 @@ export function PresentationPreviewPage() {
                       </div>
                     )}
 
-                    {/* 8. PROCESS WORKFLOW */}
+                    {/* 8. PROCESS WORKFLOW (GAMMA STEPPER BENCHMARK) */}
                     {currentSlide.layout === "process" && (
-                      <div className="space-y-5">
+                      <div
+                        className="space-y-5 h-full flex flex-col justify-between"
+                        dir={currentSlide.isRtl ? "rtl" : "ltr"}
+                      >
                         {renderSlideHeader(currentSlide)}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 pt-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-1 flex-1">
                           {(currentSlide.processSteps || []).map((step, sIdx) => (
                             <div
                               key={sIdx}
-                              className="rounded-2xl border p-4 space-y-2.5"
+                              className="rounded-2xl border p-4 sm:p-5 space-y-3 relative overflow-hidden shadow-xs transition-all hover:border-cyan-500/40 flex flex-col justify-between"
                               style={{
-                                backgroundColor: tokens.cardBg,
+                                backgroundColor: tokens.isDark ? "rgba(15, 23, 42, 0.75)" : tokens.cardBg,
                                 borderColor: tokens.cardBorder,
                               }}
                             >
+                              {/* Glowing Stepper Divider Line */}
                               <div
-                                className="h-8 w-8 rounded-full flex items-center justify-center font-bold text-white text-sm"
+                                className="h-1 w-full rounded-full"
                                 style={{ backgroundColor: tokens.accent }}
-                              >
-                                {step.stepNumber || sIdx + 1}
+                              />
+                              <div className="space-y-2">
+                                <span
+                                  className="font-mono text-xs font-bold uppercase tracking-wider block"
+                                  style={{ color: tokens.accent }}
+                                >
+                                  0{step.stepNumber || sIdx + 1}
+                                </span>
+                                <h4
+                                  className="text-sm font-bold"
+                                  style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                                >
+                                  {step.title}
+                                </h4>
+                                <p
+                                  className="text-xs leading-relaxed opacity-85"
+                                  style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
+                                >
+                                  {step.description}
+                                </p>
                               </div>
-                              <h4
-                                className="text-sm font-bold"
-                                style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
-                              >
-                                {step.title}
-                              </h4>
-                              <p
-                                className="text-xs leading-relaxed"
-                                style={{ color: tokens.cardMuted, fontFamily: tokens.fontBody }}
-                              >
-                                {step.description}
-                              </p>
                             </div>
                           ))}
                         </div>
+
+                        {/* Bottom takeaway pill */}
+                        {currentSlide.calloutPill && (
+                          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 flex items-center gap-2.5 shadow-xs">
+                            <span className="text-base">{currentSlide.calloutPill.icon || "💡"}</span>
+                            <p className="text-xs font-semibold text-emerald-300">
+                              {currentSlide.calloutPill.text}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {/* 9. QUOTE / STANDOUT TAKEAWAY */}
+                    {/* 9. QUOTE / SACRED TEXT (GAMMA BENCHMARK) */}
                     {currentSlide.layout === "quote" && (
                       <div
-                        className="rounded-3xl border p-8 sm:p-12 space-y-4 max-w-4xl mx-auto"
-                        style={{
-                          backgroundColor: tokens.cardBg,
-                          borderColor: tokens.accent,
-                        }}
+                        className="space-y-4 max-w-4xl mx-auto h-full flex flex-col justify-center"
+                        dir={currentSlide.isRtl ? "rtl" : "ltr"}
                       >
-                        <span
-                          className="text-5xl sm:text-6xl font-serif font-bold leading-none block"
-                          style={{ color: tokens.accent }}
-                        >
-                          “
-                        </span>
-                        <blockquote
-                          className="text-lg sm:text-2xl font-serif italic leading-relaxed"
-                          style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
-                        >
-                          {currentSlide.quote?.text ||
-                            currentSlide.subtitle ||
-                            currentSlide.bullets?.[0]}
-                        </blockquote>
-                        {currentSlide.quote?.author && (
-                          <div
-                            className="pt-2 border-t text-xs sm:text-sm font-semibold"
-                            style={{ borderColor: tokens.dividerColor, color: tokens.accent }}
+                        {/* Source / Citation Badge */}
+                        <div className="text-center">
+                          <span
+                            className="inline-block px-3 py-1 rounded-full text-xs font-mono font-bold border shadow-xs"
+                            style={{
+                              backgroundColor: `${tokens.accent}15`,
+                              borderColor: `${tokens.accent}40`,
+                              color: tokens.accent,
+                            }}
                           >
-                            — {currentSlide.quote.author}{" "}
-                            {currentSlide.quote.role ? `• ${currentSlide.quote.role}` : ""}
+                            {currentSlide.quoteBox?.badge || (currentSlide.isRtl ? "شاهد ومبدأ أساسي" : "CORE PRINCIPLE")}
+                          </span>
+                          <h2
+                            className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2"
+                            style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                          >
+                            {currentSlide.title}
+                          </h2>
+                        </div>
+
+                        {/* Illuminated Quote Card */}
+                        <div
+                          className="rounded-3xl border p-6 sm:p-9 space-y-3 relative overflow-hidden shadow-xl text-center"
+                          style={{
+                            backgroundColor: tokens.isDark ? "rgba(15, 23, 42, 0.85)" : tokens.cardBg,
+                            borderColor: tokens.accent,
+                            borderWidth: "1.5px",
+                          }}
+                        >
+                          <blockquote
+                            className="text-lg sm:text-2xl font-serif font-bold italic leading-relaxed"
+                            style={{ color: tokens.cardText, fontFamily: tokens.fontTitle }}
+                          >
+                            {currentSlide.isRtl ? `﴿${currentSlide.quote?.text || currentSlide.quoteBox?.text || currentSlide.subtitle}﴾` : `“${currentSlide.quote?.text || currentSlide.quoteBox?.text || currentSlide.subtitle}”`}
+                          </blockquote>
+                          {(currentSlide.quote?.author || currentSlide.quoteBox?.citation) && (
+                            <div
+                              className="pt-2 text-xs sm:text-sm font-semibold opacity-90"
+                              style={{ color: tokens.accent }}
+                            >
+                              — {currentSlide.quote?.author || currentSlide.quoteBox?.citation}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Explanatory synthesis if bullets present */}
+                        {currentSlide.bullets && currentSlide.bullets.length > 0 && (
+                          <div className="space-y-2 text-center max-w-2xl mx-auto pt-1">
+                            {currentSlide.bullets.slice(0, 2).map((b, bIdx) => (
+                              <p
+                                key={bIdx}
+                                className="text-xs sm:text-sm leading-relaxed opacity-85"
+                                style={{ color: tokens.textSecondary, fontFamily: tokens.fontBody }}
+                              >
+                                {b}
+                              </p>
+                            ))}
                           </div>
                         )}
                       </div>
