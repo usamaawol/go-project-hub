@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronLeft,
@@ -148,6 +148,83 @@ function PresentationPreviewErrorFallback({ error, reset }: { error: any; reset:
       <Footer />
     </div>
   );
+}
+
+class PresentationPreviewErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: any }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("PresentationPreviewErrorBoundary caught error:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-3xl border border-border bg-card p-8 sm:p-10 text-center shadow-lift max-w-lg mx-auto my-12">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+            <Clock className="h-7 w-7" />
+          </div>
+
+          <span className="mt-4 inline-block rounded-full bg-surface-2 px-3 py-1 font-mono text-[10px] uppercase font-bold text-muted-foreground">
+            Slide Deck Recovery
+          </span>
+
+          <h2 className="mt-3 font-serif text-2xl font-bold text-foreground">
+            Slide Editor Notice
+          </h2>
+
+          <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">
+            DocuMind detected an issue rendering this slide. You can reset the canvas, reload the page, or create a new presentation.
+          </p>
+
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Button
+              variant="hero"
+              size="sm"
+              onClick={this.handleReset}
+              className="text-xs"
+            >
+              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+              Reset Slide Canvas
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.location.reload()}
+              className="text-xs"
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Reload Page
+            </Button>
+            <Button
+              variant="glass"
+              size="sm"
+              asChild
+              className="text-xs"
+            >
+              <Link to="/presentation-maker">New Presentation</Link>
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 export function PresentationPreviewPage() {
@@ -1043,8 +1120,9 @@ export function PresentationPreviewPage() {
 
             {/* Slide Presentation Viewport */}
             <div className="order-1 lg:order-2 flex flex-col gap-4">
-              {viewMode === "editor" ? (
-                <PresentationSlideEditor
+              <PresentationPreviewErrorBoundary>
+                {viewMode === "editor" ? (
+                  <PresentationSlideEditor
                   slide={currentSlide}
                   slideIndex={currentSlideIdx}
                   totalSlides={slides.length}
@@ -2547,6 +2625,7 @@ export function PresentationPreviewPage() {
               </div>
                 </>
               )}
+              </PresentationPreviewErrorBoundary>
             </div>
           </div>
         </main>
