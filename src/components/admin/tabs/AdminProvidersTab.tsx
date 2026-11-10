@@ -45,6 +45,7 @@ interface AdminProvidersTabProps {
   systemSettings?: AdminSystemSettingsState;
   onRefresh: () => void;
   adminKey?: string;
+  backendReachable?: boolean | null;
   alerts?: ProviderAlertItem[];
   onResetQuota?: (providerId: string) => Promise<void> | void;
   onResetAllQuotas?: () => Promise<void> | void;
@@ -174,6 +175,7 @@ export function AdminProvidersTab({
   systemSettings,
   onRefresh,
   adminKey = "documind-admin-secret",
+  backendReachable = null,
   alerts = [],
   onResetQuota,
   onResetAllQuotas,
@@ -426,6 +428,8 @@ export function AdminProvidersTab({
       if (res?.success) {
         toast.success(`Cleared stored key for ${p.name}.`);
         onRefresh();
+      } else {
+        toast.error(res?.error?.message || `Failed to clear key for ${p.name}`);
       }
     } catch {
       toast.error(`Failed to clear key for ${p.name}`);
@@ -447,6 +451,8 @@ export function AdminProvidersTab({
           `Provider "${p.name}" ${newEnabled ? "enabled" : "disabled"} for Presentation Maker.`,
         );
         onRefresh();
+      } else {
+        toast.error(res?.error?.message || "Failed to toggle provider status");
       }
     } catch {
       toast.error("Failed to toggle provider status");
@@ -466,6 +472,8 @@ export function AdminProvidersTab({
           `Provider "${p.name}" fallback eligibility set to ${newFallback ? "Active" : "Disabled"}.`,
         );
         onRefresh();
+      } else {
+        toast.error(res?.error?.message || "Failed to update fallback eligibility");
       }
     } catch {
       toast.error("Failed to update fallback eligibility");
@@ -482,8 +490,12 @@ export function AdminProvidersTab({
 
     const targetItem = sorted[targetIdx]!;
     try {
-      await updateAdminImageProvider(p.id, { priority: targetItem.priority }, adminKey);
-      await updateAdminImageProvider(targetItem.id, { priority: p.priority }, adminKey);
+      const res1 = await updateAdminImageProvider(p.id, { priority: targetItem.priority }, adminKey);
+      const res2 = await updateAdminImageProvider(targetItem.id, { priority: p.priority }, adminKey);
+      if (!res1?.success || !res2?.success) {
+        toast.error(res1?.error?.message || res2?.error?.message || "Failed to reorder priority");
+        return;
+      }
       toast.success(`Priority updated: ${p.name} is now #${targetIdx + 1}`);
       onRefresh();
     } catch {
@@ -649,13 +661,26 @@ export function AdminProvidersTab({
         if (key && key.trim() && !key.includes("••••")) {
           const target = effectiveProviders.find((p) => p.id === id);
           const enableOnSave = target?.billingTier !== "paid" || Boolean(systemSettings?.allowPaidProviders);
-          await updateAdminImageProvider(id, { apiKey: key.trim(), enabled: enableOnSave }, adminKey);
+          const res = await updateAdminImageProvider(
+            id,
+            { apiKey: key.trim(), enabled: enableOnSave },
+            adminKey,
+          );
+          if (!res?.success) {
+            toast.error(res?.error?.message || `Failed to save key for ${id} on server.`);
+            return;
+          }
           savedCount++;
         }
       }
 
+      if (savedCount === 0) {
+        toast.info("No new non-masked keys were entered.");
+        return;
+      }
+
       toast.success(
-        `Saved ${savedCount} key(s) securely on the server. Click "Test Connection" on each provider to verify.`,
+        `Saved ${savedCount} key(s) securely on the server & encrypted Firestore vault. Click "Test Connection" on each provider to verify.`,
       );
       setManageAllModalOpen(false);
       setAllKeysForm({});
@@ -693,6 +718,23 @@ export function AdminProvidersTab({
 
   return (
     <div className="space-y-6">
+      {/* Backend API Offline Warning */}
+      {backendReachable === false && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 space-y-1.5 shadow-xs">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs space-y-1">
+              <h4 className="font-serif font-bold text-amber-900 dark:text-amber-300">
+                Backend API Server (`/api`) Offline — Keys Cannot Be Loaded or Saved to Firestore
+              </h4>
+              <p className="text-amber-800 dark:text-amber-200/90 leading-relaxed">
+                The Admin Dashboard could not reach the Express API server. Because API keys are encrypted and stored strictly server-side (`serverSecrets`), changes made while `/api` is offline are <strong>not persisted</strong>. Start the backend (`npm run server` on port 5000 alongside `npm run dev`) and click Refresh.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Critical Security Notice if Legacy Browser-Stored Keys were Purged */}
       {exposedBrowserProviders.length > 0 && (
         <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 space-y-2 shadow-xs">

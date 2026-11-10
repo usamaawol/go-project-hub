@@ -29,6 +29,7 @@ import {
   isPlaceholderTestSecret,
   maskSecretValue,
   redactSecrets,
+  setServerSecret,
   setServerSecretSync,
   type SecretSlot,
 } from "../serverSecretStore";
@@ -526,6 +527,13 @@ export class ImageProviderManager {
       .sort((a, b) => a.priority - b.priority);
   }
 
+  public async getProvidersForClientAsync(): Promise<
+    Array<ImageProviderConfig & { isConfigured: boolean; maskedKey: string; keySource: string }>
+  > {
+    await hydrateServerSecrets();
+    return this.getProvidersForClient();
+  }
+
   public getProvider(id: ImageProviderId): ImageProviderConfig | undefined {
     const p = this.providers.get(id);
     if (!p) return undefined;
@@ -603,6 +611,48 @@ export class ImageProviderManager {
     this.providers.set(id, updated);
     this.persistToDisk();
     return this.getProviderForClient(id)!;
+  }
+
+  /**
+   * Awaits encrypted secret persistence (Cloud Firestore + local server vault) before resolving.
+   */
+  public async updateProviderAsync(
+    id: ImageProviderId,
+    updates: Partial<ImageProviderConfig>,
+  ): Promise<ImageProviderConfig & { isConfigured: boolean; maskedKey: string; keySource: string }> {
+    await hydrateServerSecrets();
+    if (updates.apiKey !== undefined && !updates.apiKey.includes("••••")) {
+      await setServerSecret(id as SecretSlot, updates.apiKey.trim());
+    }
+    if (id === "cloudflare" && updates.endpointUrl !== undefined) {
+      await setServerSecret("cloudflare_account_id", updates.endpointUrl.trim());
+    }
+    // Pass sanitized updates through synchronous metadata/status state calculation
+    const nonSecretUpdates: Partial<ImageProviderConfig> = { ...updates };
+    if (updates.apiKey !== undefined && !updates.apiKey.includes("••••")) {
+      const cleaned = updates.apiKey.trim();
+      const current = this.providers.get(id);
+      if (current) {
+        current.lastTestSuccess = false;
+        current.lastError = undefined;
+      }
+      if (!cleaned && current) {
+        current.apiKey = "";
+      }
+      delete nonSecretUpdates.apiKey;
+      const result = this.updateProvider(id, nonSecretUpdates);
+      const updatedObj = this.providers.get(id);
+      if (updatedObj) {
+        const hasKey = this.resolveKey(id, updatedObj.apiKey).length > 6;
+        updatedObj.lastTestSuccess = false;
+        updatedObj.lastError = undefined;
+        updatedObj.status = this.computeInitialStatus(id, updatedObj, hasKey);
+        this.providers.set(id, updatedObj);
+        this.persistToDisk();
+      }
+      return this.getProviderForClient(id)! || result;
+    }
+    return this.updateProvider(id, nonSecretUpdates);
   }
 
   /**

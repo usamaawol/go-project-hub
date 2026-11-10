@@ -17,7 +17,9 @@ import { imageProviderManager } from "../services/imageProviders/imageProviderMa
 import type { ImageProviderId } from "../services/imageProviders/types";
 import {
   getAdminSettings,
+  getAdminSettingsAsync,
   updateAdminSettings,
+  updateAdminSettingsAsync,
   testGeminiConnection,
   testFallbackTextConnection,
   testOpenAIConnection,
@@ -27,7 +29,7 @@ import {
   getStaffAuditLogs,
   recordStaffAuditLog,
 } from "../services/adminSettings.service";
-import { redactSecrets } from "../services/serverSecretStore";
+import { hydrateServerSecrets, redactSecrets } from "../services/serverSecretStore";
 
 export async function getDashboardMetrics(
   req: AuthenticatedRequest,
@@ -222,7 +224,7 @@ export async function getAdminSettingsHandler(
   next: NextFunction,
 ) {
   try {
-    const settings = getAdminSettings(true);
+    const settings = await getAdminSettingsAsync(true);
     res.json({ success: true, data: settings });
   } catch (error) {
     next(error);
@@ -237,11 +239,15 @@ export async function updateAdminSettingsHandler(
   try {
     const userEmail = req.user?.email || "admin@documind.app";
     const author = { name: req.user?.displayName || "Lead Administrator", email: userEmail };
-    updateAdminSettings(req.body, author);
+    await updateAdminSettingsAsync(req.body, author);
     if (typeof req.body?.allowPaidProviders === "boolean") {
       imageProviderManager.updateSettings({ allowPaidProviders: req.body.allowPaidProviders });
     }
-    res.json({ success: true, data: getAdminSettings(true), message: "Settings saved successfully." });
+    res.json({
+      success: true,
+      data: await getAdminSettingsAsync(true),
+      message: "Settings saved securely on the server.",
+    });
   } catch (error: any) {
     if (error instanceof Error && /paid billing|Free-First/i.test(error.message)) {
       return res.status(400).json({ success: false, error: { message: error.message } });
@@ -367,7 +373,7 @@ export async function listImageProvidersHandler(
   next: NextFunction,
 ) {
   try {
-    const providers = imageProviderManager.getProvidersForClient();
+    const providers = await imageProviderManager.getProvidersForClientAsync();
     res.json({ success: true, count: providers.length, data: providers });
   } catch (error) {
     next(error);
@@ -381,7 +387,7 @@ export async function updateImageProviderHandler(
 ) {
   try {
     const { id } = req.params;
-    const updated = imageProviderManager.updateProvider(id as ImageProviderId, req.body);
+    const updated = await imageProviderManager.updateProviderAsync(id as ImageProviderId, req.body);
     const authorEmail = req.user?.email || "admin@documind.app";
     recordStaffAuditLog(
       req.user?.displayName || "Lead Administrator",
@@ -559,6 +565,7 @@ export async function resetImageProviderQuotaHandler(
   next: NextFunction,
 ) {
   try {
+    await hydrateServerSecrets();
     const { id } = req.params;
     const updated = imageProviderManager.resetProviderQuota(id as ImageProviderId);
     const authorEmail = req.user?.email || "admin@documind.app";
@@ -584,6 +591,7 @@ export async function resetAllImageProviderQuotasHandler(
   next: NextFunction,
 ) {
   try {
+    await hydrateServerSecrets();
     const updated = imageProviderManager.resetAllQuotas();
     const authorEmail = req.user?.email || "admin@documind.app";
     recordStaffAuditLog(

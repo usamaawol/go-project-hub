@@ -17,6 +17,7 @@ import {
   hydrateServerSecrets,
   maskSecretValue,
   redactSecrets,
+  setServerSecret,
   setServerSecretSync,
 } from "./serverSecretStore";
 
@@ -485,6 +486,76 @@ export function updateAdminSettings(
 }
 
 /**
+ * Hydrates server secrets from Cloud Firestore before returning settings.
+ */
+export async function getAdminSettingsAsync(maskKey = true) {
+  await hydrateServerSecrets();
+  return getAdminSettings(maskKey);
+}
+
+/**
+ * Awaits encrypted server secret persistence (Firestore + local vault) before completing HTTP write.
+ */
+export async function updateAdminSettingsAsync(
+  updates: Partial<AdminSystemSettings>,
+  author = { name: "Administrator", email: "admin@documind.app" },
+) {
+  await hydrateServerSecrets();
+
+  const nonSecretUpdates: Partial<AdminSystemSettings> = { ...updates };
+  delete nonSecretUpdates.geminiApiKey;
+  delete nonSecretUpdates.openaiApiKey;
+  delete nonSecretUpdates.groqApiKey;
+  delete nonSecretUpdates.openrouterApiKey;
+  delete nonSecretUpdates.ollamaBaseUrl;
+
+  if (typeof updates.allowPaidProviders === "boolean") {
+    activeSettings.allowPaidProviders = updates.allowPaidProviders;
+  }
+
+  if (updates.geminiApiKey !== undefined && !updates.geminiApiKey.includes("••••")) {
+    const trimmed = updates.geminiApiKey.trim();
+    await setServerSecret("gemini", trimmed);
+    activeSettings.geminiLastTest = undefined;
+    recordStaffAuditLog(
+      author.name,
+      author.email,
+      "Update Gemini API Key",
+      trimmed ? "Stored Google Gemini API credentials securely server-side." : "Cleared Gemini API key.",
+    );
+  }
+
+  if (updates.openaiApiKey !== undefined && !updates.openaiApiKey.includes("••••")) {
+    const trimmed = updates.openaiApiKey.trim();
+    await setServerSecret("openai", trimmed);
+    recordStaffAuditLog(
+      author.name,
+      author.email,
+      "Update OpenAI API Key",
+      trimmed ? "Stored OpenAI API credentials server-side." : "Cleared OpenAI key.",
+    );
+  }
+
+  if (updates.groqApiKey !== undefined && !updates.groqApiKey.includes("••••")) {
+    await setServerSecret("groq", updates.groqApiKey.trim());
+    activeSettings.fallbackLastTest = undefined;
+  }
+
+  if (updates.openrouterApiKey !== undefined && !updates.openrouterApiKey.includes("••••")) {
+    await setServerSecret("openrouter", updates.openrouterApiKey.trim());
+    activeSettings.fallbackLastTest = undefined;
+  }
+
+  if (updates.ollamaBaseUrl !== undefined) {
+    const cleanUrl = updates.ollamaBaseUrl.trim() || FREE_FALLBACK_DEFAULTS.ollama.defaultUrl;
+    activeSettings.ollamaBaseUrl = cleanUrl;
+    await setServerSecret("ollama_base_url", cleanUrl);
+  }
+
+  return updateAdminSettings(nonSecretUpdates, author);
+}
+
+/**
  * Tests OpenAI API connectivity (only permitted when paid providers are explicitly approved or testing supplied key).
  */
 export async function testOpenAIConnection(keyOverride?: string): Promise<{
@@ -493,6 +564,7 @@ export async function testOpenAIConnection(keyOverride?: string): Promise<{
   modelsFound?: string[];
   message: string;
 }> {
+  await hydrateServerSecrets();
   if (!activeSettings.allowPaidProviders) {
     return {
       success: false,

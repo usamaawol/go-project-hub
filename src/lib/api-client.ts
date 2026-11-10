@@ -7,6 +7,39 @@ import { extractTextFromPdfBytes } from "./pdf-extractor";
 
 const API_BASE = "/api";
 
+const BACKEND_UNAVAILABLE_MESSAGE =
+  "Backend API server (/api) is unreachable; changes were NOT saved to the server or Firestore vault. Start the Express backend (`npm run server`) alongside the frontend (`npm run dev`) and retry.";
+
+/**
+ * Builds authenticated admin request headers, attaching the signed-in Firebase ID token
+ * when available in addition to the X-Admin-Key header.
+ */
+async function getAdminRequestHeaders(
+  adminKey: string,
+  includeJsonContentType = true,
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  if (includeJsonContentType) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (adminKey) {
+    headers["X-Admin-Key"] = adminKey;
+  }
+  try {
+    const firebaseMod = await import("./firebase");
+    const currentUser = firebaseMod.auth?.currentUser;
+    if (currentUser && typeof currentUser.getIdToken === "function") {
+      const idToken = await currentUser.getIdToken();
+      if (idToken) {
+        headers["Authorization"] = `Bearer ${idToken}`;
+      }
+    }
+  } catch {
+    // Firebase client auth is optional in pure Node/unit test runtimes
+  }
+  return headers;
+}
+
 export async function safeFetchJson<T = any>(
   url: string,
   options?: RequestInit,
@@ -379,17 +412,35 @@ export async function purgeAdminTempFiles(adminKey = "documind-admin-secret") {
 }
 
 export async function fetchAdminSettings(adminKey = "documind-admin-secret") {
-  const res = await safeFetchJson(`${API_BASE}/admin/settings?adminKey=${adminKey}`);
-  return res || { success: true, data: null };
+  const headers = await getAdminRequestHeaders(adminKey, false);
+  const res = await safeFetchJson(`${API_BASE}/admin/settings?adminKey=${adminKey}`, { headers });
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      data: null,
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
-export async function updateAdminSettings(settings: Record<string, unknown>, adminKey = "documind-admin-secret") {
+export async function updateAdminSettings(
+  settings: Record<string, unknown>,
+  adminKey = "documind-admin-secret",
+) {
+  const headers = await getAdminRequestHeaders(adminKey, true);
   const res = await safeFetchJson(`${API_BASE}/admin/settings?adminKey=${adminKey}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(settings),
   });
-  return res || { success: true, message: "Settings saved successfully." };
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
 /**
@@ -468,12 +519,10 @@ export async function testAdminGeminiConnection(
   model?: string,
   testPdf = false,
 ) {
+  const headers = await getAdminRequestHeaders(adminKey, true);
   const res = await safeFetchJson(`${API_BASE}/admin/test-gemini?adminKey=${adminKey}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Key": adminKey,
-    },
+    headers,
     body: JSON.stringify({ apiKey, model, testPdf }),
   });
   if (res && res.data) return res;
@@ -493,12 +542,10 @@ export async function testAdminFallbackTextConnection(
   params: { provider?: string; apiKey?: string; model?: string; baseUrl?: string },
   adminKey = "documind-admin-secret",
 ) {
+  const headers = await getAdminRequestHeaders(adminKey, true);
   const res = await safeFetchJson(`${API_BASE}/admin/test-fallback-text?adminKey=${adminKey}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Key": adminKey,
-    },
+    headers,
     body: JSON.stringify(params),
   });
   if (res && res.data) return res;
@@ -515,12 +562,10 @@ export async function testAdminFallbackTextConnection(
 }
 
 export async function testAdminOpenAIConnection(apiKey?: string, adminKey = "documind-admin-secret") {
+  const headers = await getAdminRequestHeaders(adminKey, true);
   const res = await safeFetchJson(`${API_BASE}/admin/test-openai?adminKey=${adminKey}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Key": adminKey,
-    },
+    headers,
     body: JSON.stringify({ apiKey }),
   });
   return (
@@ -569,8 +614,16 @@ export async function fetchAdminAuditLogs(adminKey = "documind-admin-secret") {
 // ---------------------------------------------------------------------------
 
 export async function fetchAdminImageProviders(adminKey = "documind-admin-secret") {
-  const res = await safeFetchJson(`${API_BASE}/admin/providers?adminKey=${adminKey}`);
-  return res || { success: true, data: [] };
+  const headers = await getAdminRequestHeaders(adminKey, false);
+  const res = await safeFetchJson(`${API_BASE}/admin/providers?adminKey=${adminKey}`, { headers });
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      data: [],
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
 export async function updateAdminImageProvider(
@@ -578,11 +631,12 @@ export async function updateAdminImageProvider(
   updates: Record<string, any>,
   adminKey = "documind-admin-secret",
 ) {
+  const headers = await getAdminRequestHeaders(adminKey, true);
   const res = await safeFetchJson<{ success: boolean; error?: { message: string } }>(
     `${API_BASE}/admin/providers/${id}?adminKey=${adminKey}`,
     {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(updates),
     },
   );
@@ -591,10 +645,10 @@ export async function updateAdminImageProvider(
     return res;
   }
 
-  // Resilient fallback for serverless / Vercel
   return {
-    success: true,
-    data: { id, ...updates },
+    success: false,
+    backendUnavailable: true,
+    error: { message: BACKEND_UNAVAILABLE_MESSAGE },
   };
 }
 
@@ -604,6 +658,7 @@ export async function testAdminImageProviderConnection(
   adminKey = "documind-admin-secret",
   options?: { selectedModel?: string; endpointUrl?: string },
 ) {
+  const headers = await getAdminRequestHeaders(adminKey, true);
   const res = await safeFetchJson<{
     success: boolean;
     data?: {
@@ -616,10 +671,7 @@ export async function testAdminImageProviderConnection(
     error?: { message: string };
   }>(`${API_BASE}/admin/providers/${id}/test?adminKey=${adminKey}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Key": adminKey,
-    },
+    headers,
     body: JSON.stringify({
       apiKey,
       selectedModel: options?.selectedModel,
@@ -649,16 +701,14 @@ export async function testAdminGenerateImage(
   adminKey = "documind-admin-secret",
   providerId?: string,
 ) {
+  const headers = await getAdminRequestHeaders(adminKey, true);
   const res = await safeFetchJson<{
     success: boolean;
     data?: { imageUrl?: string; durationMs?: number; provider?: string; model?: string; error?: string };
     error?: { message: string };
   }>(`${API_BASE}/admin/providers/test-generate?adminKey=${adminKey}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Key": adminKey,
-    },
+    headers,
     body: JSON.stringify({ prompt, aspectRatio, providerId }),
   });
 
@@ -676,32 +726,63 @@ export async function testAdminGenerateImage(
 }
 
 export async function fetchAdminImageSettings(adminKey = "documind-admin-secret") {
-  const res = await safeFetchJson(`${API_BASE}/admin/image-generation/settings?adminKey=${adminKey}`);
-  return res || { success: true, data: null };
+  const headers = await getAdminRequestHeaders(adminKey, false);
+  const res = await safeFetchJson(`${API_BASE}/admin/image-generation/settings?adminKey=${adminKey}`, {
+    headers,
+  });
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      data: null,
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
 export async function updateAdminImageSettings(
   settings: Record<string, any>,
   adminKey = "documind-admin-secret",
 ) {
-  const res = await safeFetchJson(`${API_BASE}/admin/image-generation/settings?adminKey=${adminKey}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(settings),
-  });
-  return res || { success: true, data: settings };
+  const headers = await getAdminRequestHeaders(adminKey, true);
+  const res = await safeFetchJson(
+    `${API_BASE}/admin/image-generation/settings?adminKey=${adminKey}`,
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(settings),
+    },
+  );
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
 export async function fetchAdminImageLogs(adminKey = "documind-admin-secret") {
-  const res = await safeFetchJson(`${API_BASE}/admin/image-generation/logs?adminKey=${adminKey}`);
-  return res || { success: true, data: [] };
+  const headers = await getAdminRequestHeaders(adminKey, false);
+  const res = await safeFetchJson(`${API_BASE}/admin/image-generation/logs?adminKey=${adminKey}`, {
+    headers,
+  });
+  return res || { success: false, backendUnavailable: true, data: [] };
 }
 
 export async function clearAdminImageLogs(adminKey = "documind-admin-secret") {
+  const headers = await getAdminRequestHeaders(adminKey, false);
   const res = await safeFetchJson(`${API_BASE}/admin/image-generation/logs?adminKey=${adminKey}`, {
     method: "DELETE",
+    headers,
   });
-  return res || { success: true };
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -709,9 +790,10 @@ export async function clearAdminImageLogs(adminKey = "documind-admin-secret") {
 // ---------------------------------------------------------------------------
 
 export async function fetchAdminProviderAlerts(adminKey = "documind-admin-secret") {
+  const headers = await getAdminRequestHeaders(adminKey, false);
   const res = await safeFetchJson<{ success: boolean; data: any[] }>(
     `${API_BASE}/admin/providers/alerts?adminKey=${adminKey}`,
-    { headers: { "X-Admin-Key": adminKey } },
+    { headers },
   );
   if (res && res.data && Array.isArray(res.data)) {
     return res.data;
@@ -723,38 +805,54 @@ export async function dismissAdminProviderAlert(
   alertId: string,
   adminKey = "documind-admin-secret",
 ) {
+  const headers = await getAdminRequestHeaders(adminKey, false);
   const res = await safeFetchJson(
     `${API_BASE}/admin/providers/alerts/${alertId}/dismiss?adminKey=${adminKey}`,
-    { method: "POST", headers: { "X-Admin-Key": adminKey } },
+    { method: "POST", headers },
   );
-  return res ? Boolean(res.success) : true;
+  return res ? Boolean(res.success) : false;
 }
 
 export async function clearAdminProviderAlerts(adminKey = "documind-admin-secret") {
+  const headers = await getAdminRequestHeaders(adminKey, false);
   const res = await safeFetchJson(
     `${API_BASE}/admin/providers/alerts?adminKey=${adminKey}`,
-    { method: "DELETE", headers: { "X-Admin-Key": adminKey } },
+    { method: "DELETE", headers },
   );
-  return res ? Boolean(res.success) : true;
+  return res ? Boolean(res.success) : false;
 }
 
 export async function resetAdminProviderQuota(
   providerId: string,
   adminKey = "documind-admin-secret",
 ) {
-  const res = await safeFetchJson<{ success: boolean; data?: any; message?: string }>(
+  const headers = await getAdminRequestHeaders(adminKey, false);
+  const res = await safeFetchJson<{ success: boolean; data?: any; message?: string; error?: { message: string } }>(
     `${API_BASE}/admin/providers/${providerId}/reset-quota?adminKey=${adminKey}`,
-    { method: "POST", headers: { "X-Admin-Key": adminKey } },
+    { method: "POST", headers },
   );
-  return res || { success: true, message: `App usage counter for ${providerId} reset.` };
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
 export async function resetAllAdminProviderQuotas(adminKey = "documind-admin-secret") {
-  const res = await safeFetchJson<{ success: boolean; data?: any; message?: string }>(
+  const headers = await getAdminRequestHeaders(adminKey, false);
+  const res = await safeFetchJson<{ success: boolean; data?: any; message?: string; error?: { message: string } }>(
     `${API_BASE}/admin/providers/reset-all-quotas?adminKey=${adminKey}`,
-    { method: "POST", headers: { "X-Admin-Key": adminKey } },
+    { method: "POST", headers },
   );
-  return res || { success: true, message: "All provider app counters reset." };
+  return (
+    res || {
+      success: false,
+      backendUnavailable: true,
+      error: { message: BACKEND_UNAVAILABLE_MESSAGE },
+    }
+  );
 }
 
 export async function fetchAdminPresentations(adminKey = "documind-admin-secret") {

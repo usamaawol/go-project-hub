@@ -116,6 +116,7 @@ function AdminPage() {
   const [unlockInputKey, setUnlockInputKey] = useState("");
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [loading, setLoading] = useState(false);
+  const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
   const [testingAllProviders, setTestingAllProviders] = useState(false);
   const [purging, setPurging] = useState(false);
 
@@ -217,6 +218,8 @@ function AdminPage() {
         setSystemSettings(sysRes.data);
       }
 
+      setBackendReachable(Boolean(health) && !pRes?.backendUnavailable && !sysRes?.backendUnavailable);
+
       // 9. Staff Audit Logs
       const aRes = await fetchAdminAuditLogs(adminKey);
       if (aRes?.data && Array.isArray(aRes.data)) {
@@ -308,9 +311,13 @@ function AdminPage() {
 
   const handleResetQuota = async (providerId: string) => {
     try {
-      await resetAdminProviderQuota(providerId, adminKey);
-      toast.success(`Quota counter reset for provider "${providerId}".`);
-      loadAllData();
+      const res = await resetAdminProviderQuota(providerId, adminKey);
+      if (res && res.success) {
+        toast.success(`Quota counter reset for provider "${providerId}".`);
+        loadAllData();
+      } else {
+        toast.error(res?.error?.message || `Failed to reset quota for "${providerId}".`);
+      }
     } catch {
       toast.error(`Failed to reset quota for "${providerId}".`);
     }
@@ -318,9 +325,13 @@ function AdminPage() {
 
   const handleResetAllQuotas = async () => {
     try {
-      await resetAllAdminProviderQuotas(adminKey);
-      toast.success("All AI provider quotas successfully restored.");
-      loadAllData();
+      const res = await resetAllAdminProviderQuotas(adminKey);
+      if (res && res.success) {
+        toast.success("All AI provider quotas successfully restored.");
+        loadAllData();
+      } else {
+        toast.error(res?.error?.message || "Failed to reset provider quotas.");
+      }
     } catch {
       toast.error("Failed to reset provider quotas.");
     }
@@ -328,9 +339,13 @@ function AdminPage() {
 
   const handleDismissAlert = async (alertId: string) => {
     try {
-      await dismissAdminProviderAlert(alertId, adminKey);
-      setProviderAlerts((prev) => prev.filter((a) => a.id !== alertId));
-      toast.info("Alert dismissed.");
+      const ok = await dismissAdminProviderAlert(alertId, adminKey);
+      if (ok) {
+        setProviderAlerts((prev) => prev.filter((a) => a.id !== alertId));
+        toast.info("Alert dismissed.");
+      } else {
+        toast.error("Failed to dismiss alert (backend unreachable).");
+      }
     } catch {
       toast.error("Failed to dismiss alert.");
     }
@@ -338,9 +353,13 @@ function AdminPage() {
 
   const handleClearAlerts = async () => {
     try {
-      await clearAdminProviderAlerts(adminKey);
-      setProviderAlerts([]);
-      toast.success("All provider alerts cleared.");
+      const ok = await clearAdminProviderAlerts(adminKey);
+      if (ok) {
+        setProviderAlerts([]);
+        toast.success("All provider alerts cleared.");
+      } else {
+        toast.error("Failed to clear alerts (backend unreachable).");
+      }
     } catch {
       toast.error("Failed to clear alerts.");
     }
@@ -467,6 +486,7 @@ function AdminPage() {
                 systemSettings={systemSettings}
                 onRefresh={loadAllData}
                 adminKey={adminKey}
+                backendReachable={backendReachable}
                 alerts={providerAlerts}
                 onResetQuota={handleResetQuota}
                 onResetAllQuotas={handleResetAllQuotas}

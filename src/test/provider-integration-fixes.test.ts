@@ -17,11 +17,21 @@ import {
 import { imageProviderManager } from "../../server/services/imageProviders/imageProviderManager";
 import { createPresentationSession, deletePresentationSession } from "../../server/services/presentationSession.service";
 import {
+  decryptSecretsPayload,
+  encryptSecretsPayload,
+  getServerSecret,
   redactSecrets,
   resetServerSecretsForTest,
   setServerSecret,
 } from "../../server/services/serverSecretStore";
-import { purgeLegacyBrowserProviderSecrets } from "../lib/api-client";
+import { createApp } from "../../server/app";
+import {
+  fetchAdminImageProviders,
+  fetchAdminSettings,
+  purgeLegacyBrowserProviderSecrets,
+  updateAdminImageProvider,
+  updateAdminSettings as updateAdminSettingsClient,
+} from "../lib/api-client";
 
 const originalFetch = globalThis.fetch;
 
@@ -410,6 +420,107 @@ describe("Presentation Maker AI Provider Integration & Admin Security Verificati
       expect(mockStorage["documind_presentation_ai_keys"]).toBeUndefined();
       expect(mockStorage["documind_provider_alerts"]).toBeUndefined();
       expect(mockStorage["documind_provider_quotas"]).toBeUndefined();
+    });
+  });
+
+  describe("5. Fail-Closed API Client & Awaited Server Secret Persistence", () => {
+    it("returns success: false (never fake success) when /api returns HTML 404 or fails", async () => {
+      globalThis.fetch = vi.fn(async () => {
+        return new Response("<!doctype html><html><body>404</body></html>", {
+          status: 404,
+          headers: { "Content-Type": "text/html" },
+        });
+      }) as any;
+
+      const provUpdate = await updateAdminImageProvider("huggingface", { apiKey: "hf_dummy_123" });
+      expect(provUpdate.success).toBe(false);
+      expect((provUpdate as any).backendUnavailable).toBe(true);
+
+      const sysUpdate = await updateAdminSettingsClient({ geminiApiKey: "AIzaSy_dummy_123" });
+      expect(sysUpdate.success).toBe(false);
+      expect((sysUpdate as any).backendUnavailable).toBe(true);
+
+      const provFetch = await fetchAdminImageProviders();
+      expect(provFetch.success).toBe(false);
+      expect((provFetch as any).backendUnavailable).toBe(true);
+
+      const sysFetch = await fetchAdminSettings();
+      expect(sysFetch.success).toBe(false);
+      expect((sysFetch as any).backendUnavailable).toBe(true);
+    });
+
+    it("encrypts and decrypts multiple provider secrets without plaintext leakage", () => {
+      const secrets = {
+        gemini: "AIzaSy_Roundtrip_Test_Key_0001",
+        huggingface: "hf_Roundtrip_Test_Token_0002",
+      };
+      const encrypted = encryptSecretsPayload(secrets);
+      const serialized = JSON.stringify(encrypted);
+      expect(serialized).not.toContain("AIzaSy_Roundtrip_Test_Key_0001");
+      expect(serialized).not.toContain("hf_Roundtrip_Test_Token_0002");
+
+      const decrypted = decryptSecretsPayload(encrypted);
+      expect(decrypted).toEqual(secrets);
+    });
+
+    it("awaits persistence on Express PATCH /api/admin/providers/:id before returning 200 and masks returned keys", async () => {
+      const providersConfigPath = path.join(
+        process.cwd(),
+        "server",
+        "config",
+        "runtime-image-providers.json",
+      );
+      const originalProvidersJson = fs.existsSync(providersConfigPath)
+        ? fs.readFileSync(providersConfigPath, "utf-8")
+        : null;
+
+      const app = createApp();
+      const server = await new Promise<import("http").Server>((resolve) => {
+        const s = app.listen(0, "127.0.0.1", () => resolve(s));
+      });
+
+      try {
+        const addr = server.address();
+        const port = typeof addr === "object" && addr ? addr.port : 0;
+        expect(port).toBeGreaterThan(0);
+
+        const patchRes = await originalFetch(
+          `http://127.0.0.1:${port}/api/admin/providers/huggingface?adminKey=documind-admin-secret`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apiKey: "hf_ExpressRoutePersistence_998877",
+              selectedModel: "black-forest-labs/FLUX.1-schnell",
+              enabled: true,
+            }),
+          },
+        );
+        expect(patchRes.status).toBe(200);
+        const patchJson: any = await patchRes.json();
+        expect(patchJson.success).toBe(true);
+        expect(patchJson.data.isConfigured).toBe(true);
+        expect(JSON.stringify(patchJson)).not.toContain("hf_ExpressRoutePersistence_998877");
+
+        // Secret must already be persisted in-memory right after HTTP response
+        expect(getServerSecret("huggingface")).toBe("hf_ExpressRoutePersistence_998877");
+
+        const listRes = await originalFetch(
+          `http://127.0.0.1:${port}/api/admin/providers?adminKey=documind-admin-secret`,
+        );
+        expect(listRes.status).toBe(200);
+        const listJson: any = await listRes.json();
+        const hf = listJson.data.find((p: any) => p.id === "huggingface");
+        expect(hf.isConfigured).toBe(true);
+        expect(hf.apiKey).not.toContain("998877");
+        expect(hf.maskedKey).not.toContain("998877");
+        expect(JSON.stringify(listJson)).not.toContain("hf_ExpressRoutePersistence_998877");
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        if (originalProvidersJson !== null) {
+          fs.writeFileSync(providersConfigPath, originalProvidersJson, "utf-8");
+        }
+      }
     });
   });
 });

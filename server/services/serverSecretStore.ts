@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
-import { getAdminDb } from "../config/firebase";
+import { getAdminDb, initializeFirebaseAdmin } from "../config/firebase";
 
 export type SecretSlot =
   | "gemini"
@@ -34,7 +34,7 @@ function deriveEncryptionKey(): Buffer {
   return crypto.scryptSync(seed, "documind-secret-vault-salt-v1", 32);
 }
 
-function encryptSecretsMap(payload: Record<string, string>): {
+export function encryptSecretsPayload(payload: Record<string, string>): {
   v: 1;
   iv: string;
   tag: string;
@@ -56,7 +56,7 @@ function encryptSecretsMap(payload: Record<string, string>): {
   };
 }
 
-function decryptSecretsPayload(record: {
+export function decryptSecretsPayload(record: {
   iv?: string;
   tag?: string;
   data?: string;
@@ -96,11 +96,15 @@ function loadLocalEncryptedVaultSync(): void {
   }
 }
 
-// Hydrate local encrypted vault synchronously at module init (non-test)
 loadLocalEncryptedVaultSync();
 
-async function persistEncryptedVault(): Promise<void> {
-  if (isTestRuntime()) return;
+async function persistEncryptedVault(): Promise<{
+  savedToVaultFile: boolean;
+  savedToFirestore: boolean;
+}> {
+  if (isTestRuntime()) {
+    return { savedToVaultFile: false, savedToFirestore: false };
+  }
 
   const plainMap: Record<string, string> = {};
   for (const [slot, val] of inMemorySecrets.entries()) {
@@ -108,7 +112,9 @@ async function persistEncryptedVault(): Promise<void> {
       plainMap[slot] = val.trim();
     }
   }
-  const encryptedRecord = encryptSecretsMap(plainMap);
+  const encryptedRecord = encryptSecretsPayload(plainMap);
+  let savedToVaultFile = false;
+  let savedToFirestore = false;
 
   try {
     const dir = path.dirname(VAULT_FILE);
@@ -119,47 +125,67 @@ async function persistEncryptedVault(): Promise<void> {
       encoding: "utf-8",
       mode: 0o600,
     });
+    savedToVaultFile = true;
   } catch (err) {
     console.warn("[SecretVault] Failed persisting local encrypted vault:", redactSecrets(String(err)));
   }
 
   try {
-    const db = getAdminDb();
+    let db = getAdminDb();
+    if (!db) {
+      db = initializeFirebaseAdmin().db;
+    }
     if (db) {
-      await db.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC).set(encryptedRecord, {
-        merge: true,
-      });
+      await db.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC).set(encryptedRecord);
+      savedToFirestore = true;
     }
   } catch (err) {
-    console.warn("[SecretVault] Failed persisting encrypted secrets to Firestore:", redactSecrets(String(err)));
+    console.warn(
+      "[SecretVault] Failed persisting encrypted secrets to Firestore:",
+      redactSecrets(String(err)),
+    );
   }
+
+  if (!savedToVaultFile && !savedToFirestore) {
+    throw new Error(
+      "Could not persist encrypted provider credentials to Cloud Firestore or local server vault.",
+    );
+  }
+
+  return { savedToVaultFile, savedToFirestore };
 }
 
 /**
  * Hydrates secrets from Cloud Firestore's server-only `serverSecrets` collection (blocked to all client SDK reads).
  */
-export async function hydrateServerSecrets(): Promise<void> {
-  if (firestoreHydrated || isTestRuntime()) return;
-  if (hydrationInFlight) return hydrationInFlight;
+export async function hydrateServerSecrets(forceRefresh = false): Promise<void> {
+  if ((firestoreHydrated && !forceRefresh) || isTestRuntime()) return;
+  if (hydrationInFlight && !forceRefresh) return hydrationInFlight;
 
   hydrationInFlight = (async () => {
     try {
-      const db = getAdminDb();
+      let db = getAdminDb();
+      if (!db) {
+        db = initializeFirebaseAdmin().db;
+      }
       if (!db) return;
+
       const snap = await db.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC).get();
       if (snap.exists) {
         const decoded = decryptSecretsPayload(snap.data() as any);
         if (decoded) {
           for (const [slot, val] of Object.entries(decoded)) {
-            if (typeof val === "string" && val.trim() && !inMemorySecrets.has(slot as SecretSlot)) {
-              inMemorySecrets.set(slot as SecretSlot, val.trim());
+            if (typeof val === "string" && val.trim() && !val.includes("••••")) {
+              if (!inMemorySecrets.has(slot as SecretSlot)) {
+                inMemorySecrets.set(slot as SecretSlot, val.trim());
+              }
             }
           }
         }
       }
       firestoreHydrated = true;
-    } catch {
-      // Non-fatal: local encrypted vault / env remains active
+    } catch (err) {
+      console.warn("[SecretVault] Firestore hydration warning:", redactSecrets(String(err)));
     } finally {
       hydrationInFlight = null;
     }
@@ -230,11 +256,15 @@ export function isPlaceholderTestSecret(key?: string): boolean {
   );
 }
 
+/**
+ * Hydrates existing vault first so saving one key never clobbers another, then awaits encrypted persistence.
+ */
 export async function setServerSecret(slot: SecretSlot, rawValue: string): Promise<void> {
   const trimmed = (rawValue || "").trim();
   if (trimmed.includes("••••")) {
     return;
   }
+  await hydrateServerSecrets();
   if (!trimmed) {
     inMemorySecrets.delete(slot);
   } else {
@@ -274,6 +304,20 @@ export function getMaskedSecretInfo(slot: SecretSlot): {
     isConfigured: configured,
     maskedKey: configured ? maskSecretValue(value) : "",
     keySource: configured ? source : "none",
+  };
+}
+
+export function getSecretPersistenceDiagnostics(): {
+  hydrated: boolean;
+  vaultFileExists: boolean;
+  firestoreInitialized: boolean;
+  configuredSlotCount: number;
+} {
+  return {
+    hydrated: firestoreHydrated,
+    vaultFileExists: fs.existsSync(VAULT_FILE),
+    firestoreInitialized: Boolean(getAdminDb()),
+    configuredSlotCount: inMemorySecrets.size,
   };
 }
 

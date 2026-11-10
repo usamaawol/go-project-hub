@@ -403,6 +403,16 @@ export function PresentationWorkflow({
     setTestAdminKeyResult(null);
     try {
       const s = await fetchAdminSettings();
+      if (s?.backendUnavailable) {
+        setTestAdminKeyResult({
+          success: false,
+          latencyMs: 0,
+          message:
+            s?.error?.message ||
+            "Backend API server (/api) is unreachable; server-side keys cannot be loaded or saved.",
+        });
+        return;
+      }
       if (s?.data) {
         setAdminGeminiKeyInput("");
         setAdminOpenAiKeyInput("");

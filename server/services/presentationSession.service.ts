@@ -42,7 +42,12 @@ import {
   callFreeFallbackTextProvider,
   callGeminiGenerateContent,
 } from "./presentationAiClient";
-import { getServerSecret, isPlaceholderTestSecret, redactSecrets } from "./serverSecretStore";
+import {
+  getServerSecret,
+  hydrateServerSecrets,
+  isPlaceholderTestSecret,
+  redactSecrets,
+} from "./serverSecretStore";
 import { ENV } from "../config/env";
 import type { AssignmentMetadata } from "../../src/lib/assignment-types";
 import {
@@ -470,6 +475,8 @@ ${brief}`;
 export async function createPresentationSession(
   input: CreatePresentationSessionInput,
 ): Promise<PresentationSession> {
+  await hydrateServerSecrets();
+
   // Strict Separation of Instructions and Content + Honest Extraction Validation
   const rawSource = (input.content || "").trim();
   if (rawSource.length > 0) {
@@ -1110,6 +1117,8 @@ export async function regenerateSlideVisual(
   slideIndex: number,
   customPrompt?: string,
 ): Promise<PresentationSession | null> {
+  await hydrateServerSecrets();
+
   const session = activeSessions.get(sessionId);
   if (!session || !session.slides[slideIndex]) return null;
 
@@ -1271,6 +1280,8 @@ export async function regenerateSlideWithAI(
   instruction: string,
   apiKey?: string,
 ): Promise<PresentationSession | null> {
+  await hydrateServerSecrets();
+
   const session = activeSessions.get(sessionId);
   if (!session || !session.slides[slideIndex]) return null;
 
