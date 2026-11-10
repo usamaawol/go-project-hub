@@ -393,7 +393,40 @@ export async function updateAdminSettings(settings: Record<string, unknown>, adm
 }
 
 /**
- * Direct client-side provider key verification probe (used on Vercel or when backend is unreachable)
+ * Purges any legacy API keys/provider alerts previously stored in browser localStorage.
+ * Returns the affected provider names (never secret key values) so the Admin Dashboard can warn the user to rotate them.
+ */
+export function purgeLegacyBrowserProviderSecrets(): string[] {
+  if (typeof window === "undefined" || !window.localStorage) return [];
+  const exposedProviders: string[] = [];
+  try {
+    const raw = window.localStorage.getItem("documind_presentation_ai_keys");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === "string" && v.trim().length > 0) {
+              exposedProviders.push(k);
+            }
+          }
+        }
+      } catch {
+        exposedProviders.push("unknown");
+      }
+      window.localStorage.removeItem("documind_presentation_ai_keys");
+    }
+    window.localStorage.removeItem("documind_provider_alerts");
+    window.localStorage.removeItem("documind_provider_quotas");
+  } catch {
+    // ignore storage access issues
+  }
+  return exposedProviders;
+}
+
+/**
+ * Security boundary: Direct browser-to-provider verification using client-side API keys is disabled.
+ * All secret keys must be stored and verified strictly on the server via authenticated /api/admin/* endpoints.
  */
 export async function verifyProviderKeyDirectly(
   id: string,
@@ -414,181 +447,92 @@ export async function verifyProviderKeyDirectly(
       data: {
         success: false,
         latencyMs: 0,
-        message: "No API key entered. Please paste a valid provider key.",
+        message: "No API key entered. Enter a valid provider key to store and verify server-side.",
       },
     };
   }
 
-  const start = Date.now();
-
-  if (id === "gemini") {
-    try {
-      // Test directly against Google AI Studio API with a lightweight probe
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(trimmedKey)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: "ping" }] }],
-          }),
-          signal: AbortSignal.timeout(9000),
-        },
-      );
-      const latencyMs = Date.now() - start;
-
-      if (res.ok) {
-        return {
-          success: true,
-          data: {
-            success: true,
-            latencyMs,
-            message: "Google AI Studio API key verified successfully! Gemini 2.5 Flash & Imagen 3 models are active and accessible.",
-            model: "imagen-3.0-generate-002",
-          },
-        };
-      } else {
-        let errMessage = "Google AI Studio API key rejected.";
-        try {
-          const errBody = await res.json();
-          errMessage = errBody?.error?.message || errMessage;
-        } catch {}
-        return {
-          success: false,
-          data: {
-            success: false,
-            latencyMs,
-            message: `Google AI Studio Error: ${errMessage}`,
-          },
-        };
-      }
-    } catch (e: any) {
-      return {
-        success: false,
-        data: {
-          success: false,
-          latencyMs: Date.now() - start,
-          message: e?.message || "Connection to Google AI Studio timed out.",
-        },
-      };
-    }
-  }
-
-  if (id === "huggingface") {
-    try {
-      const res = await fetch(
-        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${trimmedKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ inputs: "ping" }),
-          signal: AbortSignal.timeout(9000),
-        },
-      );
-      const latencyMs = Date.now() - start;
-      if (res.status !== 401 && res.status !== 403) {
-        return {
-          success: true,
-          data: {
-            success: true,
-            latencyMs,
-            message: "Hugging Face Inference user access token verified and active.",
-            model: "black-forest-labs/FLUX.1-schnell",
-          },
-        };
-      } else {
-        return {
-          success: false,
-          data: {
-            success: false,
-            latencyMs,
-            message: "Hugging Face rejected access token (Invalid or revoked token).",
-          },
-        };
-      }
-    } catch (e: any) {
-      return {
-        success: false,
-        data: {
-          success: false,
-          latencyMs: Date.now() - start,
-          message: e?.message || "Network error contacting Hugging Face.",
-        },
-      };
-    }
-  }
-
-  if (id === "replicate") {
-    try {
-      const res = await fetch("https://api.replicate.com/v1/models", {
-        headers: { Authorization: `Bearer ${trimmedKey}` },
-        signal: AbortSignal.timeout(9000),
-      });
-      const latencyMs = Date.now() - start;
-      if (res.ok) {
-        return {
-          success: true,
-          data: {
-            success: true,
-            latencyMs,
-            message: "Replicate API token verified successfully.",
-            model: "black-forest-labs/flux-schnell",
-          },
-        };
-      } else {
-        return {
-          success: false,
-          data: {
-            success: false,
-            latencyMs,
-            message: "Replicate rejected API token: Authentication failed.",
-          },
-        };
-      }
-    } catch (e: any) {
-      return {
-        success: false,
-        data: {
-          success: false,
-          latencyMs: Date.now() - start,
-          message: e?.message || "Network error contacting Replicate.",
-        },
-      };
-    }
-  }
-
-  // Fallback for fal.ai and Cloudflare
-  const latencyMs = Date.now() - start;
   return {
-    success: true,
+    success: false,
     data: {
-      success: true,
-      latencyMs: Math.max(15, latencyMs),
-      message: `Key format accepted for ${id}. Configured for Presentation Maker failover.`,
+      success: false,
+      latencyMs: 0,
+      message: `Client-side verification for "${id}" is disabled for security. Keys must be saved and tested strictly through the authenticated backend API.`,
     },
   };
 }
 
-export async function testAdminGeminiConnection(apiKey?: string, adminKey = "documind-admin-secret") {
+export async function testAdminGeminiConnection(
+  apiKey?: string,
+  adminKey = "documind-admin-secret",
+  model?: string,
+  testPdf = false,
+) {
   const res = await safeFetchJson(`${API_BASE}/admin/test-gemini?adminKey=${adminKey}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey }),
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Key": adminKey,
+    },
+    body: JSON.stringify({ apiKey, model, testPdf }),
   });
   if (res && res.data) return res;
-  return await verifyProviderKeyDirectly("gemini", apiKey);
+  return {
+    success: false,
+    data: {
+      success: false,
+      latencyMs: 0,
+      model: model || "gemini-3.8-flash",
+      message:
+        "Backend API server is unreachable; server-side Gemini verification could not run. Direct browser API calls are disabled for security.",
+    },
+  };
+}
+
+export async function testAdminFallbackTextConnection(
+  params: { provider?: string; apiKey?: string; model?: string; baseUrl?: string },
+  adminKey = "documind-admin-secret",
+) {
+  const res = await safeFetchJson(`${API_BASE}/admin/test-fallback-text?adminKey=${adminKey}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Key": adminKey,
+    },
+    body: JSON.stringify(params),
+  });
+  if (res && res.data) return res;
+  return {
+    success: false,
+    data: {
+      success: false,
+      latencyMs: 0,
+      provider: params.provider || "none",
+      model: params.model || "",
+      message: "Backend API server is unreachable; cannot test fallback text provider.",
+    },
+  };
 }
 
 export async function testAdminOpenAIConnection(apiKey?: string, adminKey = "documind-admin-secret") {
   const res = await safeFetchJson(`${API_BASE}/admin/test-openai?adminKey=${adminKey}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Key": adminKey,
+    },
     body: JSON.stringify({ apiKey }),
   });
-  return res || { success: true, data: { success: true, latencyMs: 50, message: "OpenAI connection verified." } };
+  return (
+    res || {
+      success: false,
+      data: {
+        success: false,
+        latencyMs: 0,
+        message: "Backend API server is unreachable; OpenAI connection test did not execute.",
+      },
+    }
+  );
 }
 
 export async function fetchAdminStaff(adminKey = "documind-admin-secret") {
@@ -658,90 +602,75 @@ export async function testAdminImageProviderConnection(
   id: string,
   apiKey?: string,
   adminKey = "documind-admin-secret",
+  options?: { selectedModel?: string; endpointUrl?: string },
 ) {
   const res = await safeFetchJson<{
     success: boolean;
-    data?: { success: boolean; latencyMs: number; message: string };
+    data?: {
+      success: boolean;
+      latencyMs: number;
+      message: string;
+      provider?: string;
+      testedModel?: string;
+    };
     error?: { message: string };
   }>(`${API_BASE}/admin/providers/${id}/test?adminKey=${adminKey}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey }),
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Key": adminKey,
+    },
+    body: JSON.stringify({
+      apiKey,
+      selectedModel: options?.selectedModel,
+      endpointUrl: options?.endpointUrl,
+    }),
   });
 
   if (res && res.data && res.data.message) {
     return res;
   }
 
-  // Direct client probe for Vercel / serverless deployments
-  return await verifyProviderKeyDirectly(id, apiKey);
+  return {
+    success: false,
+    data: {
+      success: false,
+      latencyMs: 0,
+      provider: id,
+      testedModel: options?.selectedModel,
+      message: `Backend server unreachable; could not verify "${id}" (${options?.selectedModel || "default model"}). Start the API server cleanly — direct browser API testing is disabled for security.`,
+    },
+  };
 }
 
 export async function testAdminGenerateImage(
   prompt: string,
   aspectRatio = "16:9",
   adminKey = "documind-admin-secret",
+  providerId?: string,
 ) {
   const res = await safeFetchJson<{
     success: boolean;
-    data?: { imageUrl?: string; durationMs?: number; provider?: string; model?: string };
+    data?: { imageUrl?: string; durationMs?: number; provider?: string; model?: string; error?: string };
     error?: { message: string };
   }>(`${API_BASE}/admin/providers/test-generate?adminKey=${adminKey}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, aspectRatio }),
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Key": adminKey,
+    },
+    body: JSON.stringify({ prompt, aspectRatio, providerId }),
   });
 
   if (res && res.data) {
     return res;
   }
 
-  // Client-side testing probe with stored Presentation Maker Gemini key
-  let localKeys: Record<string, string> = {};
-  if (typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("documind_presentation_ai_keys");
-      if (raw) localKeys = JSON.parse(raw);
-    } catch {}
-  }
-
-  const gemKey = localKeys["gemini"];
-  if (gemKey) {
-    try {
-      const t0 = Date.now();
-      const gRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(gemKey)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `Generate presentation graphic concept for: ${prompt}` }] }],
-          }),
-        },
-      );
-      if (gRes.ok) {
-        return {
-          success: true,
-          data: {
-            provider: "Google Gemini (Direct Probe)",
-            model: "gemini-2.5-flash",
-            durationMs: Date.now() - t0,
-            imageUrl:
-              "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'><rect width='800' height='450' fill='%230f172a'/><text x='400' y='225' fill='%2360a5fa' font-size='22' text-anchor='middle' font-family='sans-serif'>Google Gemini Presentation Visual Active</text></svg>",
-          },
-        };
-      }
-    } catch {}
-  }
-
   return {
-    success: true,
-    data: {
-      provider: "DocuMind Contextual Engine",
-      model: "contextual-svg-engine",
-      durationMs: 35,
-      imageUrl:
-        "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'><rect width='800' height='450' fill='%230f172a'/><text x='400' y='225' fill='%2338bdf8' font-size='22' text-anchor='middle' font-family='sans-serif'>Presentation Visual Diagram</text></svg>",
+    success: false,
+    error: {
+      message:
+        "Backend server is unreachable; external provider image generation benchmark requires server-side credentials.",
     },
   };
 }
@@ -782,18 +711,10 @@ export async function clearAdminImageLogs(adminKey = "documind-admin-secret") {
 export async function fetchAdminProviderAlerts(adminKey = "documind-admin-secret") {
   const res = await safeFetchJson<{ success: boolean; data: any[] }>(
     `${API_BASE}/admin/providers/alerts?adminKey=${adminKey}`,
+    { headers: { "X-Admin-Key": adminKey } },
   );
   if (res && res.data && Array.isArray(res.data)) {
     return res.data;
-  }
-  // Client-side local storage fallback
-  if (typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("documind_provider_alerts");
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
   }
   return [];
 }
@@ -804,30 +725,16 @@ export async function dismissAdminProviderAlert(
 ) {
   const res = await safeFetchJson(
     `${API_BASE}/admin/providers/alerts/${alertId}/dismiss?adminKey=${adminKey}`,
-    { method: "POST" },
+    { method: "POST", headers: { "X-Admin-Key": adminKey } },
   );
-  if (typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("documind_provider_alerts");
-      if (raw) {
-        const list = JSON.parse(raw).filter((a: any) => a.id !== alertId);
-        localStorage.setItem("documind_provider_alerts", JSON.stringify(list));
-      }
-    } catch {}
-  }
   return res ? Boolean(res.success) : true;
 }
 
 export async function clearAdminProviderAlerts(adminKey = "documind-admin-secret") {
   const res = await safeFetchJson(
     `${API_BASE}/admin/providers/alerts?adminKey=${adminKey}`,
-    { method: "DELETE" },
+    { method: "DELETE", headers: { "X-Admin-Key": adminKey } },
   );
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.removeItem("documind_provider_alerts");
-    } catch {}
-  }
   return res ? Boolean(res.success) : true;
 }
 
@@ -837,38 +744,17 @@ export async function resetAdminProviderQuota(
 ) {
   const res = await safeFetchJson<{ success: boolean; data?: any; message?: string }>(
     `${API_BASE}/admin/providers/${providerId}/reset-quota?adminKey=${adminKey}`,
-    { method: "POST" },
+    { method: "POST", headers: { "X-Admin-Key": adminKey } },
   );
-  if (typeof window !== "undefined") {
-    try {
-      // Remove any alerts for this provider locally
-      const raw = localStorage.getItem("documind_provider_alerts");
-      if (raw) {
-        const list = JSON.parse(raw).filter((a: any) => a.providerId !== providerId);
-        localStorage.setItem("documind_provider_alerts", JSON.stringify(list));
-      }
-      // Update local quota override
-      const qRaw = localStorage.getItem("documind_provider_quotas") || "{}";
-      const q = JSON.parse(qRaw);
-      q[providerId] = { used: 0, resetAt: Date.now() };
-      localStorage.setItem("documind_provider_quotas", JSON.stringify(q));
-    } catch {}
-  }
-  return res || { success: true, message: `Quota for ${providerId} reset.` };
+  return res || { success: true, message: `App usage counter for ${providerId} reset.` };
 }
 
 export async function resetAllAdminProviderQuotas(adminKey = "documind-admin-secret") {
   const res = await safeFetchJson<{ success: boolean; data?: any; message?: string }>(
     `${API_BASE}/admin/providers/reset-all-quotas?adminKey=${adminKey}`,
-    { method: "POST" },
+    { method: "POST", headers: { "X-Admin-Key": adminKey } },
   );
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.removeItem("documind_provider_alerts");
-      localStorage.removeItem("documind_provider_quotas");
-    } catch {}
-  }
-  return res || { success: true, message: "All provider quotas reset." };
+  return res || { success: true, message: "All provider app counters reset." };
 }
 
 export async function fetchAdminPresentations(adminKey = "documind-admin-secret") {
@@ -917,25 +803,15 @@ export async function regeneratePresentationSlideVisualApi(
   sessionId: string,
   slideIndex: number,
   prompt?: string,
-  providerKeys?: Record<string, string>,
 ) {
-  let effectiveKeys = providerKeys;
-  if (!effectiveKeys && typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("documind_presentation_ai_keys");
-      if (raw) effectiveKeys = JSON.parse(raw);
-    } catch {}
-  }
-
   const res = await safeFetchJson<{ success: boolean; data?: any; message?: string }>(
     `${API_BASE}/presentations/session/${sessionId}/slide/${slideIndex}/regenerate-visual`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(effectiveKeys ? { "x-provider-keys": JSON.stringify(effectiveKeys) } : {}),
       },
-      body: JSON.stringify({ prompt, providerKeys: effectiveKeys }),
+      body: JSON.stringify({ prompt }),
     },
   );
 
@@ -1027,8 +903,6 @@ export async function createPresentationSessionApi(input: {
   autoSlideCount?: boolean;
   allowPaidProviders?: boolean;
   visualPreference?: "diagrams" | "text-only";
-  geminiApiKey?: string;
-  providerKeys?: Record<string, string>;
 }): Promise<{
   sessionId: string;
   title: string;
@@ -1036,6 +910,8 @@ export async function createPresentationSessionApi(input: {
   expiresAt: number;
   secondsRemaining: number;
   slides?: SlidePreviewItem[];
+  aiProviderUsed?: string;
+  aiNotice?: string;
   downloadUrl?: string;
 }> {
   if (input.content && input.content.trim().length > 0) {
@@ -1045,23 +921,14 @@ export async function createPresentationSessionApi(input: {
     }
   }
 
-  let presentationKeys = input.providerKeys;
-  if (!presentationKeys && typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("documind_presentation_ai_keys");
-      if (raw) presentationKeys = JSON.parse(raw);
-    } catch {}
-  }
-
-  // 1. Attempt backend API first (used when Express server is running)
+  // 1. Attempt backend API first (server-side AI credentials only — never send API keys from browser)
   try {
     const res = await fetch(`${API_BASE}/presentations/generate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(presentationKeys ? { "x-provider-keys": JSON.stringify(presentationKeys) } : {}),
       },
-      body: JSON.stringify({ ...input, providerKeys: presentationKeys }),
+      body: JSON.stringify(input),
     });
 
     const contentType = res.headers.get("content-type") || "";

@@ -175,7 +175,7 @@ export function AdminLimitsTab({
               }
               className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground focus:ring-1 focus:ring-primary"
             >
-              <option value="full">Full (External Neural APIs + Imagen 3)</option>
+              <option value="full">Full (Gemini 3.8 Flash + Free Programmatic Visuals)</option>
               <option value="balanced">Balanced (Fast synthesis + Contextual graphics)</option>
               <option value="local">Local (Offline deterministic synthesis only)</option>
             </select>

@@ -37,8 +37,10 @@ dist-ssr
 # OCR traineddata
 *.traineddata
 
-# Firebase service account keys
+# Firebase service account keys & runtime encrypted secret vault
 *firebase-adminsdk*.json
 *service-account*.json
 serviceAccountKey.json
+server/config/.runtime-secrets.enc.json
+server/config/*.enc.json
 

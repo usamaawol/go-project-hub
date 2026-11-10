@@ -1,8 +1,24 @@
 import fs from "fs";
 import path from "path";
-import os from "os";
-import crypto from "crypto";
 import { ENV } from "../config/env";
+import {
+  buildDiagnosticSamplePdfBase64,
+  callFreeFallbackTextProvider,
+  callGeminiGenerateContent,
+  DEFAULT_GEMINI_TEXT_MODEL,
+  DEPRECATED_GEMINI_MODELS,
+  FREE_FALLBACK_DEFAULTS,
+  resolveSupportedGeminiModel,
+  type FreeFallbackTextProviderId,
+} from "./presentationAiClient";
+import {
+  getMaskedSecretInfo,
+  getServerSecret,
+  hydrateServerSecrets,
+  maskSecretValue,
+  redactSecrets,
+  setServerSecretSync,
+} from "./serverSecretStore";
 
 export interface StaffMember {
   id: string;
@@ -25,16 +41,37 @@ export interface StaffAuditLog {
   timestamp: string;
 }
 
+export interface ProviderConnectionSnapshot {
+  success: boolean;
+  testedAt: string;
+  lastSuccessfulTestAt?: string;
+  model: string;
+  message: string;
+  latencyMs: number;
+  capabilities?: {
+    text: boolean;
+    json: boolean;
+    pdf?: boolean;
+  };
+  rateLimitHeaders?: Record<string, string>;
+}
+
 export interface AdminSystemSettings {
-  activeProvider: "gemini" | "openai" | "offline";
+  activeProvider: "gemini" | "groq" | "openrouter" | "ollama" | "openai" | "offline";
   geminiApiKey: string;
   geminiModel: string;
   imagenModel: string;
+  fallbackTextProvider: FreeFallbackTextProviderId;
+  fallbackTextModel: string;
+  groqApiKey?: string;
+  openrouterApiKey?: string;
+  ollamaBaseUrl?: string;
   openaiApiKey?: string;
   openaiModel?: string;
   exaoneApiKey?: string;
   exaoneBaseUrl?: string;
   exaoneModel?: string;
+  allowPaidProviders: boolean;
   aiEngineMode: "full" | "balanced" | "local";
   maxSlideCount: number;
   aiTimeoutSeconds: number;
@@ -45,34 +82,41 @@ export interface AdminSystemSettings {
     text: string;
     type: "info" | "warning" | "success";
   };
+  geminiLastTest?: ProviderConnectionSnapshot;
+  fallbackLastTest?: ProviderConnectionSnapshot;
 }
 
 const SETTINGS_FILE = path.join(process.cwd(), "server", "config", "runtime-admin-settings.json");
 
-// Default initial settings
+// Free-First Default Initial Settings
 const DEFAULT_SETTINGS: AdminSystemSettings = {
   activeProvider: "gemini",
-  geminiApiKey: ENV.GEMINI_API_KEY || "",
-  geminiModel: "gemini-2.5-flash",
-  imagenModel: "imagen-3.0-generate-002",
-  openaiApiKey: process.env.OPENAI_API_KEY || "",
+  geminiApiKey: "",
+  geminiModel: DEFAULT_GEMINI_TEXT_MODEL,
+  imagenModel: "disabled",
+  fallbackTextProvider: "none",
+  fallbackTextModel: FREE_FALLBACK_DEFAULTS.groq.defaultModel,
+  groqApiKey: "",
+  openrouterApiKey: "",
+  ollamaBaseUrl: FREE_FALLBACK_DEFAULTS.ollama.defaultUrl,
+  openaiApiKey: "",
   openaiModel: "gpt-4o-mini",
-  exaoneApiKey: ENV.EXAONE_API_KEY || "",
+  exaoneApiKey: "",
   exaoneBaseUrl: ENV.EXAONE_BASE_URL || "https://api.exaone.ai/v1",
   exaoneModel: ENV.EXAONE_MODEL || "k-exaone_v2.5",
+  allowPaidProviders: false,
   aiEngineMode: "full",
   maxSlideCount: 50,
-  aiTimeoutSeconds: 15,
+  aiTimeoutSeconds: 20,
   temperature: 0.7,
   maintenanceMode: false,
   announcement: {
     enabled: false,
-    text: "DocuMind System Update: Gemini 2.5 Flash and Imagen 3 vision models are now globally available.",
+    text: "DocuMind Presentation Engine configured with Gemini 3.8 Flash (Free Tier) & programmatic vector diagrams.",
     type: "info",
   },
 };
 
-// Initial Staff Directory for DocuMind Platform
 const DEFAULT_STAFF: StaffMember[] = [
   {
     id: "staff-101",
@@ -137,7 +181,7 @@ const DEFAULT_AUDIT_LOGS: StaffAuditLog[] = [
     staffName: "Lead Administrator",
     staffEmail: "admin@documind.app",
     action: "AI Engine Configuration",
-    details: "Initialized Gemini 2.5 Flash and Imagen 3 vision pipeline globally for all users.",
+    details: "Configured Gemini 3.8 Flash (Free Tier) & programmatic vector diagram pipeline.",
     timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
   },
   {
@@ -145,7 +189,7 @@ const DEFAULT_AUDIT_LOGS: StaffAuditLog[] = [
     staffName: "Elena Rostova",
     staffEmail: "elena.rostova@techcorp.io",
     action: "System Verification",
-    details: "Ran automated latency and model health diagnostics on Google AI endpoints.",
+    details: "Verified Free-First security boundaries and server-side key management.",
     timestamp: new Date(Date.now() - 3600000 * 8).toISOString(),
   },
   {
@@ -163,33 +207,80 @@ let activeStaff: StaffMember[] = [...DEFAULT_STAFF];
 let activeAuditLogs: StaffAuditLog[] = [...DEFAULT_AUDIT_LOGS];
 
 // Load settings from persistent file on startup
-try {
-  if (fs.existsSync(SETTINGS_FILE)) {
-    const raw = fs.readFileSync(SETTINGS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    activeSettings = { ...DEFAULT_SETTINGS, ...parsed.settings };
-    if (Array.isArray(parsed.staff) && parsed.staff.length > 0) {
-      activeStaff = parsed.staff;
+if (!(process.env.NODE_ENV === "test" || process.env.VITEST)) {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const raw = fs.readFileSync(SETTINGS_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      const diskSettings = (parsed.settings || {}) as Partial<AdminSystemSettings>;
+
+      // Migrate legacy secrets from disk JSON into encrypted server vault if present
+      if (diskSettings.geminiApiKey && !diskSettings.geminiApiKey.includes("••••")) {
+        setServerSecretSync("gemini", diskSettings.geminiApiKey);
+      }
+      if (diskSettings.openaiApiKey && !diskSettings.openaiApiKey.includes("••••")) {
+        setServerSecretSync("openai", diskSettings.openaiApiKey);
+      }
+      if (diskSettings.groqApiKey && !diskSettings.groqApiKey.includes("••••")) {
+        setServerSecretSync("groq", diskSettings.groqApiKey);
+      }
+      if (diskSettings.openrouterApiKey && !diskSettings.openrouterApiKey.includes("••••")) {
+        setServerSecretSync("openrouter", diskSettings.openrouterApiKey);
+      }
+      if (diskSettings.exaoneApiKey && !diskSettings.exaoneApiKey.includes("••••")) {
+        setServerSecretSync("exaone", diskSettings.exaoneApiKey);
+      }
+
+      activeSettings = {
+        ...DEFAULT_SETTINGS,
+        ...diskSettings,
+        geminiModel: resolveSupportedGeminiModel(diskSettings.geminiModel),
+        imagenModel:
+          diskSettings.allowPaidProviders && diskSettings.imagenModel
+            ? diskSettings.imagenModel
+            : "disabled",
+        geminiApiKey: "",
+        openaiApiKey: "",
+        groqApiKey: "",
+        openrouterApiKey: "",
+        exaoneApiKey: "",
+      };
+
+      if (Array.isArray(parsed.staff) && parsed.staff.length > 0) {
+        activeStaff = parsed.staff;
+      }
+      if (Array.isArray(parsed.auditLogs) && parsed.auditLogs.length > 0) {
+        activeAuditLogs = parsed.auditLogs;
+      }
     }
-    if (Array.isArray(parsed.auditLogs) && parsed.auditLogs.length > 0) {
-      activeAuditLogs = parsed.auditLogs;
-    }
+  } catch (e) {
+    console.warn("Could not load runtime admin settings from disk, using defaults:", e);
   }
-} catch (e) {
-  console.warn("Could not load runtime admin settings from disk, using defaults:", e);
 }
 
 function persistToDisk() {
+  if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+    return;
+  }
   try {
     const dir = path.dirname(SETTINGS_FILE);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
+    // Strictly never write API keys to tracked config JSON
+    const sanitizedSettings: AdminSystemSettings = {
+      ...activeSettings,
+      geminiApiKey: "",
+      openaiApiKey: "",
+      groqApiKey: "",
+      openrouterApiKey: "",
+      exaoneApiKey: "",
+    };
     fs.writeFileSync(
       SETTINGS_FILE,
       JSON.stringify(
         {
-          settings: activeSettings,
+          settings: sanitizedSettings,
           staff: activeStaff,
           auditLogs: activeAuditLogs.slice(0, 50),
         },
@@ -203,83 +294,67 @@ function persistToDisk() {
   }
 }
 
-/**
- * Returns current admin system settings (with option to mask key for UI)
- */
 export function getAdminSettings(maskKey = true): AdminSystemSettings & {
   hasKeyConfigured: boolean;
   hasOpenAiKeyConfigured: boolean;
+  hasGroqKeyConfigured: boolean;
+  hasOpenRouterKeyConfigured: boolean;
+  keySource: string;
 } {
-  const key = activeSettings.geminiApiKey || ENV.GEMINI_API_KEY || "";
+  const key = getServerSecret("gemini");
   const hasKeyConfigured = key.trim().length > 8;
-  const oKey = activeSettings.openaiApiKey || process.env.OPENAI_API_KEY || "";
+  const oKey = getServerSecret("openai");
   const hasOpenAiKeyConfigured = oKey.trim().length > 8;
-
-  let displayKey = "";
-  if (hasKeyConfigured) {
-    if (maskKey) {
-      displayKey = key.slice(0, 6) + "••••••••••••••••" + key.slice(-4);
-    } else {
-      displayKey = key;
-    }
-  }
-
-  let displayOpenAiKey = "";
-  if (hasOpenAiKeyConfigured) {
-    if (maskKey) {
-      displayOpenAiKey = oKey.slice(0, 6) + "••••••••••••••••" + oKey.slice(-4);
-    } else {
-      displayOpenAiKey = oKey;
-    }
-  }
+  const gKey = getServerSecret("groq");
+  const hasGroqKeyConfigured = gKey.trim().length > 8;
+  const orKey = getServerSecret("openrouter");
+  const hasOpenRouterKeyConfigured = orKey.trim().length > 8;
+  const gemInfo = getMaskedSecretInfo("gemini");
 
   return {
     ...activeSettings,
-    geminiApiKey: displayKey,
-    openaiApiKey: displayOpenAiKey,
+    geminiModel: resolveSupportedGeminiModel(activeSettings.geminiModel),
+    geminiApiKey: maskKey ? (hasKeyConfigured ? maskSecretValue(key) : "") : key,
+    openaiApiKey: maskKey ? (hasOpenAiKeyConfigured ? maskSecretValue(oKey) : "") : oKey,
+    groqApiKey: maskKey ? (hasGroqKeyConfigured ? maskSecretValue(gKey) : "") : gKey,
+    openrouterApiKey: maskKey ? (hasOpenRouterKeyConfigured ? maskSecretValue(orKey) : "") : orKey,
+    exaoneApiKey: maskKey ? "" : getServerSecret("exaone"),
     hasKeyConfigured,
     hasOpenAiKeyConfigured,
+    hasGroqKeyConfigured,
+    hasOpenRouterKeyConfigured,
+    keySource: gemInfo.keySource,
   };
 }
 
-/**
- * Returns active provider mode ("gemini" | "openai" | "offline")
- */
-export function getActiveProvider(): "gemini" | "openai" | "offline" {
-  return activeSettings.activeProvider || "gemini";
+export function getActiveProvider(): AdminSystemSettings["activeProvider"] {
+  const configured = activeSettings.activeProvider || "gemini";
+  if (configured === "openai" && !activeSettings.allowPaidProviders) {
+    return "gemini";
+  }
+  return configured;
 }
 
-/**
- * Returns the effective unmasked Gemini API key for server presentation synthesis
- */
+export function getEffectiveGeminiModel(): string {
+  return resolveSupportedGeminiModel(activeSettings.geminiModel);
+}
+
 export function getEffectiveGeminiApiKey(): string {
-  return (activeSettings.geminiApiKey || ENV.GEMINI_API_KEY || "").trim();
+  return getServerSecret("gemini");
 }
 
-/**
- * Returns the effective unmasked OpenAI API key
- */
 export function getEffectiveOpenAIApiKey(): string {
-  return (activeSettings.openaiApiKey || process.env.OPENAI_API_KEY || "").trim();
+  return getServerSecret("openai");
 }
 
-/**
- * Returns the effective unmasked EXAONE API key
- */
 export function getEffectiveExaoneApiKey(): string {
-  return (activeSettings.exaoneApiKey || ENV.EXAONE_API_KEY || process.env.EXAONE_API_KEY || "").trim();
+  return getServerSecret("exaone");
 }
 
-/**
- * Returns the effective EXAONE Model identifier
- */
 export function getEffectiveExaoneModel(): string {
   return (activeSettings.exaoneModel || ENV.EXAONE_MODEL || process.env.EXAONE_MODEL || "k-exaone_v2.5").trim();
 }
 
-/**
- * Returns the effective EXAONE Base URL
- */
 export function getEffectiveExaoneBaseUrl(): string {
   return (
     activeSettings.exaoneBaseUrl ||
@@ -289,14 +364,28 @@ export function getEffectiveExaoneBaseUrl(): string {
   ).trim();
 }
 
-/**
- * Updates admin system settings
- */
 export function updateAdminSettings(
   updates: Partial<AdminSystemSettings>,
   author = { name: "Administrator", email: "admin@documind.app" },
 ): AdminSystemSettings {
+  if (typeof updates.allowPaidProviders === "boolean") {
+    activeSettings.allowPaidProviders = updates.allowPaidProviders;
+    recordStaffAuditLog(
+      author.name,
+      author.email,
+      "Update Paid Billing Policy",
+      updates.allowPaidProviders
+        ? "Administrator explicitly allowed paid provider models."
+        : "Enforced Free-First lock (all paid models disabled).",
+    );
+  }
+
   if (updates.activeProvider) {
+    if (updates.activeProvider === "openai" && !activeSettings.allowPaidProviders) {
+      throw new Error(
+        "OpenAI requires paid billing and cannot be activated while Free-First lock (allowPaidProviders: false) is enabled.",
+      );
+    }
     activeSettings.activeProvider = updates.activeProvider;
     recordStaffAuditLog(
       author.name,
@@ -306,41 +395,68 @@ export function updateAdminSettings(
     );
   }
 
-  if (updates.geminiApiKey !== undefined) {
-    // Only update if key actually changed and is not masked
+  if (updates.geminiApiKey !== undefined && !updates.geminiApiKey.includes("••••")) {
     const trimmed = updates.geminiApiKey.trim();
-    if (!trimmed.includes("••••")) {
-      activeSettings.geminiApiKey = trimmed;
-      recordStaffAuditLog(
-        author.name,
-        author.email,
-        "Update Gemini API Key",
-        trimmed ? "Updated Google Gemini & Imagen API credentials." : "Cleared Gemini API key.",
-      );
-    }
+    setServerSecretSync("gemini", trimmed);
+    activeSettings.geminiLastTest = undefined;
+    recordStaffAuditLog(
+      author.name,
+      author.email,
+      "Update Gemini API Key",
+      trimmed ? "Stored Google Gemini API credentials securely server-side." : "Cleared Gemini API key.",
+    );
   }
 
-  if (updates.openaiApiKey !== undefined) {
+  if (updates.openaiApiKey !== undefined && !updates.openaiApiKey.includes("••••")) {
     const trimmed = updates.openaiApiKey.trim();
-    if (!trimmed.includes("••••")) {
-      activeSettings.openaiApiKey = trimmed;
-      recordStaffAuditLog(
-        author.name,
-        author.email,
-        "Update OpenAI API Key",
-        trimmed ? "Updated OpenAI API credentials." : "Cleared OpenAI key.",
-      );
-    }
+    setServerSecretSync("openai", trimmed);
+    recordStaffAuditLog(
+      author.name,
+      author.email,
+      "Update OpenAI API Key",
+      trimmed ? "Stored OpenAI API credentials server-side." : "Cleared OpenAI key.",
+    );
+  }
+
+  if (updates.groqApiKey !== undefined && !updates.groqApiKey.includes("••••")) {
+    setServerSecretSync("groq", updates.groqApiKey.trim());
+    activeSettings.fallbackLastTest = undefined;
+  }
+
+  if (updates.openrouterApiKey !== undefined && !updates.openrouterApiKey.includes("••••")) {
+    setServerSecretSync("openrouter", updates.openrouterApiKey.trim());
+    activeSettings.fallbackLastTest = undefined;
+  }
+
+  if (updates.fallbackTextProvider) {
+    activeSettings.fallbackTextProvider = updates.fallbackTextProvider;
+    activeSettings.fallbackLastTest = undefined;
+  }
+  if (updates.fallbackTextModel !== undefined) {
+    activeSettings.fallbackTextModel = updates.fallbackTextModel.trim();
+  }
+  if (updates.ollamaBaseUrl !== undefined) {
+    activeSettings.ollamaBaseUrl = updates.ollamaBaseUrl.trim() || FREE_FALLBACK_DEFAULTS.ollama.defaultUrl;
+    setServerSecretSync("ollama_base_url", activeSettings.ollamaBaseUrl);
   }
 
   if (updates.aiEngineMode) {
     activeSettings.aiEngineMode = updates.aiEngineMode;
   }
   if (updates.geminiModel) {
-    activeSettings.geminiModel = updates.geminiModel;
+    const chosen = updates.geminiModel.trim();
+    if (DEPRECATED_GEMINI_MODELS.has(chosen)) {
+      activeSettings.geminiModel = DEFAULT_GEMINI_TEXT_MODEL;
+    } else {
+      activeSettings.geminiModel = chosen;
+    }
+    activeSettings.geminiLastTest = undefined;
   }
-  if (updates.imagenModel) {
-    activeSettings.imagenModel = updates.imagenModel;
+  if (updates.imagenModel !== undefined) {
+    activeSettings.imagenModel =
+      !activeSettings.allowPaidProviders && updates.imagenModel.includes("imagen")
+        ? "disabled"
+        : updates.imagenModel;
   }
   if (updates.openaiModel) {
     activeSettings.openaiModel = updates.openaiModel;
@@ -365,11 +481,11 @@ export function updateAdminSettings(
   }
 
   persistToDisk();
-  return activeSettings;
+  return getAdminSettings(true);
 }
 
 /**
- * Tests connection to OpenAI API endpoint
+ * Tests OpenAI API connectivity (only permitted when paid providers are explicitly approved or testing supplied key).
  */
 export async function testOpenAIConnection(keyOverride?: string): Promise<{
   success: boolean;
@@ -377,12 +493,21 @@ export async function testOpenAIConnection(keyOverride?: string): Promise<{
   modelsFound?: string[];
   message: string;
 }> {
-  const key = (keyOverride || getEffectiveOpenAIApiKey()).trim();
+  if (!activeSettings.allowPaidProviders) {
+    return {
+      success: false,
+      latencyMs: 0,
+      message:
+        "OpenAI is a paid service and is disabled under the Free-First policy. Enable Paid Providers explicitly before activating OpenAI.",
+    };
+  }
+
+  const key = (keyOverride && !keyOverride.includes("••••") ? keyOverride : getEffectiveOpenAIApiKey()).trim();
   if (!key) {
     return {
       success: false,
       latencyMs: 0,
-      message: "No OpenAI API key provided or configured in the system.",
+      message: "No OpenAI API key configured on the server.",
     };
   }
 
@@ -412,78 +537,257 @@ export async function testOpenAIConnection(keyOverride?: string): Promise<{
     return {
       success: false,
       latencyMs: Date.now() - startTime,
-      message: err?.message || "Failed to contact OpenAI API.",
+      message: redactSecrets(err?.message || "Failed to contact OpenAI API."),
     };
   }
 }
 
 /**
- * Tests connection to Google Gemini API
+ * Executes real API verification against Gemini v1beta :generateContent (never relying on GET /models).
+ * Verifies text generation + structured JSON output, and optionally tests PDF multimodal understanding.
  */
-export async function testGeminiConnection(keyOverride?: string): Promise<{
+export async function testGeminiConnection(
+  keyOverride?: string,
+  modelOverride?: string,
+  options?: { testPdf?: boolean },
+): Promise<{
   success: boolean;
   latencyMs: number;
+  model: string;
   modelsFound?: string[];
   message: string;
+  capabilities?: { text: boolean; json: boolean; pdf?: boolean };
+  rateLimitHeaders?: Record<string, string>;
 }> {
-  const key = (keyOverride || getEffectiveGeminiApiKey()).trim();
+  await hydrateServerSecrets();
+  const key = (
+    keyOverride && !keyOverride.includes("••••") ? keyOverride : getEffectiveGeminiApiKey()
+  ).trim();
+  const requestedModel = (modelOverride || getEffectiveGeminiModel()).trim();
+  const effectiveModel = resolveSupportedGeminiModel(requestedModel);
 
   if (!key) {
     return {
       success: false,
       latencyMs: 0,
-      message: "No Gemini API key provided or configured in the system.",
+      model: effectiveModel,
+      message: "No Gemini API key configured on the server.",
     };
   }
 
-  const startTime = Date.now();
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
-      {
-        method: "GET",
-        signal: AbortSignal.timeout(8000),
-      },
-    );
-
-    const latencyMs = Date.now() - startTime;
-
-    if (!res.ok) {
-      const errText = await res.text();
-      let parsedErr = errText;
-      try {
-        const json = JSON.parse(errText);
-        parsedErr = json.error?.message || errText;
-      } catch {
-        // ignore
-      }
-      return {
-        success: false,
-        latencyMs,
-        message: `Google API Error (${res.status}): ${parsedErr.slice(0, 160)}`,
-      };
-    }
-
-    const data = (await res.json()) as { models?: Array<{ name: string; displayName?: string }> };
-    const modelNames = (data.models || []).map((m) => m.name.replace("models/", ""));
-    const flashReady = modelNames.some((m) => m.includes("gemini"));
-
-    return {
-      success: true,
-      latencyMs,
-      modelsFound: modelNames.slice(0, 6),
-      message: flashReady
-        ? `Connection verified in ${latencyMs}ms. Gemini & Imagen endpoints operational.`
-        : `Connected in ${latencyMs}ms. Available models: ${modelNames.slice(0, 3).join(", ")}`,
-    };
-  } catch (err: any) {
-    const latencyMs = Date.now() - startTime;
+  if (requestedModel !== effectiveModel) {
     return {
       success: false,
-      latencyMs,
-      message: err?.message || "Failed to contact Google Gemini API endpoint.",
+      latencyMs: 0,
+      model: requestedModel,
+      message: `Gemini model "${requestedModel}" is no longer available to new users. Update model configuration to "${DEFAULT_GEMINI_TEXT_MODEL}" and retry.`,
     };
   }
+
+  // 1. Live generateContent + Structured JSON check
+  const jsonProbe = await callGeminiGenerateContent({
+    apiKey: key,
+    model: effectiveModel,
+    prompt:
+      'Return a JSON object verifying live connectivity with exact keys {"status":"ready","modelEcho":"' +
+      effectiveModel +
+      '","ok":true}.',
+    responseMimeType: "application/json",
+    responseSchema: {
+      type: "OBJECT",
+      properties: {
+        status: { type: "STRING" },
+        modelEcho: { type: "STRING" },
+        ok: { type: "BOOLEAN" },
+      },
+      required: ["status", "ok"],
+    },
+    temperature: 0,
+    maxOutputTokens: 128,
+    timeoutMs: 15000,
+  });
+
+  if (!jsonProbe.success) {
+    const failedSnap: ProviderConnectionSnapshot = {
+      success: false,
+      testedAt: new Date().toISOString(),
+      lastSuccessfulTestAt: activeSettings.geminiLastTest?.lastSuccessfulTestAt,
+      model: effectiveModel,
+      message: jsonProbe.errorMessage || "Gemini generateContent probe failed.",
+      latencyMs: jsonProbe.latencyMs,
+      capabilities: { text: false, json: false, pdf: false },
+      rateLimitHeaders: jsonProbe.rateLimitHeaders,
+    };
+    activeSettings.geminiLastTest = failedSnap;
+    persistToDisk();
+
+    return {
+      success: false,
+      latencyMs: jsonProbe.latencyMs,
+      model: effectiveModel,
+      message: failedSnap.message,
+      capabilities: failedSnap.capabilities,
+      rateLimitHeaders: jsonProbe.rateLimitHeaders,
+    };
+  }
+
+  // 2. Optional PDF document understanding probe
+  let pdfOk: boolean | undefined;
+  let totalLatency = jsonProbe.latencyMs;
+  if (options?.testPdf) {
+    const pdfRes = await callGeminiGenerateContent({
+      apiKey: key,
+      model: effectiveModel,
+      prompt: 'Read the attached PDF and return JSON: {"documentTitle":"string","topic":"string"}.',
+      pdfBase64: buildDiagnosticSamplePdfBase64(),
+      responseMimeType: "application/json",
+      temperature: 0,
+      maxOutputTokens: 256,
+      timeoutMs: 20000,
+    });
+    totalLatency += pdfRes.latencyMs;
+    const parsedPdf = pdfRes.parsedJson as Record<string, unknown> | undefined;
+    pdfOk =
+      pdfRes.success &&
+      Boolean(
+        parsedPdf &&
+          (String(parsedPdf.documentTitle || "").length > 0 ||
+            String(parsedPdf.topic || "").length > 0 ||
+            pdfRes.text.toLowerCase().includes("quantum")),
+      );
+    if (!pdfOk) {
+      const msg = `Text & JSON passed on ${effectiveModel}, but PDF document understanding probe failed: ${pdfRes.errorMessage || "unreadable PDF output"}`;
+      const partialSnap: ProviderConnectionSnapshot = {
+        success: false,
+        testedAt: new Date().toISOString(),
+        lastSuccessfulTestAt: activeSettings.geminiLastTest?.lastSuccessfulTestAt,
+        model: effectiveModel,
+        message: msg,
+        latencyMs: totalLatency,
+        capabilities: { text: true, json: true, pdf: false },
+      };
+      activeSettings.geminiLastTest = partialSnap;
+      persistToDisk();
+      return {
+        success: false,
+        latencyMs: totalLatency,
+        model: effectiveModel,
+        message: msg,
+        capabilities: partialSnap.capabilities,
+      };
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const successMsg = pdfOk
+    ? `Verified "${effectiveModel}" via v1beta generateContent (Text + Structured JSON + PDF understanding) in ${totalLatency}ms.`
+    : `Verified "${effectiveModel}" via v1beta generateContent (Text + Structured JSON) in ${totalLatency}ms.`;
+
+  activeSettings.geminiLastTest = {
+    success: true,
+    testedAt: nowIso,
+    lastSuccessfulTestAt: nowIso,
+    model: effectiveModel,
+    message: successMsg,
+    latencyMs: totalLatency,
+    capabilities: { text: true, json: true, ...(pdfOk !== undefined ? { pdf: pdfOk } : {}) },
+    rateLimitHeaders: jsonProbe.rateLimitHeaders,
+  };
+  persistToDisk();
+
+  return {
+    success: true,
+    latencyMs: totalLatency,
+    model: effectiveModel,
+    modelsFound: [effectiveModel, "gemini-3.5-flash-lite"],
+    message: successMsg,
+    capabilities: activeSettings.geminiLastTest.capabilities,
+    rateLimitHeaders: jsonProbe.rateLimitHeaders,
+  };
+}
+
+/**
+ * Tests the explicitly configured free fallback text provider (Groq Free, OpenRouter :free, or Ollama Local).
+ */
+export async function testFallbackTextConnection(params?: {
+  provider?: FreeFallbackTextProviderId;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+}): Promise<{
+  success: boolean;
+  latencyMs: number;
+  provider: FreeFallbackTextProviderId;
+  model: string;
+  message: string;
+  rateLimitHeaders?: Record<string, string>;
+}> {
+  await hydrateServerSecrets();
+  const provider = params?.provider || activeSettings.fallbackTextProvider || "none";
+  if (provider === "none" || provider === "offline") {
+    return {
+      success: provider === "offline",
+      latencyMs: 0,
+      provider,
+      model: provider === "offline" ? "deterministic-parser" : "",
+      message:
+        provider === "offline"
+          ? "Local deterministic offline fallback is always available with zero API calls."
+          : "No external free fallback text provider configured.",
+    };
+  }
+
+  const secretSlot = provider === "groq" ? "groq" : provider === "openrouter" ? "openrouter" : undefined;
+  const apiKey = secretSlot
+    ? params?.apiKey && !params.apiKey.includes("••••")
+      ? params.apiKey.trim()
+      : getServerSecret(secretSlot)
+    : undefined;
+  const meta = FREE_FALLBACK_DEFAULTS[provider];
+  const model = (params?.model || activeSettings.fallbackTextModel || meta.defaultModel).trim();
+  const baseUrl = params?.baseUrl || activeSettings.ollamaBaseUrl || meta.defaultUrl;
+
+  const res = await callFreeFallbackTextProvider(
+    {
+      provider,
+      apiKey,
+      baseUrl,
+      model,
+      prompt: 'Respond ONLY with JSON: {"status":"ready","provider":"' + provider + '"}',
+      jsonMode: true,
+      temperature: 0,
+      timeoutMs: 15000,
+    },
+    activeSettings.allowPaidProviders,
+  );
+
+  const nowIso = new Date().toISOString();
+  const message = res.success
+    ? `Verified ${meta.label} (${res.model}) with JSON output in ${res.latencyMs}ms.`
+    : res.errorMessage || `Failed testing ${meta.label}.`;
+
+  activeSettings.fallbackLastTest = {
+    success: res.success,
+    testedAt: nowIso,
+    lastSuccessfulTestAt: res.success
+      ? nowIso
+      : activeSettings.fallbackLastTest?.lastSuccessfulTestAt,
+    model: res.model,
+    message,
+    latencyMs: res.latencyMs,
+    capabilities: { text: res.success, json: Boolean(res.parsedJson) },
+    rateLimitHeaders: res.rateLimitHeaders,
+  };
+  persistToDisk();
+
+  return {
+    success: res.success,
+    latencyMs: res.latencyMs,
+    provider,
+    model: res.model,
+    message,
+    rateLimitHeaders: res.rateLimitHeaders,
+  };
 }
 
 /**
@@ -570,7 +874,7 @@ export function recordStaffAuditLog(
     staffName,
     staffEmail,
     action,
-    details,
+    details: redactSecrets(details),
     timestamp: new Date().toISOString(),
   };
   activeAuditLogs.unshift(log);

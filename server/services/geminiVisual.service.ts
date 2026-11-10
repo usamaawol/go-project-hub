@@ -5,6 +5,9 @@ import {
   buildSlideDiagramData,
   renderDiagramDataToSvg,
 } from "../../src/lib/presentation-pipeline/diagram-synthesizer";
+import { getAdminSettings, getEffectiveGeminiModel } from "./adminSettings.service";
+import { callGeminiGenerateContent } from "./presentationAiClient";
+import { getServerSecret } from "./serverSecretStore";
 
 export interface ContextualVisualResult {
   imageUrl: string;
@@ -37,22 +40,24 @@ export async function generateSlideVisual(params: {
     visualPrompt,
     visualType = "diagram",
     concept,
-    apiKey = ENV.GEMINI_API_KEY,
+    apiKey = getServerSecret("gemini") || ENV.GEMINI_API_KEY,
     accentColor = "#2563EB",
     isDark = false,
   } = params;
 
   const conceptName = concept || title.replace(/^(slide|section|\d+)[—:.\s]+/i, "").slice(0, 48);
   const captionText = subtitle || conceptName;
+  const adminSettings = getAdminSettings(true);
+  const allowPaid = Boolean(adminSettings.allowPaidProviders);
 
-  // 1. If Gemini API key is configured and non-placeholder, attempt Gemini / Imagen generation
+  // 1. If Gemini API key is configured and non-placeholder, attempt Gemini / (paid-gated) Imagen generation
   if (
     apiKey &&
     apiKey.trim().length > 10 &&
     !/mock|testkey|custompresentationtest/i.test(apiKey)
   ) {
     try {
-      if (visualType === "picture") {
+      if (visualType === "picture" && allowPaid) {
         const imageResult = await generateImagenPicture({
           prompt:
             visualPrompt ||
@@ -113,19 +118,22 @@ export async function generateSlideVisual(params: {
 }
 
 /**
- * Call Google Imagen 3 API for high-resolution 16:9 illustrations
+ * Call Google Imagen 3 API for high-resolution 16:9 illustrations (only when explicitly paid-approved)
  */
 async function generateImagenPicture(params: {
   prompt: string;
   apiKey: string;
 }): Promise<string | null> {
   const timeoutMs = 12000;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${params.apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict`;
 
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": params.apiKey,
+      },
       body: JSON.stringify({
         instances: [{ prompt: params.prompt }],
         parameters: {
@@ -152,7 +160,7 @@ async function generateImagenPicture(params: {
 }
 
 /**
- * Call Gemini 2.5 Flash to generate custom contextual SVG vector graphics
+ * Call configured Gemini Flash model (default gemini-3.8-flash) to generate custom contextual SVG vector graphics
  */
 async function generateGeminiSvgDiagram(params: {
   title: string;
@@ -164,7 +172,7 @@ async function generateGeminiSvgDiagram(params: {
   apiKey: string;
 }): Promise<string | null> {
   const timeoutMs = 10000;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${params.apiKey}`;
+  const model = getEffectiveGeminiModel();
 
   const prompt = `You are a presentation diagram designer. Generate a clean vector SVG diagram strictly depicting the slide topic below.
 Topic: ${params.title}
@@ -178,28 +186,17 @@ RULES:
 3. Palette: Background ${params.isDark ? "#0F172A" : "#F8FAFC"}, text ${params.isDark ? "#F8FAFC" : "#0F172A"}, accent ${params.accentColor}.
 4. Wrap text cleanly so nothing clips outside boxes.`;
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2 },
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (raw) {
-      const match = raw.match(/<svg[\s\S]*<\/svg>/i);
-      if (match) return match[0];
-    }
-  } catch {
-    // Graceful fallback
+  const res = await callGeminiGenerateContent({
+    apiKey: params.apiKey,
+    model,
+    prompt,
+    temperature: 0.2,
+    maxOutputTokens: 4096,
+    timeoutMs,
+  });
+  if (res.success && res.text) {
+    const match = res.text.match(/<svg[\s\S]*<\/svg>/i);
+    if (match) return match[0];
   }
   return null;
 }

@@ -131,6 +131,7 @@ function AdminPage() {
     timeoutSeconds: 30,
     autoFallbackEnabled: true,
     preferredAspectRatio: "16:9",
+    allowPaidProviders: false,
   });
   const [imageLogs, setImageLogs] = useState<ImageLogItem[]>([]);
   const [usersList, setUsersList] = useState<AdminUserItem[]>([]);
@@ -138,16 +139,19 @@ function AdminPage() {
   const [systemSettings, setSystemSettings] = useState<AdminSystemSettingsState>({
     activeProvider: "gemini",
     geminiApiKey: "",
-    geminiModel: "gemini-2.5-flash",
-    imagenModel: "imagen-3.0-generate-002",
+    geminiModel: "gemini-3.8-flash",
+    imagenModel: "disabled",
+    fallbackTextProvider: "none",
+    fallbackTextModel: "llama-3.3-70b-versatile",
+    allowPaidProviders: false,
     aiEngineMode: "full",
     maxSlideCount: 50,
-    aiTimeoutSeconds: 15,
+    aiTimeoutSeconds: 20,
     temperature: 0.7,
     maintenanceMode: false,
     announcement: {
       enabled: false,
-      text: "DocuMind System Update: Gemini 2.5 Flash and Imagen 3 vision models are now globally available.",
+      text: "DocuMind Presentation Engine configured with Gemini 3.8 Flash (Free Tier) & programmatic vector diagrams.",
       type: "info",
     },
   });
@@ -249,14 +253,17 @@ function AdminPage() {
 
   const handleTestAllProviders = async () => {
     setTestingAllProviders(true);
-    toast.loading("Running live connectivity probe across all 5 AI providers...", {
+    toast.loading("Running live connectivity probe across configured AI providers...", {
       id: "probe-all",
     });
     try {
       for (const p of providers) {
-        await testAdminImageProviderConnection(p.id, undefined, adminKey);
+        await testAdminImageProviderConnection(p.id, undefined, adminKey, {
+          selectedModel: p.selectedModel,
+          endpointUrl: p.endpointUrl,
+        });
       }
-      toast.success("All provider connection checks completed!", { id: "probe-all" });
+      toast.success("Provider connection checks completed!", { id: "probe-all" });
       loadAllData();
     } catch {
       toast.error("Batch provider test encountered an error.", { id: "probe-all" });
@@ -405,7 +412,7 @@ function AdminPage() {
     );
   }
 
-  const readyProvidersCount = providers.filter((p) => p.status === "ready" || p.isConfigured).length;
+  const readyProvidersCount = providers.filter((p) => p.status === "ready").length;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -457,6 +464,7 @@ function AdminPage() {
             {activeTab === "providers" && (
               <AdminProvidersTab
                 providers={providers}
+                systemSettings={systemSettings}
                 onRefresh={loadAllData}
                 adminKey={adminKey}
                 alerts={providerAlerts}

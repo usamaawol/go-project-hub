@@ -56,7 +56,7 @@ export function AdminOverviewTab({
 }: AdminOverviewTabProps) {
   const [timeRange, setTimeRange] = useState<"today" | "7d" | "30d" | "all">("7d");
 
-  const readyProviders = providers.filter((p) => p.status === "ready" || p.isConfigured);
+  const readyProviders = providers.filter((p) => p.status === "ready");
   const totalGenerations = imageLogs.length;
   const successfulGenerations = imageLogs.filter((l) => l.status === "success").length;
   const fallbackGenerations = imageLogs.filter((l) => l.status === "fallback").length;

@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Cpu,
   Key,
-  Eye,
-  EyeOff,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
@@ -13,27 +11,38 @@ import {
   ArrowDown,
   Sparkles,
   ShieldCheck,
+  ShieldAlert,
   Loader2,
   Wand2,
-  Settings,
-  PlusCircle,
   Lock,
   RotateCcw,
   X,
+  FileText,
+  Server,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { type ProviderItem, type ProviderAlertItem, DEFAULT_PROVIDER_ITEMS } from "../types";
+import {
+  type ProviderItem,
+  type ProviderAlertItem,
+  type AdminSystemSettingsState,
+  DEFAULT_PROVIDER_ITEMS,
+} from "../types";
 import {
   updateAdminImageProvider,
   testAdminImageProviderConnection,
   testAdminGenerateImage,
   resetAdminProviderQuota,
   resetAllAdminProviderQuotas,
+  updateAdminSettings,
+  testAdminGeminiConnection,
+  testAdminFallbackTextConnection,
+  purgeLegacyBrowserProviderSecrets,
 } from "@/lib/api-client";
 
 interface AdminProvidersTabProps {
   providers: ProviderItem[];
+  systemSettings?: AdminSystemSettingsState;
   onRefresh: () => void;
   adminKey?: string;
   alerts?: ProviderAlertItem[];
@@ -43,45 +52,8 @@ interface AdminProvidersTabProps {
   onClearAlerts?: () => Promise<void> | void;
 }
 
-// Client-side presentation storage helpers for resilient Vercel / serverless operation
-function getLocalPresentationKeys(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem("documind_presentation_ai_keys");
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function setLocalPresentationKey(providerId: string, key: string) {
-  if (typeof window === "undefined") return;
-  try {
-    const current = getLocalPresentationKeys();
-    current[providerId] = key.trim();
-    localStorage.setItem("documind_presentation_ai_keys", JSON.stringify(current));
-  } catch (err) {
-    console.warn("Failed to write to localStorage:", err);
-  }
-}
-
-function setAllLocalPresentationKeys(keys: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  try {
-    const current = getLocalPresentationKeys();
-    for (const [id, key] of Object.entries(keys)) {
-      if (key && key.trim() && !key.includes("••••")) {
-        current[id] = key.trim();
-      }
-    }
-    localStorage.setItem("documind_presentation_ai_keys", JSON.stringify(current));
-  } catch (err) {
-    console.warn("Failed to write to localStorage:", err);
-  }
-}
-
 /**
- * Intelligent detector that inspects the pattern and prefixes of any pasted API key
+ * Intelligent detector that inspects the pattern and prefixes of any pasted API key.
  */
 export function detectProviderFromKey(key: string): {
   id: "gemini" | "huggingface" | "cloudflare" | "fal" | "replicate" | null;
@@ -101,10 +73,6 @@ export function detectProviderFromKey(key: string): {
     };
   }
 
-  // Google Gemini API keys from Google AI Studio (studio.ai) or Cloud Vertex
-  // Formats include:
-  // 1. "AQ." or "AQ_..." (Newer paid / studio.ai keys, e.g. AQ.Ab8RN6IPKS...)
-  // 2. "AIza..." (Standard 39-character key)
   if (
     trimmed.startsWith("AQ.") ||
     trimmed.startsWith("AQ_") ||
@@ -113,14 +81,13 @@ export function detectProviderFromKey(key: string): {
   ) {
     return {
       id: "gemini",
-      name: "Google Gemini / Imagen 3",
+      name: "Google Gemini / AI Studio",
       confidence: "high",
       reason: 'Detected Google AI Studio API key (starts with "AQ." or "AIza")',
-      recommendedModel: "imagen-3.0-generate-002",
+      recommendedModel: "gemini-3.8-flash",
     };
   }
 
-  // Hugging Face access tokens start with "hf_"
   if (trimmed.startsWith("hf_")) {
     return {
       id: "huggingface",
@@ -131,7 +98,6 @@ export function detectProviderFromKey(key: string): {
     };
   }
 
-  // Replicate API tokens start with "r8_"
   if (trimmed.startsWith("r8_")) {
     return {
       id: "replicate",
@@ -142,7 +108,6 @@ export function detectProviderFromKey(key: string): {
     };
   }
 
-  // fal.ai keys start with "key_" or contain a colon "UUID:SECRET"
   if (trimmed.startsWith("key_") || (trimmed.includes(":") && trimmed.length >= 24)) {
     return {
       id: "fal",
@@ -153,14 +118,13 @@ export function detectProviderFromKey(key: string): {
     };
   }
 
-  // Cloudflare API tokens are usually 40 alphanumeric characters or start with "cf_"
   if (trimmed.startsWith("cf_") || /^[a-zA-Z0-9_-]{40}$/.test(trimmed)) {
     return {
       id: "cloudflare",
       name: "Cloudflare Workers AI",
       confidence: "medium",
       reason: "Detected 40-character Cloudflare Workers AI token pattern",
-      recommendedModel: "@cf/bytedance/stable-diffusion-xl-lightning",
+      recommendedModel: "@cf/black-forest-labs/flux-1-schnell",
     };
   }
 
@@ -173,8 +137,41 @@ export function detectProviderFromKey(key: string): {
   };
 }
 
+function billingBadgeLabel(p: ProviderItem): { text: string; tone: string } {
+  if (p.billingTier === "paid" || p.billingStatus === "paid_required") {
+    return {
+      text: "Paid Tier Required (Disabled Default)",
+      tone: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
+    };
+  }
+  if (p.billingStatus === "free_credits_then_paid") {
+    return {
+      text: "Free Credits (~$0.10/mo), Paid Thereafter",
+      tone: "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20",
+    };
+  }
+  return {
+    text: "Free Tier (No Billing)",
+    tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
+  };
+}
+
+function keySourceLabel(source?: string): string {
+  switch (source) {
+    case "env":
+      return "Server Env Variable";
+    case "firestore":
+      return "Encrypted Firestore Vault";
+    case "server_vault":
+      return "Encrypted Server Vault";
+    default:
+      return "Not Configured";
+  }
+}
+
 export function AdminProvidersTab({
   providers,
+  systemSettings,
   onRefresh,
   adminKey = "documind-admin-secret",
   alerts = [],
@@ -183,7 +180,6 @@ export function AdminProvidersTab({
   onDismissAlert,
   onClearAlerts,
 }: AdminProvidersTabProps) {
-  // Guarantee all 5 providers are always present
   const effectiveProviders = useMemo(() => {
     if (!providers || providers.length === 0) return DEFAULT_PROVIDER_ITEMS;
     const existingIds = new Set(providers.map((p) => p.id));
@@ -191,29 +187,75 @@ export function AdminProvidersTab({
     return [...providers, ...missing];
   }, [providers]);
 
-  const [localKeys, setLocalKeys] = useState<Record<string, string>>({});
+  // Security cleanup: detect and purge any legacy browser-stored keys
+  const [exposedBrowserProviders, setExposedBrowserProviders] = useState<string[]>([]);
   useEffect(() => {
-    setLocalKeys(getLocalPresentationKeys());
+    const purged = purgeLegacyBrowserProviderSecrets();
+    if (purged.length > 0) {
+      setExposedBrowserProviders(purged);
+    }
   }, []);
+
+  // Text & Free Fallback Configuration State
+  const [primaryTextModel, setPrimaryTextModel] = useState(
+    systemSettings?.geminiModel || "gemini-3.8-flash",
+  );
+  const [fallbackProvider, setFallbackProvider] = useState<
+    "none" | "groq" | "openrouter" | "ollama" | "offline"
+  >(systemSettings?.fallbackTextProvider || "none");
+  const [fallbackModel, setFallbackModel] = useState(
+    systemSettings?.fallbackTextModel || "llama-3.3-70b-versatile",
+  );
+  const [fallbackKeyInput, setFallbackKeyInput] = useState("");
+  const [ollamaUrl, setOllamaUrl] = useState(
+    systemSettings?.ollamaBaseUrl || "http://localhost:11434",
+  );
+  const [savingTextConfig, setSavingTextConfig] = useState(false);
+  const [testingGeminiFull, setTestingGeminiFull] = useState(false);
+  const [geminiFullResult, setGeminiFullResult] = useState<{
+    success: boolean;
+    latencyMs: number;
+    model?: string;
+    message: string;
+    capabilities?: { text: boolean; json: boolean; pdf?: boolean };
+  } | null>(null);
+  const [testingFallback, setTestingFallback] = useState(false);
+  const [fallbackTestResult, setFallbackTestResult] = useState<{
+    success: boolean;
+    latencyMs: number;
+    model?: string;
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (systemSettings?.geminiModel) setPrimaryTextModel(systemSettings.geminiModel);
+    if (systemSettings?.fallbackTextProvider) setFallbackProvider(systemSettings.fallbackTextProvider);
+    if (systemSettings?.fallbackTextModel) setFallbackModel(systemSettings.fallbackTextModel);
+    if (systemSettings?.ollamaBaseUrl) setOllamaUrl(systemSettings.ollamaBaseUrl);
+  }, [
+    systemSettings?.geminiModel,
+    systemSettings?.fallbackTextProvider,
+    systemSettings?.fallbackTextModel,
+    systemSettings?.ollamaBaseUrl,
+  ]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editKey, setEditKey] = useState("");
   const [editEndpoint, setEditEndpoint] = useState("");
   const [editModel, setEditModel] = useState("");
-  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [resettingQuotaId, setResettingQuotaId] = useState<string | null>(null);
   const [resettingAllQuotas, setResettingAllQuotas] = useState(false);
   const [testResults, setTestResults] = useState<
-    Record<string, { success: boolean; latencyMs: number; message: string }>
+    Record<string, { success: boolean; latencyMs: number; message: string; testedModel?: string }>
   >({});
 
-  // 1. Auto-Detect Single Key Modal State
+  // 1. Auto-Detect / Key Configuration Modal State
   const [detectModalOpen, setDetectModalOpen] = useState(false);
   const [detectInputKey, setDetectInputKey] = useState("");
   const [detectSelectedProvider, setDetectSelectedProvider] = useState<string>("gemini");
-  const [detectSelectedModel, setDetectSelectedModel] = useState<string>("imagen-3.0-generate-002");
+  const [detectSelectedModel, setDetectSelectedModel] = useState<string>("gemini-3.8-flash");
   const [detectEndpoint, setDetectEndpoint] = useState<string>("");
   const [detectTesting, setDetectTesting] = useState(false);
   const [detectSaving, setDetectSaving] = useState(false);
@@ -221,17 +263,19 @@ export function AdminProvidersTab({
     success: boolean;
     latencyMs: number;
     message: string;
+    testedModel?: string;
   } | null>(null);
 
-  // 2. Manage All 5 Keys Modal State
+  // 2. Manage All Keys Modal State (input-only: never loads existing secrets back to browser)
   const [manageAllModalOpen, setManageAllModalOpen] = useState(false);
   const [allKeysForm, setAllKeysForm] = useState<Record<string, string>>({});
   const [manageAllSaving, setManageAllSaving] = useState(false);
 
-  // 3. Benchmarking Playground Modal State
+  // 3. Benchmarking Playground Modal State (supports testing a single provider independently)
   const [testGenModalOpen, setTestGenModalOpen] = useState(false);
+  const [testGenProviderId, setTestGenProviderId] = useState<string>("huggingface");
   const [testGenPrompt, setTestGenPrompt] = useState(
-    "A clean architectural diagram of a microservices distributed messaging system, 16:9 presentation slide visual",
+    "A clean architectural diagram of a distributed database system, 16:9 presentation visual",
   );
   const [isTestGenerating, setIsTestGenerating] = useState(false);
   const [testGenResult, setTestGenResult] = useState<{
@@ -239,31 +283,104 @@ export function AdminProvidersTab({
     durationMs?: number;
     provider?: string;
     model?: string;
+    error?: string;
   } | null>(null);
 
-  // Run real-time detection as user types in the detect modal
-  const detection = useMemo(() => {
-    return detectProviderFromKey(detectInputKey);
-  }, [detectInputKey]);
+  const detection = useMemo(() => detectProviderFromKey(detectInputKey), [detectInputKey]);
 
-  // Sync selected provider when detection confidence is high
   useEffect(() => {
     if (detection.id) {
       setDetectSelectedProvider(detection.id);
+      setDetectTestResult(null);
       if (detection.recommendedModel) {
         setDetectSelectedModel(detection.recommendedModel);
       }
     }
   }, [detection]);
 
-  const toggleShowKey = (id: string) => {
-    setShowKey((prev) => ({ ...prev, [id]: !prev[id] }));
+  const handleSaveTextConfig = async () => {
+    setSavingTextConfig(true);
+    try {
+      const payload: Record<string, any> = {
+        activeProvider: "gemini",
+        geminiModel: primaryTextModel,
+        fallbackTextProvider: fallbackProvider,
+        fallbackTextModel: fallbackModel,
+        ollamaBaseUrl: ollamaUrl,
+      };
+      if (fallbackKeyInput.trim() && !fallbackKeyInput.includes("••••")) {
+        if (fallbackProvider === "groq") payload.groqApiKey = fallbackKeyInput.trim();
+        if (fallbackProvider === "openrouter") payload.openrouterApiKey = fallbackKeyInput.trim();
+      }
+      const res = await updateAdminSettings(payload, adminKey);
+      if (res?.success) {
+        setFallbackKeyInput("");
+        toast.success("Presentation Maker text & free fallback configuration saved server-side.");
+        onRefresh();
+      } else {
+        toast.error(res?.error?.message || "Failed to save text configuration.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed saving configuration");
+    } finally {
+      setSavingTextConfig(false);
+    }
+  };
+
+  const handleVerifyGeminiFull = async (testPdf: boolean) => {
+    setTestingGeminiFull(true);
+    setGeminiFullResult(null);
+    try {
+      const res = await testAdminGeminiConnection(undefined, adminKey, primaryTextModel, testPdf);
+      if (res?.data) {
+        setGeminiFullResult(res.data);
+        if (res.data.success) {
+          toast.success(res.data.message);
+        } else {
+          toast.error(res.data.message);
+        }
+        onRefresh();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Gemini verification failed");
+    } finally {
+      setTestingGeminiFull(false);
+    }
+  };
+
+  const handleTestFallbackText = async () => {
+    setTestingFallback(true);
+    setFallbackTestResult(null);
+    try {
+      const res = await testAdminFallbackTextConnection(
+        {
+          provider: fallbackProvider,
+          apiKey: fallbackKeyInput.trim() || undefined,
+          model: fallbackModel,
+          baseUrl: ollamaUrl,
+        },
+        adminKey,
+      );
+      if (res?.data) {
+        setFallbackTestResult(res.data);
+        if (res.data.success) {
+          toast.success(res.data.message);
+        } else {
+          toast.error(res.data.message);
+        }
+        onRefresh();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Fallback test failed");
+    } finally {
+      setTestingFallback(false);
+    }
   };
 
   const handleStartEdit = (p: ProviderItem) => {
     setEditingId(p.id);
-    const existingStored = localKeys[p.id] || p.maskedKey || "";
-    setEditKey(existingStored);
+    // Security: Never prefill or return secret keys in browser inputs
+    setEditKey("");
     setEditEndpoint(p.endpointUrl || "");
     setEditModel(p.selectedModel);
   };
@@ -275,16 +392,22 @@ export function AdminProvidersTab({
         selectedModel: editModel,
         endpointUrl: editEndpoint.trim(),
       };
-      if (editKey && !editKey.includes("••••")) {
+      if (editKey.trim() && !editKey.includes("••••")) {
         updates.apiKey = editKey.trim();
-        setLocalPresentationKey(id, editKey.trim());
-        setLocalKeys((prev) => ({ ...prev, [id]: editKey.trim() }));
       }
 
       const res = await updateAdminImageProvider(id, updates, adminKey);
       if (res && res.success) {
-        toast.success(`Provider "${id}" saved successfully! Ready for Presentation Maker.`);
+        setTestResults((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        toast.success(
+          `Saved "${id}" configuration securely on the server. Click "Test Connection" to verify "${editModel}".`,
+        );
         setEditingId(null);
+        setEditKey("");
         onRefresh();
       } else {
         toast.error(res?.error?.message || "Failed to update provider.");
@@ -296,13 +419,32 @@ export function AdminProvidersTab({
     }
   };
 
+  const handleClearStoredKey = async (p: ProviderItem) => {
+    if (!window.confirm(`Clear the server-stored API key for ${p.name}?`)) return;
+    try {
+      const res = await updateAdminImageProvider(p.id, { apiKey: "" }, adminKey);
+      if (res?.success) {
+        toast.success(`Cleared stored key for ${p.name}.`);
+        onRefresh();
+      }
+    } catch {
+      toast.error(`Failed to clear key for ${p.name}`);
+    }
+  };
+
   const handleToggleEnabled = async (p: ProviderItem) => {
+    if (p.billingTier === "paid" && !p.enabled && !systemSettings?.allowPaidProviders) {
+      toast.error(
+        `"${p.name}" requires paid billing and is locked under the Free-First policy. Approve Paid Providers in Visual Controls first if desired.`,
+      );
+      return;
+    }
     try {
       const newEnabled = !p.enabled;
       const res = await updateAdminImageProvider(p.id, { enabled: newEnabled }, adminKey);
       if (res && res.success) {
         toast.success(
-          `Provider "${p.name}" ${newEnabled ? "enabled" : "disabled"} for presentation synthesis.`,
+          `Provider "${p.name}" ${newEnabled ? "enabled" : "disabled"} for Presentation Maker.`,
         );
         onRefresh();
       }
@@ -349,24 +491,34 @@ export function AdminProvidersTab({
     }
   };
 
-  const handleTestConnection = async (id: string, apiKeyOverride?: string) => {
-    setTestingId(id);
+  const handleTestConnection = async (p: ProviderItem) => {
+    const modelToTest = editingId === p.id ? editModel : p.selectedModel;
+    const endpointToTest = editingId === p.id ? editEndpoint : p.endpointUrl;
+    const keyOverride =
+      editingId === p.id && editKey.trim() && !editKey.includes("••••")
+        ? editKey.trim()
+        : undefined;
+
+    setTestingId(p.id);
     try {
-      const activeKey = apiKeyOverride || localKeys[id];
-      const res = await testAdminImageProviderConnection(id, activeKey, adminKey);
+      const res = await testAdminImageProviderConnection(p.id, keyOverride, adminKey, {
+        selectedModel: modelToTest,
+        endpointUrl: endpointToTest,
+      });
       if (res && res.data) {
         setTestResults((prev) => ({
           ...prev,
-          [id]: {
+          [p.id]: {
             success: res.data.success,
             latencyMs: res.data.latencyMs,
             message: res.data.message,
+            testedModel: res.data.testedModel || modelToTest,
           },
         }));
         if (res.data.success) {
-          toast.success(`Test succeeded: ${res.data.message} (${res.data.latencyMs}ms)`);
+          toast.success(`${p.name} (${modelToTest}) verified (${res.data.latencyMs}ms)`);
         } else {
-          toast.error(`Connection failed: ${res.data.message}`);
+          toast.error(`${p.name} test failed: ${res.data.message}`);
         }
         onRefresh();
       }
@@ -385,10 +537,10 @@ export function AdminProvidersTab({
       } else {
         await resetAdminProviderQuota(id, adminKey);
       }
-      toast.success(`Quota counter for "${name}" successfully restored to 100%!`);
+      toast.success(`Application usage counter for "${name}" reset to 0.`);
       onRefresh();
     } catch {
-      toast.error(`Failed to reset quota for ${name}`);
+      toast.error(`Failed to reset app usage counter for ${name}`);
     } finally {
       setResettingQuotaId(null);
     }
@@ -402,16 +554,15 @@ export function AdminProvidersTab({
       } else {
         await resetAllAdminProviderQuotas(adminKey);
       }
-      toast.success("All 5 AI provider quotas restored to initial maximums!");
+      toast.success("All application tracking counters reset to 0.");
       onRefresh();
     } catch {
-      toast.error("Failed to reset all quotas");
+      toast.error("Failed to reset application counters");
     } finally {
       setResettingAllQuotas(false);
     }
   };
 
-  // Save detected key from Auto-Detect Modal
   const handleSaveDetectedKey = async () => {
     if (!detectInputKey.trim()) {
       toast.error("Please paste an API key first.");
@@ -420,9 +571,6 @@ export function AdminProvidersTab({
     setDetectSaving(true);
     try {
       const pid = detectSelectedProvider;
-      setLocalPresentationKey(pid, detectInputKey.trim());
-      setLocalKeys((prev) => ({ ...prev, [pid]: detectInputKey.trim() }));
-
       const updates: Record<string, any> = {
         apiKey: detectInputKey.trim(),
         selectedModel: detectSelectedModel,
@@ -432,12 +580,16 @@ export function AdminProvidersTab({
         updates.endpointUrl = detectEndpoint.trim();
       }
 
-      await updateAdminImageProvider(pid, updates, adminKey);
+      const res = await updateAdminImageProvider(pid, updates, adminKey);
+      if (!res?.success) {
+        toast.error(res?.error?.message || "Failed to save key server-side.");
+        return;
+      }
 
       const targetProviderName =
         effectiveProviders.find((x) => x.id === pid)?.name || detection.name || pid;
       toast.success(
-        `Key configured for ${targetProviderName}! Presentation Maker is now ready to generate slide visuals.`,
+        `Key saved server-side for ${targetProviderName}. Run "Test Connection" to confirm model access.`,
       );
       setDetectModalOpen(false);
       setDetectInputKey("");
@@ -450,7 +602,6 @@ export function AdminProvidersTab({
     }
   };
 
-  // Test detected key from Auto-Detect Modal
   const handleTestDetectedKey = async () => {
     if (!detectInputKey.trim()) {
       toast.error("Please paste an API key to test.");
@@ -463,6 +614,10 @@ export function AdminProvidersTab({
         detectSelectedProvider,
         detectInputKey.trim(),
         adminKey,
+        {
+          selectedModel: detectSelectedModel,
+          endpointUrl: detectEndpoint.trim() || undefined,
+        },
       );
       if (res && res.data) {
         setDetectTestResult(res.data);
@@ -481,35 +636,29 @@ export function AdminProvidersTab({
     }
   };
 
-  // Open "Manage All 5 Keys" modal
   const handleOpenManageAllModal = () => {
-    const initial: Record<string, string> = {};
-    for (const p of effectiveProviders) {
-      initial[p.id] = localKeys[p.id] || "";
-    }
-    setAllKeysForm(initial);
+    setAllKeysForm({});
     setManageAllModalOpen(true);
   };
 
-  // Save all keys in bulk
   const handleSaveAllKeys = async () => {
     setManageAllSaving(true);
     try {
-      setAllLocalPresentationKeys(allKeysForm);
-      setLocalKeys((prev) => ({ ...prev, ...allKeysForm }));
-
       let savedCount = 0;
       for (const [id, key] of Object.entries(allKeysForm)) {
         if (key && key.trim() && !key.includes("••••")) {
-          await updateAdminImageProvider(id, { apiKey: key.trim(), enabled: true }, adminKey);
+          const target = effectiveProviders.find((p) => p.id === id);
+          const enableOnSave = target?.billingTier !== "paid" || Boolean(systemSettings?.allowPaidProviders);
+          await updateAdminImageProvider(id, { apiKey: key.trim(), enabled: enableOnSave }, adminKey);
           savedCount++;
         }
       }
 
       toast.success(
-        `AI Keys saved successfully (${savedCount} updated)! Presentation Maker is ready to generate slides with images.`,
+        `Saved ${savedCount} key(s) securely on the server. Click "Test Connection" on each provider to verify.`,
       );
       setManageAllModalOpen(false);
+      setAllKeysForm({});
       onRefresh();
     } catch (err: any) {
       toast.error(err?.message || "Error saving keys in bulk");
@@ -522,14 +671,16 @@ export function AdminProvidersTab({
     setIsTestGenerating(true);
     setTestGenResult(null);
     try {
-      const res = await testAdminGenerateImage(testGenPrompt, "16:9", adminKey);
+      const selectedTarget = testGenProviderId === "auto" ? undefined : testGenProviderId;
+      const res = await testAdminGenerateImage(testGenPrompt, "16:9", adminKey, selectedTarget);
       if (res && res.success && res.data) {
         setTestGenResult(res.data);
-        toast.success(
-          `Image generated via ${res.data.provider} (${res.data.durationMs}ms)!`,
-        );
+        toast.success(`Visual generated via ${res.data.provider} (${res.data.model})`);
+        onRefresh();
       } else {
-        toast.error(res?.error?.message || "Test generation failed.");
+        const msg = res?.data?.error || res?.error?.message || "Provider generation test failed.";
+        setTestGenResult(res?.data || { error: msg });
+        toast.error(msg);
       }
     } catch (e: any) {
       toast.error(e?.message || "Benchmark failed");
@@ -542,40 +693,75 @@ export function AdminProvidersTab({
 
   return (
     <div className="space-y-6">
-      {/* Informational Guidance Banner with Prominent Key Management Buttons */}
+      {/* Critical Security Notice if Legacy Browser-Stored Keys were Purged */}
+      {exposedBrowserProviders.length > 0 && (
+        <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 space-y-2 shadow-xs">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <ShieldAlert className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <h4 className="font-serif font-bold text-rose-800 dark:text-rose-300">
+                  Security Action Recommended: Legacy Browser-Stored API Keys Purged
+                </h4>
+                <p className="text-rose-700 dark:text-rose-300/90 leading-relaxed">
+                  Earlier keys for{" "}
+                  <strong>{exposedBrowserProviders.join(", ")}</strong> were detected in browser{" "}
+                  <code>localStorage</code> and automatically deleted for security. Any key previously stored in browser storage should be{" "}
+                  <strong>rotated in your provider dashboard</strong> (Google AI Studio / Hugging Face) and re-entered below so it is stored strictly server-side.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setExposedBrowserProviders([])}
+              className="text-rose-600 hover:text-rose-800"
+              title="Dismiss security notice"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Informational Header & Server-Side Vault Guarantee */}
       <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs">
         <div className="flex items-start gap-3">
           <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 mt-0.5">
             <Cpu className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h4 className="font-serif text-sm font-bold text-foreground">
-                Multi-Provider AI Presentation Visual Engine
+                Presentation Maker AI Providers (Free-First & Server-Only Secrets)
               </h4>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
                 <ShieldCheck className="h-3 w-3" /> Presentation Maker Only
               </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+                <Lock className="h-3 w-3" />{" "}
+                {systemSettings?.allowPaidProviders ? "Paid Override Enabled" : "Free-First Locked"}
+              </span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed mt-1 max-w-2xl">
-              Paste your AI API keys below. The intelligent auto-detector automatically identifies Gemini, Hugging Face, Replicate, fal.ai, or Cloudflare, and enables automatic failover. These keys are <strong>exclusively used for Presentation Maker slide visual generation</strong> and are never exposed to other tools.
+              API keys are stored encrypted on the backend server (or server env) and are never written to browser storage or exposed to client state. Paid services (Imagen 3, OpenAI, fal.ai, Replicate) remain disabled unless explicitly approved.
             </p>
           </div>
         </div>
 
-        {/* Top Action Control Buttons */}
         <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto">
           <Button
             size="sm"
             variant="hero"
             onClick={() => {
               setDetectInputKey("");
+              setDetectTestResult(null);
+              setDetectSelectedProvider("gemini");
+              setDetectSelectedModel("gemini-3.8-flash");
               setDetectModalOpen(true);
             }}
             className="text-xs font-mono gap-1.5 shadow-sm"
           >
             <Wand2 className="h-3.5 w-3.5" />
-            <span>+ Add / Detect AI Key</span>
+            <span>+ Add / Rotate Key</span>
           </Button>
 
           <Button
@@ -585,19 +771,224 @@ export function AdminProvidersTab({
             className="text-xs font-mono gap-1.5 bg-background hover:bg-muted"
           >
             <Key className="h-3.5 w-3.5 text-primary" />
-            <span>Manage All 5 Keys</span>
+            <span>Set Server Keys</span>
           </Button>
 
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setTestGenModalOpen(true)}
+            onClick={() => {
+              setTestGenResult(null);
+              setTestGenModalOpen(true);
+            }}
             className="text-xs font-mono gap-1.5"
-            title="Benchmark prompt generation"
+            title="Test image generation independently per provider"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>Prompt Test</span>
+            <span>Independent Image Test</span>
           </Button>
+        </div>
+      </div>
+
+      {/* Primary Text Engine (Gemini 3.8 Flash) & Explicit Free Fallback Configuration */}
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-border">
+          <div>
+            <h4 className="font-serif text-sm font-bold text-foreground flex items-center gap-2">
+              <Server className="h-4 w-4 text-primary" />
+              <span>Presentation Maker Primary Text & Structured JSON Engine</span>
+            </h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Primary: Google Gemini 3.8 Flash (v1beta API, Text + Structured JSON + PDF understanding). Falls back only to an explicitly configured free provider.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="hero"
+            disabled={savingTextConfig}
+            onClick={handleSaveTextConfig}
+            className="text-xs font-mono gap-1.5 shrink-0"
+          >
+            {savingTextConfig ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            <span>Save Text Engine</span>
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          {/* Primary Gemini Text Config */}
+          <div className="p-4 rounded-xl border border-border/80 bg-muted/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">
+                Primary Free Text Model (Google Gemini)
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                Free Tier Default
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="font-mono text-[11px] text-muted-foreground font-semibold">
+                Gemini Text / Multimodal Model
+              </label>
+              <select
+                value={primaryTextModel}
+                onChange={(e) => setPrimaryTextModel(e.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
+              >
+                <option value="gemini-3.8-flash">gemini-3.8-flash (Recommended Free Tier)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Fast / Lightweight)</option>
+                <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+              </select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={testingGeminiFull}
+                onClick={() => handleVerifyGeminiFull(false)}
+                className="text-xs font-mono gap-1.5"
+              >
+                {testingGeminiFull ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                <span>Test Text + JSON</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={testingGeminiFull}
+                onClick={() => handleVerifyGeminiFull(true)}
+                className="text-xs font-mono gap-1.5"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>Test Text + JSON + PDF</span>
+              </Button>
+            </div>
+
+            {(geminiFullResult || systemSettings?.geminiLastTest) && (
+              <div
+                className={`p-2.5 rounded-lg border text-[11px] font-mono ${
+                  (geminiFullResult || systemSettings?.geminiLastTest)!.success
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                    : "border-rose-500/20 bg-rose-500/10 text-rose-800 dark:text-rose-300"
+                }`}
+              >
+                {(geminiFullResult || systemSettings?.geminiLastTest)!.message}
+              </div>
+            )}
+          </div>
+
+          {/* Explicit Free Fallback Text Provider */}
+          <div className="p-4 rounded-xl border border-border/80 bg-muted/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">
+                Explicit Free Fallback Text Provider
+              </span>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                Used only if Gemini free quota/API fails
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="space-y-1">
+                <label className="font-mono text-[11px] text-muted-foreground font-semibold">
+                  Fallback Provider
+                </label>
+                <select
+                  value={fallbackProvider}
+                  onChange={(e) => {
+                    const next = e.target.value as any;
+                    setFallbackProvider(next);
+                    setFallbackTestResult(null);
+                    if (next === "groq") setFallbackModel("llama-3.3-70b-versatile");
+                    if (next === "openrouter") setFallbackModel("meta-llama/llama-3.3-70b-instruct:free");
+                    if (next === "ollama") setFallbackModel("llama3.2");
+                  }}
+                  className="w-full h-9 rounded-lg border border-border bg-background px-2.5 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
+                >
+                  <option value="none">None (Stop / Use Deterministic Engine)</option>
+                  <option value="groq">Groq Free Tier</option>
+                  <option value="openrouter">OpenRouter (:free models only)</option>
+                  <option value="ollama">Ollama Local (100% Free Offline)</option>
+                  <option value="offline">Local Deterministic Parser</option>
+                </select>
+              </div>
+
+              {fallbackProvider !== "none" && fallbackProvider !== "offline" && (
+                <div className="space-y-1">
+                  <label className="font-mono text-[11px] text-muted-foreground font-semibold">
+                    Model ID
+                  </label>
+                  <input
+                    type="text"
+                    value={fallbackModel}
+                    onChange={(e) => setFallbackModel(e.target.value)}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-2.5 font-mono text-xs text-foreground"
+                  />
+                </div>
+              )}
+            </div>
+
+            {(fallbackProvider === "groq" || fallbackProvider === "openrouter") && (
+              <div className="space-y-1">
+                <label className="font-mono text-[11px] text-muted-foreground font-semibold">
+                  {fallbackProvider === "groq" ? "Groq API Key (Server-Side Only)" : "OpenRouter API Key (Server-Side Only)"}
+                </label>
+                <input
+                  type="password"
+                  value={fallbackKeyInput}
+                  onChange={(e) => setFallbackKeyInput(e.target.value)}
+                  placeholder={
+                    (fallbackProvider === "groq" && systemSettings?.hasGroqKeyConfigured) ||
+                    (fallbackProvider === "openrouter" && systemSettings?.hasOpenRouterKeyConfigured)
+                      ? "Configured securely on server — enter new key to rotate"
+                      : "Enter key..."
+                  }
+                  className="w-full h-9 rounded-lg border border-border bg-background px-2.5 font-mono text-xs text-foreground"
+                />
+              </div>
+            )}
+
+            {fallbackProvider === "ollama" && (
+              <div className="space-y-1">
+                <label className="font-mono text-[11px] text-muted-foreground font-semibold">
+                  Local Ollama Base URL
+                </label>
+                <input
+                  type="text"
+                  value={ollamaUrl}
+                  onChange={(e) => setOllamaUrl(e.target.value)}
+                  className="w-full h-9 rounded-lg border border-border bg-background px-2.5 font-mono text-xs text-foreground"
+                />
+              </div>
+            )}
+
+            {fallbackProvider !== "none" && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={testingFallback}
+                  onClick={handleTestFallbackText}
+                  className="text-xs font-mono gap-1.5"
+                >
+                  {testingFallback ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  <span>Test Fallback Provider</span>
+                </Button>
+              </div>
+            )}
+
+            {(fallbackTestResult || systemSettings?.fallbackLastTest) && (
+              <div
+                className={`p-2.5 rounded-lg border text-[11px] font-mono ${
+                  (fallbackTestResult || systemSettings?.fallbackLastTest)!.success
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                    : "border-rose-500/20 bg-rose-500/10 text-rose-800 dark:text-rose-300"
+                }`}
+              >
+                {(fallbackTestResult || systemSettings?.fallbackLastTest)!.message}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -606,61 +997,64 @@ export function AdminProvidersTab({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h4 className="font-serif text-sm font-bold text-foreground flex items-center gap-2">
-              <span>Automatic AI Failover & Priority Cascade</span>
+              <span>Visual Provider Priority & Failover Order</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                Strict Hierarchy Active
+                Free Providers Only Unless Unlocked
               </span>
             </h4>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Presentation Maker visual requests strictly attempt providers in priority sequence (#1 Gemini ──► #2 Hugging Face ──► #3 Cloudflare, etc.). When a provider finishes quota or hits rate limits, requests automatically cascade to the next eligible provider without breaking presentation generation.
+              Each provider is tested independently with its own endpoint and selected model. When external free image quotas finish, Presentation Maker uses its zero-cost programmatic SVG/diagram engine.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleResetAllQuotas}
-              disabled={resettingAllQuotas}
-              className="text-xs font-mono gap-1.5"
-              title="Reset all provider quota allowances back to 100%"
-            >
-              <RotateCcw className={`h-3 w-3 ${resettingAllQuotas ? "animate-spin text-primary" : ""}`} />
-              <span>Reset All Quotas</span>
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleResetAllQuotas}
+            disabled={resettingAllQuotas}
+            className="text-xs font-mono gap-1.5 shrink-0"
+            title="Reset DocuMind local request counters (does not change provider-side limits)"
+          >
+            <RotateCcw className={`h-3 w-3 ${resettingAllQuotas ? "animate-spin text-primary" : ""}`} />
+            <span>Reset App Counters</span>
+          </Button>
         </div>
 
-        {/* Visual Cascade Flow */}
         <div className="flex items-center gap-2 overflow-x-auto py-2 px-1">
           {sortedProviders.map((prov, index) => {
-            const isDepleted = prov.quotaInfo?.remaining === 0;
-            const isConfigured = prov.isConfigured || Boolean(localKeys[prov.id]);
-            const isReady = isConfigured && prov.enabled && !isDepleted;
+            const isVerified = prov.status === "ready";
+            const isPaidBlocked = prov.status === "paid_disabled";
+            const isDepleted = prov.status === "rate_limited" || prov.quotaInfo?.remaining === 0;
             return (
               <React.Fragment key={prov.id}>
                 <div
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-mono shrink-0 shadow-xs transition-all ${
-                    isDepleted
+                    isPaidBlocked
+                      ? "border-border bg-muted/30 text-muted-foreground opacity-60"
+                      : isDepleted
                       ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300"
-                      : isReady
-                      ? index === 0
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/30"
-                        : "border-primary/30 bg-primary/5 text-foreground"
-                      : "border-border bg-muted/40 text-muted-foreground opacity-70"
+                      : isVerified && prov.enabled
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                      : prov.isConfigured
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                      : "border-border bg-muted/40 text-muted-foreground opacity-75"
                   }`}
                 >
                   <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-background/80 border border-border/60">
                     #{prov.priority}
                   </span>
                   <div className="flex flex-col">
-                    <span className="font-semibold truncate max-w-[120px]">{prov.name.split("/")[0]}</span>
-                    <span className="text-[10px] opacity-80">
-                      {isDepleted
-                        ? "Finished (0 Left)"
-                        : isReady
-                        ? index === 0
-                          ? "Primary Engine"
-                          : "Failover Standby"
+                    <span className="font-semibold truncate max-w-[140px]">{prov.name.split("/")[0]}</span>
+                    <span className="text-[10px] opacity-85">
+                      {isPaidBlocked
+                        ? "Paid (Locked)"
+                        : prov.status === "error"
+                        ? "Test Failed"
+                        : isDepleted
+                        ? "Rate Limited"
+                        : isVerified
+                        ? "Verified Ready"
+                        : prov.isConfigured
+                        ? "Untested"
                         : "Needs Key"}
                     </span>
                   </div>
@@ -676,26 +1070,25 @@ export function AdminProvidersTab({
           <span className="text-muted-foreground font-mono text-xs shrink-0 select-none">
             ──►
           </span>
-          {/* Final contextual engine fallback */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs font-mono shrink-0 shadow-xs">
             <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-background/80 border border-border/60">
-              #6
+              $0
             </span>
             <div className="flex flex-col">
-              <span className="font-semibold">Contextual Engine</span>
-              <span className="text-[10px] opacity-80">Zero-Failure Safety Net</span>
+              <span className="font-semibold">Programmatic Engine</span>
+              <span className="text-[10px] opacity-80">Editable Diagrams & SVG</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Active Quota Depletion Alert Banner */}
+      {/* Active Alerts Banner */}
       {alerts && alerts.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 shadow-xs animate-in fade-in duration-200">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 shadow-xs">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-semibold text-xs">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-              <span>Active Provider Alerts & Quota Depletion Notifications</span>
+              <span>Active Provider Alerts & Quota Notifications</span>
             </div>
             {onClearAlerts && (
               <button
@@ -715,11 +1108,6 @@ export function AdminProvidersTab({
                 <div>
                   <span className="font-bold text-foreground">{alert.title}: </span>
                   <span className="text-muted-foreground">{alert.message}</span>
-                  {alert.cascadedTo && (
-                    <span className="ml-2 font-mono text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold">
-                      Cascaded to: {alert.cascadedTo}
-                    </span>
-                  )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <Button
@@ -729,7 +1117,7 @@ export function AdminProvidersTab({
                     className="h-7 px-2 text-[11px] font-mono gap-1 text-primary hover:text-primary"
                   >
                     <RotateCcw className="h-3 w-3" />
-                    <span>Reset Quota</span>
+                    <span>Reset App Counter</span>
                   </Button>
                   {onDismissAlert && (
                     <Button
@@ -755,15 +1143,17 @@ export function AdminProvidersTab({
           const isTesting = testingId === p.id;
           const isSaving = savingId === p.id;
           const testRes = testResults[p.id];
-          const isKeyRevealed = Boolean(showKey[p.id]);
-          const hasLocalKey = Boolean(localKeys[p.id]);
-          const isConfigured = p.isConfigured || hasLocalKey;
+          const billingBadge = billingBadgeLabel(p);
+          const q = p.quotaInfo;
+          const appCap = q?.appLimit ?? q?.total;
+          const appUsed = q?.used ?? 0;
+          const appRemaining = typeof appCap === "number" ? Math.max(0, appCap - appUsed) : q?.remaining;
 
           return (
             <div
               key={p.id}
               className={`rounded-2xl border bg-card p-5 sm:p-6 shadow-xs transition-all ${
-                p.enabled ? "border-border" : "border-border/60 opacity-80"
+                p.enabled ? "border-border" : "border-border/60 opacity-85"
               }`}
             >
               {/* Card Header */}
@@ -776,33 +1166,57 @@ export function AdminProvidersTab({
                   </div>
 
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-serif text-base font-bold text-foreground">
                         {p.name}
                       </h3>
-                      {isConfigured && p.status !== "error" && (
+
+                      {p.status === "ready" && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                          <CheckCircle2 className="h-3 w-3" /> Ready
+                          <CheckCircle2 className="h-3 w-3" /> Ready (Verified)
                         </span>
                       )}
-                      {!isConfigured && (
+                      {p.status === "untested" && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                          <RefreshCw className="h-3 w-3" /> Untested — Click Test Connection
+                        </span>
+                      )}
+                      {p.status === "needs_key" && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                          <Key className="h-3 w-3" /> Needs Key
+                          <Key className="h-3 w-3" /> Needs Server Key
                         </span>
                       )}
-                      {p.status === "error" && (
+                      {p.status === "paid_disabled" && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-muted text-muted-foreground border border-border">
+                          <Lock className="h-3 w-3" /> Paid Disabled
+                        </span>
+                      )}
+                      {(p.status === "error" || p.status === "rate_limited") && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-rose-500/10 text-rose-600 border border-rose-500/20">
-                          <AlertTriangle className="h-3 w-3" /> Error
+                          <AlertTriangle className="h-3 w-3" />{" "}
+                          {p.status === "rate_limited" ? "Rate Limited" : "Verification Error"}
                         </span>
                       )}
+
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${billingBadge.tone}`}
+                      >
+                        {billingBadge.text}
+                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Selected Model: <code className="font-mono text-primary font-medium">{p.selectedModel}</code>
+                      Selected Model:{" "}
+                      <code className="font-mono text-primary font-medium">{p.selectedModel}</code>
+                      {p.paidModels?.includes(p.selectedModel) && (
+                        <span className="ml-2 text-[10px] font-mono text-rose-600 font-semibold">
+                          (Paid Tier Required — Blocked Unless Approved)
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
 
-                {/* Priority & Status Controls */}
+                {/* Priority & Enable Controls */}
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border">
                     <Button
@@ -838,178 +1252,175 @@ export function AdminProvidersTab({
                 </div>
               </div>
 
-              {/* Card Body */}
+              {/* Card Body: Quota Accuracy + Server-Side Credentials */}
               <div className="py-4 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  {/* Left Column: Free Tier & Quota info */}
+                  {/* Left: Separated Official Limits vs App Tracking */}
                   <div className="space-y-2 p-3.5 rounded-xl border border-border/70 bg-muted/20">
                     <span className="font-mono text-[10px] uppercase font-bold text-muted-foreground block tracking-wider">
-                      Free Tier & Rate Limit Info
+                      Official Limits vs Application Usage Tracking
                     </span>
-                    <p className="text-muted-foreground leading-relaxed text-xs">
+                    <p className="text-muted-foreground leading-relaxed text-[11px]">
                       {p.freeTierInfo}
                     </p>
-                    {p.quotaInfo && (
-                      <div className="pt-2 space-y-1.5 border-t border-border/50 text-[11px] font-mono">
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Remaining Quota:</span>
-                          <span className="font-semibold text-foreground flex items-center gap-1.5">
-                            {p.quotaInfo.remaining === 0 ? (
-                              <span className="text-rose-600 dark:text-rose-400 font-bold">
-                                0 / {p.quotaInfo.total} {p.quotaInfo.unit} (Exhausted)
-                              </span>
-                            ) : p.quotaInfo.remaining !== undefined && p.quotaInfo.total !== undefined && p.quotaInfo.remaining <= Math.ceil(p.quotaInfo.total * 0.2) ? (
-                              <span className="text-amber-600 dark:text-amber-400 font-bold">
-                                {p.quotaInfo.remaining} / {p.quotaInfo.total} {p.quotaInfo.unit} (Finishing)
-                              </span>
-                            ) : (
-                              <span>
-                                {p.quotaInfo.remaining} / {p.quotaInfo.total} {p.quotaInfo.unit}
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                        {/* Visual Progress Bar */}
-                        {typeof p.quotaInfo.remaining === "number" && typeof p.quotaInfo.total === "number" && (
-                          <div className="w-full bg-muted/80 rounded-full h-2 overflow-hidden border border-border/40">
-                            <div
-                              className={`h-full transition-all duration-300 ${
-                                p.quotaInfo.remaining === 0
-                                  ? "bg-rose-500"
-                                  : p.quotaInfo.remaining <= Math.ceil(p.quotaInfo.total * 0.2)
-                                  ? "bg-amber-500"
-                                  : "bg-emerald-500"
-                              }`}
-                              style={{
-                                width: `${Math.min(
-                                  100,
-                                  Math.max(
-                                    0,
-                                    Math.round((p.quotaInfo.remaining / (p.quotaInfo.total || 1)) * 100),
-                                  ),
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                        )}
+
+                    <div className="pt-2 space-y-1.5 border-t border-border/50 text-[11px] font-mono">
+                      <div>
+                        <span className="text-muted-foreground">Official Provider Limit: </span>
+                        <span className="text-foreground">
+                          {q?.officialRemaining !== null && q?.officialRemaining !== undefined && typeof q?.officialLimit === "number"
+                            ? `${q.officialRemaining} / ${q.officialLimit} (via ${q.officialSource})`
+                            : q?.officialLimitText || "Not exposed by provider API"}
+                        </span>
                       </div>
-                    )}
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">App Usage Counter (Estimate):</span>
+                        <span className="font-semibold text-foreground">
+                          {appUsed} consumed
+                          {typeof appCap === "number"
+                            ? ` • ${appRemaining} / ${appCap} ${q?.unit || "calls"} app limit remaining`
+                            : ""}
+                        </span>
+                      </div>
+
+                      {typeof appRemaining === "number" && typeof appCap === "number" && (
+                        <div className="w-full bg-muted/80 rounded-full h-1.5 overflow-hidden border border-border/40">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              appRemaining === 0
+                                ? "bg-rose-500"
+                                : appRemaining <= Math.ceil(appCap * 0.2)
+                                ? "bg-amber-500"
+                                : "bg-emerald-500"
+                            }`}
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                Math.max(0, Math.round((appRemaining / (appCap || 1)) * 100)),
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Right Column: Credentials & Masking */}
+                  {/* Right: Server-Side Secret Vault & Last Verified Test */}
                   <div className="space-y-2 p-3.5 rounded-xl border border-border/70 bg-muted/20">
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                        Stored Key (Presentation Store)
+                        Server-Side Credentials
                       </span>
-                      {hasLocalKey && (
-                        <span className="text-[10px] font-mono text-emerald-600 font-semibold">
-                          Active in Browser
-                        </span>
-                      )}
+                      <span className="text-[10px] font-mono text-primary font-semibold">
+                        {keySourceLabel(p.keySource)}
+                      </span>
                     </div>
+
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-mono text-xs text-foreground bg-background px-2.5 py-1.5 rounded-lg border border-border flex-1 truncate">
-                        {isConfigured ? (
-                          isKeyRevealed
-                            ? localKeys[p.id] || p.apiKey || "Key Configured"
-                            : p.maskedKey || "••••••••••••••••"
+                        {p.isConfigured ? (
+                          <span>Configured Server-Side ({p.maskedKey || "••••••••"})</span>
                         ) : (
-                          <span className="text-muted-foreground italic">No API key configured</span>
+                          <span className="text-muted-foreground italic">No API key stored</span>
                         )}
                       </div>
-                      {isConfigured && (
+                      {p.isConfigured && p.keySource !== "env" && (
                         <Button
-                          size="icon"
+                          size="sm"
                           variant="ghost"
-                          onClick={() => toggleShowKey(p.id)}
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                          title={isKeyRevealed ? "Hide key" : "Show key"}
+                          onClick={() => handleClearStoredKey(p)}
+                          className="h-8 px-2 text-[11px] font-mono text-destructive hover:text-destructive shrink-0"
                         >
-                          {isKeyRevealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          Clear
                         </Button>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 text-[11px] font-mono">
-                      <span className="text-muted-foreground">Auto-Failover Eligible:</span>
-                      <button
-                        onClick={() => handleToggleFallback(p)}
-                        className={`font-semibold underline ${p.fallbackEligible ? "text-emerald-600" : "text-amber-600"}`}
-                      >
-                        {p.fallbackEligible ? "Yes (Cascade Active)" : "No (Disabled)"}
-                      </button>
+                    <div className="pt-1 space-y-1 text-[11px] font-mono">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Last Successful Test:</span>
+                        <span className="text-foreground">
+                          {p.lastSuccessfulTestAt
+                            ? `${new Date(p.lastSuccessfulTestAt).toLocaleString()} (${p.lastTestedModel || p.selectedModel})`
+                            : "Never verified"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Auto-Failover Eligible:</span>
+                        <button
+                          onClick={() => handleToggleFallback(p)}
+                          className={`font-semibold underline ${p.fallbackEligible ? "text-emerald-600" : "text-amber-600"}`}
+                        >
+                          {p.fallbackEligible ? "Yes (Free Fallback)" : "No (Disabled)"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Inline Edit Form when Opened */}
+                {/* Inline Configuration Panel */}
                 {isEditing && (
-                  <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-4 text-xs animate-in fade-in duration-200">
+                  <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-4 text-xs">
                     <div className="flex items-center justify-between">
                       <div className="font-serif font-bold text-sm text-foreground">
-                        Configure Settings for {p.name}
+                        Configure {p.name}
                       </div>
                       <span className="font-mono text-[11px] text-muted-foreground">
-                        Exclusively for Presentation Maker
+                        Keys saved encrypted on server only
                       </span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Model Selector */}
                       <div className="space-y-1.5">
                         <label className="font-mono text-[11px] text-muted-foreground font-semibold">
-                          Image Generation Model
+                          Selected Model
                         </label>
                         <select
                           value={editModel}
                           onChange={(e) => setEditModel(e.target.value)}
-                          className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground focus:ring-1 focus:ring-primary"
+                          className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
                         >
                           {p.supportedModels.map((m) => (
                             <option key={m} value={m}>
                               {m}
+                              {p.paidModels?.includes(m) ? " (Paid Tier Only)" : ""}
                             </option>
                           ))}
                         </select>
                       </div>
 
-                      {/* API Key Input */}
                       <div className="space-y-1.5">
                         <label className="font-mono text-[11px] text-muted-foreground font-semibold">
-                          API Secret / Token Key
+                          Rotate / Enter New API Key (Leave blank to keep existing)
                         </label>
                         <input
                           type="password"
                           value={editKey}
                           onChange={(e) => setEditKey(e.target.value)}
-                          placeholder="Paste new API key..."
+                          placeholder={p.isConfigured ? "Enter new key to replace stored server key..." : "Paste API key..."}
                           className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
                         />
                       </div>
 
-                      {/* Optional Endpoint / Account ID */}
-                      <div className="space-y-1.5 md:col-span-2">
-                        <label className="font-mono text-[11px] text-muted-foreground font-semibold">
-                          Endpoint URL or Account ID (Required for Cloudflare Workers AI)
-                        </label>
-                        <input
-                          type="text"
-                          value={editEndpoint}
-                          onChange={(e) => setEditEndpoint(e.target.value)}
-                          placeholder="e.g. Cloudflare Account ID or custom gateway URL..."
-                          className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
-                        />
-                      </div>
+                      {p.id === "cloudflare" && (
+                        <div className="space-y-1.5 md:col-span-2">
+                          <label className="font-mono text-[11px] text-muted-foreground font-semibold">
+                            Cloudflare Account ID (Required for Workers AI)
+                          </label>
+                          <input
+                            type="text"
+                            value={editEndpoint}
+                            onChange={(e) => setEditEndpoint(e.target.value)}
+                            placeholder="Paste Cloudflare Account ID..."
+                            className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-end gap-2 pt-2 border-t border-primary/10">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditingId(null)}
-                        className="text-xs"
-                      >
+                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="text-xs">
                         Cancel
                       </Button>
                       <Button
@@ -1020,31 +1431,47 @@ export function AdminProvidersTab({
                         className="text-xs font-mono gap-1"
                       >
                         {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                        <span>Save Configuration</span>
+                        <span>Save Server Config</span>
                       </Button>
                     </div>
                   </div>
                 )}
 
-                {/* Test Results Banner */}
-                {testRes && (
+                {/* Provider-Specific Test Result / Persisted Last Error */}
+                {(testRes || (p.status === "error" && p.lastError) || p.status === "paid_disabled") && (
                   <div
                     className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
-                      testRes.success
+                      testRes?.success
                         ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                        : p.status === "paid_disabled" && !testRes
+                        ? "border-border bg-muted/40 text-muted-foreground"
                         : "border-rose-500/20 bg-rose-500/10 text-rose-800 dark:text-rose-300"
                     }`}
                   >
-                    {testRes.success ? (
+                    {testRes?.success ? (
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                    ) : p.status === "paid_disabled" && !testRes ? (
+                      <Lock className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
                     ) : (
                       <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
                     )}
                     <div className="flex-1">
-                      <span className="font-bold">
-                        {testRes.success ? "Connection Verified" : "Verification Failed"} ({testRes.latencyMs}ms):
-                      </span>{" "}
-                      <span>{testRes.message}</span>
+                      {testRes ? (
+                        <>
+                          <span className="font-bold">
+                            {testRes.success ? "Verified" : "Failed"} [{testRes.testedModel || p.selectedModel}] ({testRes.latencyMs}ms):
+                          </span>{" "}
+                          <span>{testRes.message}</span>
+                        </>
+                      ) : p.status === "paid_disabled" ? (
+                        <span>
+                          Disabled under Free-First policy. Paid billing is required before enabling {p.name}.
+                        </span>
+                      ) : (
+                        <span>
+                          <strong>Last Error [{p.lastTestedModel || p.selectedModel}]:</strong> {p.lastError}
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1053,15 +1480,15 @@ export function AdminProvidersTab({
               {/* Card Footer Actions */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
                 <div className="text-[11px] font-mono text-muted-foreground">
-                  Last Tested: {p.lastTestedAt ? new Date(p.lastTestedAt).toLocaleTimeString() : "Never"}
+                  Last Attempted: {p.lastTestedAt ? new Date(p.lastTestedAt).toLocaleString() : "Never"}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
                     variant="outline"
                     disabled={isTesting}
-                    onClick={() => handleTestConnection(p.id)}
+                    onClick={() => handleTestConnection(p)}
                     className="text-xs font-mono gap-1.5"
                   >
                     {isTesting ? (
@@ -1078,14 +1505,9 @@ export function AdminProvidersTab({
                     disabled={resettingQuotaId === p.id}
                     onClick={() => handleResetQuota(p.id, p.name)}
                     className="text-xs font-mono gap-1.5 text-muted-foreground hover:text-foreground"
-                    title="Restore quota allowance to 100%"
                   >
-                    {resettingQuotaId === p.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                    ) : (
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    )}
-                    <span>Reset Quota</span>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>Reset App Counter</span>
                   </Button>
 
                   <Button
@@ -1094,13 +1516,15 @@ export function AdminProvidersTab({
                     onClick={() => {
                       setDetectSelectedProvider(p.id);
                       setDetectSelectedModel(p.selectedModel);
-                      setDetectInputKey(localKeys[p.id] || "");
+                      setDetectEndpoint(p.endpointUrl || "");
+                      setDetectInputKey("");
+                      setDetectTestResult(null);
                       setDetectModalOpen(true);
                     }}
                     className="text-xs font-mono gap-1.5 text-primary hover:text-primary"
                   >
                     <Key className="h-3.5 w-3.5" />
-                    <span>Enter API Key</span>
+                    <span>Set / Rotate Key</span>
                   </Button>
 
                   <Button
@@ -1119,11 +1543,9 @@ export function AdminProvidersTab({
         })}
       </div>
 
-      {/* ---------------------------------------------------------------------- */}
-      {/* 1. Intelligent Single-Key Auto-Detector Modal                           */}
-      {/* ---------------------------------------------------------------------- */}
+      {/* 1. Add / Rotate Single Key Modal */}
       {detectModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2.5">
@@ -1132,74 +1554,43 @@ export function AdminProvidersTab({
                 </div>
                 <div>
                   <h3 className="font-serif text-base font-bold text-foreground">
-                    Auto-Detect & Configure AI Provider Key
+                    Save & Verify Provider Key (Server-Side)
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Exclusively active for Presentation Maker slide visuals
+                    Tested and saved strictly on the backend server — never stored in browser storage
                   </p>
                 </div>
               </div>
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setDetectModalOpen(false)}
+                onClick={() => {
+                  setDetectModalOpen(false);
+                  setDetectTestResult(null);
+                }}
                 className="h-7 w-7 p-0 rounded-full"
               >
                 ✕
               </Button>
             </div>
 
-            {/* Paste Key Input */}
             <div className="space-y-1.5">
               <label className="font-mono text-[11px] text-muted-foreground font-semibold flex items-center justify-between">
-                <span>Paste Your AI API Key</span>
-                <span className="text-[10px] text-primary">Gemini, HuggingFace, Replicate, fal.ai, Cloudflare</span>
+                <span>Paste API Key</span>
+                <span className="text-[10px] text-primary">Stored Encrypted on Server Only</span>
               </label>
-              <textarea
-                rows={3}
+              <input
+                type="password"
                 value={detectInputKey}
-                onChange={(e) => setDetectInputKey(e.target.value)}
-                placeholder="Paste key here (e.g. AIzaSy..., hf_..., r8_..., key_...)..."
-                className="w-full rounded-xl border border-border bg-background p-3 text-xs text-foreground focus:ring-1 focus:ring-primary font-mono leading-relaxed"
+                onChange={(e) => {
+                  setDetectInputKey(e.target.value);
+                  setDetectTestResult(null);
+                }}
+                placeholder="Paste key here (e.g. AIza..., hf_...)..."
+                className="w-full h-10 rounded-xl border border-border bg-background px-3 text-xs text-foreground focus:ring-1 focus:ring-primary font-mono"
               />
             </div>
 
-            {/* Live Auto-Detection Badge */}
-            {detectInputKey.trim().length > 0 && (
-              <div
-                className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
-                  detection.id
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
-                    : "border-primary/20 bg-primary/5 text-foreground"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <div>
-                    <span className="font-bold">
-                      {detection.id
-                        ? `Detected: ${detection.name}`
-                        : `Selected Provider: ${
-                            effectiveProviders.find((x) => x.id === detectSelectedProvider)?.name ||
-                            "Google Gemini"
-                          }`}
-                    </span>
-                    <p className="text-[11px] opacity-90 mt-0.5">{detection.reason}</p>
-                  </div>
-                </div>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold shrink-0 ${
-                    detection.id
-                      ? "bg-emerald-600/20 text-emerald-700 dark:text-emerald-300"
-                      : "bg-primary/20 text-primary"
-                  }`}
-                >
-                  {detection.id ? "High Confidence" : "Assigned Provider"}
-                </span>
-              </div>
-            )}
-
-            {/* Provider and Model Selector */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div className="space-y-1">
                 <label className="font-mono text-[11px] text-muted-foreground font-semibold">
@@ -1210,12 +1601,13 @@ export function AdminProvidersTab({
                   onChange={(e) => {
                     const chosen = e.target.value;
                     setDetectSelectedProvider(chosen);
+                    setDetectTestResult(null);
                     const found = effectiveProviders.find((x) => x.id === chosen);
                     if (found && found.supportedModels[0]) {
                       setDetectSelectedModel(found.supportedModels[0]);
                     }
                   }}
-                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground focus:ring-1 focus:ring-primary font-sans"
+                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground"
                 >
                   {effectiveProviders.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -1231,8 +1623,11 @@ export function AdminProvidersTab({
                 </label>
                 <select
                   value={detectSelectedModel}
-                  onChange={(e) => setDetectSelectedModel(e.target.value)}
-                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground focus:ring-1 focus:ring-primary font-mono"
+                  onChange={(e) => {
+                    setDetectSelectedModel(e.target.value);
+                    setDetectTestResult(null);
+                  }}
+                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground font-mono"
                 >
                   {effectiveProviders
                     .find((x) => x.id === detectSelectedProvider)
@@ -1248,22 +1643,21 @@ export function AdminProvidersTab({
             {detectSelectedProvider === "cloudflare" && (
               <div className="space-y-1">
                 <label className="font-mono text-[11px] text-muted-foreground font-semibold">
-                  Cloudflare Account ID (Required for Workers AI)
+                  Cloudflare Account ID
                 </label>
                 <input
                   type="text"
                   value={detectEndpoint}
                   onChange={(e) => setDetectEndpoint(e.target.value)}
-                  placeholder="e.g. 8f6b1e... (Cloudflare Account ID)"
-                  className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
+                  placeholder="Enter Cloudflare Account ID..."
+                  className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground"
                 />
               </div>
             )}
 
-            {/* Direct Verification Result Banner */}
             {detectTestResult && (
               <div
-                className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${
+                className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
                   detectTestResult.success
                     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
                     : "border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-300"
@@ -1276,8 +1670,7 @@ export function AdminProvidersTab({
                 )}
                 <div className="flex-1">
                   <span className="font-bold">
-                    {detectTestResult.success ? "Key Verified & Ready" : "Verification Failed"} (
-                    {detectTestResult.latencyMs}ms):
+                    {detectTestResult.success ? "Verified" : "Failed"} [{detectTestResult.testedModel || detectSelectedModel}] ({detectTestResult.latencyMs}ms):
                   </span>{" "}
                   <span>{detectTestResult.message}</span>
                 </div>
@@ -1297,14 +1690,17 @@ export function AdminProvidersTab({
                 ) : (
                   <RefreshCw className="h-3.5 w-3.5" />
                 )}
-                <span>Test Key</span>
+                <span>Test Selected Model</span>
               </Button>
 
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => setDetectModalOpen(false)}
+                  onClick={() => {
+                    setDetectModalOpen(false);
+                    setDetectTestResult(null);
+                  }}
                   className="text-xs"
                 >
                   Cancel
@@ -1316,12 +1712,8 @@ export function AdminProvidersTab({
                   onClick={handleSaveDetectedKey}
                   className="text-xs font-mono gap-1.5"
                 >
-                  {detectSaving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Save className="h-3.5 w-3.5" />
-                  )}
-                  <span>Save for Presentation Maker</span>
+                  {detectSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  <span>Save Server-Side</span>
                 </Button>
               </div>
             </div>
@@ -1329,11 +1721,9 @@ export function AdminProvidersTab({
         </div>
       )}
 
-      {/* ---------------------------------------------------------------------- */}
-      {/* 2. Manage All 5 Keys Modal                                             */}
-      {/* ---------------------------------------------------------------------- */}
+      {/* 2. Set Server Keys Bulk Modal (Write-Only) */}
       {manageAllModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2.5">
@@ -1342,10 +1732,10 @@ export function AdminProvidersTab({
                 </div>
                 <div>
                   <h3 className="font-serif text-base font-bold text-foreground">
-                    Manage All 5 AI Provider Keys
+                    Update Server-Side Provider Keys
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Enter keys for each provider to enable multi-tiered fallback in Presentation Maker
+                    Existing keys remain masked and server-only. Leave blank to retain current key.
                   </p>
                 </div>
               </div>
@@ -1360,62 +1750,50 @@ export function AdminProvidersTab({
             </div>
 
             <div className="space-y-3.5">
-              {effectiveProviders.map((p) => {
-                const currentVal = allKeysForm[p.id] || "";
-                const isConfigured = p.isConfigured || Boolean(localKeys[p.id]);
-
-                return (
-                  <div
-                    key={p.id}
-                    className="p-3.5 rounded-xl border border-border bg-muted/20 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-primary">#{p.priority}</span>
-                        <span className="font-serif text-xs font-bold text-foreground">{p.name}</span>
-                        {isConfigured && (
-                          <span className="text-[10px] font-mono text-emerald-600 font-semibold px-2 py-0.2 rounded-full bg-emerald-500/10">
-                            Configured
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] font-mono text-muted-foreground">
-                        {p.selectedModel}
-                      </span>
+              {effectiveProviders.map((p) => (
+                <div
+                  key={p.id}
+                  className="p-3.5 rounded-xl border border-border bg-muted/20 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-primary">#{p.priority}</span>
+                      <span className="font-serif text-xs font-bold text-foreground">{p.name}</span>
+                      {p.isConfigured && (
+                        <span className="text-[10px] font-mono text-emerald-600 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10">
+                          Configured ({p.maskedKey})
+                        </span>
+                      )}
                     </div>
-
-                    <div className="relative">
-                      <input
-                        type="password"
-                        value={currentVal}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setAllKeysForm((prev) => ({ ...prev, [p.id]: val }));
-                        }}
-                        placeholder={
-                          isConfigured
-                            ? "•••••••••••••••• (Leave blank to keep current key)"
-                            : `Enter API key for ${p.name}...`
-                        }
-                        className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
+                    <span className="text-[11px] font-mono text-muted-foreground">
+                      {p.selectedModel}
+                    </span>
                   </div>
-                );
-              })}
+
+                  <input
+                    type="password"
+                    value={allKeysForm[p.id] || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAllKeysForm((prev) => ({ ...prev, [p.id]: val }));
+                    }}
+                    placeholder={
+                      p.isConfigured
+                        ? "Configured securely on server (leave blank to keep)"
+                        : `Enter API key for ${p.name}...`
+                    }
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground"
+                  />
+                </div>
+              ))}
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-border">
               <span className="text-[11px] font-mono text-muted-foreground">
-                Keys persist securely and apply exclusively to Presentation Maker.
+                Encrypted server storage only — zero browser localStorage persistence.
               </span>
               <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setManageAllModalOpen(false)}
-                  className="text-xs"
-                >
+                <Button size="sm" variant="ghost" onClick={() => setManageAllModalOpen(false)} className="text-xs">
                   Cancel
                 </Button>
                 <Button
@@ -1425,12 +1803,8 @@ export function AdminProvidersTab({
                   onClick={handleSaveAllKeys}
                   className="text-xs font-mono gap-1.5"
                 >
-                  {manageAllSaving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Save className="h-3.5 w-3.5" />
-                  )}
-                  <span>Save All 5 Keys</span>
+                  {manageAllSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  <span>Save Keys Server-Side</span>
                 </Button>
               </div>
             </div>
@@ -1438,9 +1812,7 @@ export function AdminProvidersTab({
         </div>
       )}
 
-      {/* ---------------------------------------------------------------------- */}
-      {/* 3. Prompt Testing Dialog                                               */}
-      {/* ---------------------------------------------------------------------- */}
+      {/* 3. Independent Provider Image Test Modal */}
       {testGenModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-xl rounded-2xl border border-border bg-card p-6 shadow-xl space-y-4">
@@ -1448,22 +1820,32 @@ export function AdminProvidersTab({
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <h3 className="font-serif text-base font-bold text-foreground">
-                  Presentation Visual Generation Playground
+                  Independent Provider Visual Test
                 </h3>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setTestGenModalOpen(false)}
-                className="h-7 w-7 p-0"
-              >
+              <Button size="sm" variant="ghost" onClick={() => setTestGenModalOpen(false)} className="h-7 w-7 p-0">
                 ✕
               </Button>
             </div>
 
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Test how DocuMind's multi-provider engine evaluates prompts, attempts primary providers, and cascades gracefully.
-            </p>
+            <div className="space-y-1.5">
+              <label className="font-mono text-[11px] text-muted-foreground font-semibold">
+                Target Provider (No Cross-Provider Confusion)
+              </label>
+              <select
+                value={testGenProviderId}
+                onChange={(e) => {
+                  setTestGenProviderId(e.target.value);
+                  setTestGenResult(null);
+                }}
+                className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs font-mono text-foreground"
+              >
+                <option value="huggingface">Hugging Face Inference (black-forest-labs/FLUX.1-schnell)</option>
+                <option value="cloudflare">Cloudflare Workers AI</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="auto">Automatic Free Cascade</option>
+              </select>
+            </div>
 
             <div className="space-y-1.5">
               <label className="font-mono text-[11px] text-muted-foreground font-semibold">
@@ -1473,13 +1855,13 @@ export function AdminProvidersTab({
                 rows={3}
                 value={testGenPrompt}
                 onChange={(e) => setTestGenPrompt(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background p-3 text-xs text-foreground focus:ring-1 focus:ring-primary font-mono leading-relaxed"
+                className="w-full rounded-xl border border-border bg-background p-3 text-xs text-foreground font-mono leading-relaxed"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono text-muted-foreground">
-                Aspect Ratio: <strong>16:9 Landscape</strong>
+                Respects Free-First Paid Lock
               </span>
               <Button
                 size="sm"
@@ -1488,34 +1870,35 @@ export function AdminProvidersTab({
                 onClick={handleRunTestGeneration}
                 className="text-xs font-mono gap-1.5"
               >
-                {isTestGenerating ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
-                <span>Generate Test Visual</span>
+                {isTestGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                <span>Run Selected Provider Test</span>
               </Button>
             </div>
 
             {testGenResult && (
               <div className="p-4 rounded-xl border border-border bg-muted/30 space-y-3 pt-3">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-emerald-600 font-bold">
-                    Provider: {testGenResult.provider} ({testGenResult.model})
-                  </span>
-                  <span className="text-muted-foreground">
-                    Duration: {testGenResult.durationMs}ms
-                  </span>
-                </div>
-
-                {testGenResult.imageUrl && (
-                  <div className="rounded-lg overflow-hidden border border-border flex items-center justify-center bg-black/40 max-h-[220px]">
-                    <img
-                      src={testGenResult.imageUrl}
-                      alt="Generated visual"
-                      className="max-h-[210px] w-auto object-contain"
-                    />
-                  </div>
+                {testGenResult.error && !testGenResult.imageUrl ? (
+                  <div className="text-xs font-mono text-rose-600">{testGenResult.error}</div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-emerald-600 font-bold">
+                        Provider: {testGenResult.provider} ({testGenResult.model})
+                      </span>
+                      <span className="text-muted-foreground">
+                        {testGenResult.durationMs}ms
+                      </span>
+                    </div>
+                    {testGenResult.imageUrl && (
+                      <div className="rounded-lg overflow-hidden border border-border flex items-center justify-center bg-black/40 max-h-[220px]">
+                        <img
+                          src={testGenResult.imageUrl}
+                          alt="Generated visual"
+                          className="max-h-[210px] w-auto object-contain"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

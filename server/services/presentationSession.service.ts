@@ -32,10 +32,17 @@ import { verifyAndSanitizeImage, verifySlideVisualAsset } from "../../src/lib/im
 import { generateSlideVisual } from "./geminiVisual.service";
 import { imageProviderManager } from "./imageProviders/imageProviderManager";
 import {
+  getAdminSettings,
   getEffectiveGeminiApiKey,
+  getEffectiveGeminiModel,
   getEffectiveOpenAIApiKey,
   getActiveProvider,
 } from "./adminSettings.service";
+import {
+  callFreeFallbackTextProvider,
+  callGeminiGenerateContent,
+} from "./presentationAiClient";
+import { getServerSecret, isPlaceholderTestSecret, redactSecrets } from "./serverSecretStore";
 import { ENV } from "../config/env";
 import type { AssignmentMetadata } from "../../src/lib/assignment-types";
 import {
@@ -73,6 +80,8 @@ export interface PresentationSession {
   };
   slideCount: number;
   slides: SlideData[];
+  aiProviderUsed?: string;
+  aiNotice?: string;
   filePath: string;
   fileSize: number;
   createdAt: number;
@@ -110,7 +119,6 @@ export interface CreatePresentationSessionInput {
   allowPaidProviders?: boolean;
   visualPreference?: "diagrams" | "text-only";
   geminiApiKey?: string;
-  providerKeys?: Record<string, string>;
   assignmentMetadata?: AssignmentMetadata;
 }
 
@@ -170,6 +178,13 @@ function prepareDocumentBrief(content: string, targetSlideCount: number = 8): st
  * strictly isolated from system instructions or metadata.
  * Stage 2 writes visually varied, concise Gamma-grade slides grounded strictly in that analysis.
  */
+interface GeminiSlideGenerationOutcome {
+  slides: SlideData[] | null;
+  quotaExhausted?: boolean;
+  notice?: string;
+  modelUsed?: string;
+}
+
 async function generateSlidesWithGemini(
   title: string,
   content: string,
@@ -185,79 +200,81 @@ async function generateSlidesWithGemini(
     visualPreference?: "diagrams" | "text-only";
     analysis?: DocumentAnalysis;
   },
-): Promise<SlideData[] | null> {
-  const activeKey = apiKey || ENV.GEMINI_API_KEY;
-  if (!activeKey || /mock|testkey|custompresentationtest/i.test(activeKey) || !content || content.trim().length < 20) {
-    return null;
+): Promise<GeminiSlideGenerationOutcome> {
+  const activeKey = (apiKey || getEffectiveGeminiApiKey() || ENV.GEMINI_API_KEY || "").trim();
+  const model = getEffectiveGeminiModel();
+  if (!activeKey || isPlaceholderTestSecret(activeKey) || !content || content.trim().length < 20) {
+    return { slides: null };
   }
 
   try {
     const sanitized = sanitizePresentationInput(content);
-    if (!sanitized.valid) return null;
+    if (!sanitized.valid) return { slides: null };
 
     let effectiveAnalysis = options?.analysis || analyzeSourceContent(sanitized, title);
     const isArabicOrRtl = effectiveAnalysis.isRtl;
 
-    // Skip network AI calls in automated unit tests with short timeout budgets
-    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : Math.max(30000, slideCount * 1200);
+    const timeoutMs =
+      process.env.NODE_ENV === "test" || process.env.VITEST
+        ? 800
+        : Math.max(30000, slideCount * 1200);
 
-    // Stage 1: Semantic Source Analysis (source-only prompt, zero directive pollution)
-    try {
-      const stage1Prompts = buildAiAnalysisPrompts(sanitized.cleanSourceText);
-      const s1Res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: stage1Prompts.systemPrompt }] },
-            contents: [{ parts: [{ text: stage1Prompts.userPrompt }] }],
-            generationConfig: { responseMimeType: "application/json", temperature: 0.15 },
-          }),
-          signal: AbortSignal.timeout(timeoutMs),
-        },
-      );
-      if (s1Res.ok) {
-        const s1Json = (await s1Res.json()) as any;
-        const rawS1 = s1Json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawS1) {
-          const parsedS1 = JSON.parse(rawS1);
-          if (Array.isArray(parsedS1.topics) && parsedS1.topics.length >= 1) {
-            effectiveAnalysis = {
-              ...effectiveAnalysis,
-              subject: parsedS1.subject || effectiveAnalysis.subject,
-              detectedTitle: parsedS1.detectedTitle || effectiveAnalysis.detectedTitle,
-              domain: parsedS1.domain || effectiveAnalysis.domain,
-              coreThesis: parsedS1.coreThesis || effectiveAnalysis.coreThesis,
-              conclusionPoints:
-                Array.isArray(parsedS1.conclusionPoints) && parsedS1.conclusionPoints.length > 0
-                  ? parsedS1.conclusionPoints
-                  : effectiveAnalysis.conclusionPoints,
-              topics: parsedS1.topics.map((t: any, idx: number) => ({
-                id: `ai-topic-${idx + 1}`,
-                title: String(t.title || `Topic ${idx + 1}`),
-                summary: String(t.summary || ""),
-                keyFacts: Array.isArray(t.keyFacts) ? t.keyFacts : [],
-                examples: Array.isArray(t.examples) ? t.examples : [],
-                technicalTerms: Array.isArray(t.technicalTerms) ? t.technicalTerms : [],
-                metrics: Array.isArray(t.metrics) ? t.metrics : [],
-                processSteps: Array.isArray(t.processSteps) ? t.processSteps : [],
-                timelineItems: Array.isArray(t.timelineItems) ? t.timelineItems : [],
-                comparison: t.comparison,
-                recommendedVisual: t.recommendedVisual || "cards",
-                visualConcept: t.visualConcept,
-                importance: 10 - idx,
-                sourceIndices: [idx],
-              })),
-            };
-          }
-        }
-      }
-    } catch {
-      // Retain deterministic Stage 1 analysis cleanly on timeout
+    // Stage 1: Semantic Source Analysis (uses configured Gemini model via x-goog-api-key header)
+    const stage1Prompts = buildAiAnalysisPrompts(sanitized.cleanSourceText);
+    const s1Res = await callGeminiGenerateContent({
+      apiKey: activeKey,
+      model,
+      systemInstruction: stage1Prompts.systemPrompt,
+      prompt: stage1Prompts.userPrompt,
+      responseMimeType: "application/json",
+      temperature: 0.15,
+      maxOutputTokens: 8192,
+      timeoutMs,
+    });
+
+    if (s1Res.errorKind === "quota_exhausted" || s1Res.errorKind === "paid_required") {
+      return {
+        slides: null,
+        quotaExhausted: true,
+        notice: s1Res.errorMessage,
+        modelUsed: model,
+      };
     }
 
-    // Stage 2: Gamma Presentation Composer (consumes ONLY analyzed document + separated directives)
+    if (s1Res.success && s1Res.parsedJson && typeof s1Res.parsedJson === "object") {
+      const parsedS1 = s1Res.parsedJson as any;
+      if (Array.isArray(parsedS1.topics) && parsedS1.topics.length >= 1) {
+        effectiveAnalysis = {
+          ...effectiveAnalysis,
+          subject: parsedS1.subject || effectiveAnalysis.subject,
+          detectedTitle: parsedS1.detectedTitle || effectiveAnalysis.detectedTitle,
+          domain: parsedS1.domain || effectiveAnalysis.domain,
+          coreThesis: parsedS1.coreThesis || effectiveAnalysis.coreThesis,
+          conclusionPoints:
+            Array.isArray(parsedS1.conclusionPoints) && parsedS1.conclusionPoints.length > 0
+              ? parsedS1.conclusionPoints
+              : effectiveAnalysis.conclusionPoints,
+          topics: parsedS1.topics.map((t: any, idx: number) => ({
+            id: `ai-topic-${idx + 1}`,
+            title: String(t.title || `Topic ${idx + 1}`),
+            summary: String(t.summary || ""),
+            keyFacts: Array.isArray(t.keyFacts) ? t.keyFacts : [],
+            examples: Array.isArray(t.examples) ? t.examples : [],
+            technicalTerms: Array.isArray(t.technicalTerms) ? t.technicalTerms : [],
+            metrics: Array.isArray(t.metrics) ? t.metrics : [],
+            processSteps: Array.isArray(t.processSteps) ? t.processSteps : [],
+            timelineItems: Array.isArray(t.timelineItems) ? t.timelineItems : [],
+            comparison: t.comparison,
+            recommendedVisual: t.recommendedVisual || "cards",
+            visualConcept: t.visualConcept,
+            importance: 10 - idx,
+            sourceIndices: [idx],
+          })),
+        };
+      }
+    }
+
+    // Stage 2: Presentation Composer
     const stage2Prompts = buildAiDeckComposerPrompts(effectiveAnalysis, {
       title: title || effectiveAnalysis.detectedTitle,
       purpose,
@@ -269,19 +286,16 @@ async function generateSlidesWithGemini(
       assignmentMetadata: options?.assignmentMetadata,
     });
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: stage2Prompts.systemPrompt }] },
-          contents: [{ parts: [{ text: stage2Prompts.userPrompt }] }],
-          generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
-        }),
-        signal: AbortSignal.timeout(timeoutMs),
-      },
-    );
+    const s2Res = await callGeminiGenerateContent({
+      apiKey: activeKey,
+      model,
+      systemInstruction: stage2Prompts.systemPrompt,
+      prompt: stage2Prompts.userPrompt,
+      responseMimeType: "application/json",
+      temperature: 0.3,
+      maxOutputTokens: 16384,
+      timeoutMs,
+    });
 
     interface GeminiSlideOutput {
       layout?: SlideLayoutType;
@@ -309,21 +323,12 @@ async function generateSlidesWithGemini(
       notes?: string;
     }
 
-    interface GeminiApiResponse {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>;
-        };
-      }>;
-    }
-
-    if (res.ok) {
-      const data = (await res.json()) as GeminiApiResponse;
-      const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (rawJson) {
-        const parsed = JSON.parse(rawJson) as { slides?: GeminiSlideOutput[] };
-        if (Array.isArray(parsed.slides) && parsed.slides.length >= 3) {
-          return parsed.slides.map((s: GeminiSlideOutput, idx: number) => ({
+    if (s2Res.success && s2Res.parsedJson && typeof s2Res.parsedJson === "object") {
+      const parsed = s2Res.parsedJson as { slides?: GeminiSlideOutput[] };
+      if (Array.isArray(parsed.slides) && parsed.slides.length >= 3) {
+        return {
+          modelUsed: model,
+          slides: parsed.slides.map((s: GeminiSlideOutput, idx: number) => ({
             id: `slide-${idx + 1}`,
             slideNumber: idx + 1,
             layout:
@@ -358,17 +363,26 @@ async function generateSlidesWithGemini(
             visualMesh: s.visualMesh || (idx === 0 || s.layout === "hero-split"),
             isRtl: s.isRtl !== undefined ? s.isRtl : isArabicOrRtl,
             notes: s.notes,
-          }));
-        }
+          })),
+        };
       }
+    }
+
+    if (!s2Res.success) {
+      return {
+        slides: null,
+        quotaExhausted: s2Res.errorKind === "quota_exhausted" || s2Res.errorKind === "paid_required",
+        notice: s2Res.errorMessage,
+        modelUsed: model,
+      };
     }
   } catch (err) {
     console.warn(
-      "Gemini slide synthesis unavailable, timed out, or unconfigured, utilizing local semantic parser:",
-      err,
+      "Gemini slide synthesis unavailable, timed out, or unconfigured:",
+      redactSecrets(String(err)),
     );
   }
-  return null;
+  return { slides: null, modelUsed: model };
 }
 
 /**
@@ -456,10 +470,6 @@ ${brief}`;
 export async function createPresentationSession(
   input: CreatePresentationSessionInput,
 ): Promise<PresentationSession> {
-  if (input.providerKeys) {
-    imageProviderManager.setTemporaryProviderKeys(input.providerKeys);
-  }
-
   // Strict Separation of Instructions and Content + Honest Extraction Validation
   const rawSource = (input.content || "").trim();
   if (rawSource.length > 0) {
@@ -505,11 +515,17 @@ export async function createPresentationSession(
   const theme = input.theme || defaultTheme;
   const themeTokens = computeThemeTokens(theme, input.typography);
 
+  const adminSettings = getAdminSettings(false);
   const activeProvider = getActiveProvider();
   const effectiveApiKey = input.geminiApiKey || getEffectiveGeminiApiKey() || ENV.GEMINI_API_KEY;
   const effectiveOpenAiKey = getEffectiveOpenAIApiKey();
+  const serverAllowPaid = Boolean(adminSettings.allowPaidProviders);
+  const effectiveAllowPaid = serverAllowPaid && Boolean(input.allowPaidProviders);
 
   let slides: SlideData[] = [];
+  let aiProviderUsed = "local-deterministic";
+  let aiNotice: string | undefined;
+  let geminiQuotaExhausted = false;
 
   // 1. EXAONE: Dedicated primary engine when configured
   const effectiveExaoneKey = getExaoneApiKey();
@@ -532,14 +548,15 @@ export async function createPresentationSession(
           id: `slide-${idx + 1}`,
           slideNumber: idx + 1,
         }));
+        aiProviderUsed = "exaone";
       }
     } catch (exErr) {
-      console.warn("[Presentation Maker] EXAONE generation failed, cascading cleanly:", exErr);
+      console.warn("[Presentation Maker] EXAONE generation failed, cascading cleanly:", redactSecrets(String(exErr)));
     }
   }
 
-  // 2. OpenAI if configured as active provider
-  if (slides.length === 0 && activeProvider === "openai" && effectiveOpenAiKey) {
+  // 2. OpenAI ONLY if explicitly selected AND admin allowed paid billing (never auto-fallback!)
+  if (slides.length === 0 && activeProvider === "openai" && serverAllowPaid && effectiveOpenAiKey) {
     const oSlides = await generateSlidesWithOpenAI(
       input.title || analysis.detectedTitle,
       sanitized.cleanSourceText,
@@ -550,12 +567,13 @@ export async function createPresentationSession(
     );
     if (oSlides && oSlides.length >= Math.max(3, slideCount - 1)) {
       slides = oSlides.slice(0, slideCount);
+      aiProviderUsed = "openai";
     }
   }
 
-  // 3. Gemini 2-Stage Pipeline when configured
-  if (slides.length === 0 && activeProvider !== "offline" && effectiveApiKey) {
-    const aiSlides = await generateSlidesWithGemini(
+  // 3. Gemini 3.8 Flash Pipeline when configured
+  if (slides.length === 0 && activeProvider === "gemini" && effectiveApiKey) {
+    const gemOutcome = await generateSlidesWithGemini(
       input.title || analysis.detectedTitle,
       sanitized.cleanSourceText,
       slideCount,
@@ -571,16 +589,108 @@ export async function createPresentationSession(
         analysis,
       },
     );
-    if (aiSlides && aiSlides.length >= Math.max(3, Math.floor(slideCount * 0.75))) {
-      slides = aiSlides.slice(0, slideCount).map((s, idx) => ({
+    if (gemOutcome.slides && gemOutcome.slides.length >= Math.max(3, Math.floor(slideCount * 0.75))) {
+      slides = gemOutcome.slides.slice(0, slideCount).map((s, idx) => ({
         ...s,
         id: `slide-${idx + 1}`,
         slideNumber: idx + 1,
       }));
+      aiProviderUsed = gemOutcome.modelUsed || getEffectiveGeminiModel();
+    } else if (gemOutcome.quotaExhausted || gemOutcome.notice) {
+      geminiQuotaExhausted = Boolean(gemOutcome.quotaExhausted);
+      aiNotice = gemOutcome.notice;
     }
   }
 
-  // 4. Deterministic Stage 2 Composer fallback grounded cleanly in analyzed source
+  // 4. Explicitly configured Free Fallback Text Provider (Groq / OpenRouter :free / Ollama)
+  const fallbackTextProvider = adminSettings.fallbackTextProvider;
+  const shouldUseFreeFallback =
+    slides.length === 0 &&
+    activeProvider !== "offline" &&
+    (activeProvider === "groq" ||
+      activeProvider === "openrouter" ||
+      activeProvider === "ollama" ||
+      (fallbackTextProvider &&
+        fallbackTextProvider !== "none" &&
+        fallbackTextProvider !== "offline"));
+
+  const targetFreeProvider =
+    activeProvider === "groq" || activeProvider === "openrouter" || activeProvider === "ollama"
+      ? activeProvider
+      : fallbackTextProvider === "groq" ||
+        fallbackTextProvider === "openrouter" ||
+        fallbackTextProvider === "ollama"
+      ? fallbackTextProvider
+      : null;
+
+  if (shouldUseFreeFallback && targetFreeProvider) {
+    const slot =
+      targetFreeProvider === "groq"
+        ? "groq"
+        : targetFreeProvider === "openrouter"
+        ? "openrouter"
+        : undefined;
+    const fallbackKey = slot ? getServerSecret(slot) : undefined;
+    const hasCreds = targetFreeProvider === "ollama" || Boolean(fallbackKey && !isPlaceholderTestSecret(fallbackKey));
+    if (hasCreds) {
+      const stage2Prompts = buildAiDeckComposerPrompts(analysis, {
+        title: input.title || analysis.detectedTitle,
+        purpose,
+        audience: input.audience,
+        language: input.language || analysis.language,
+        density,
+        slideCount,
+        visualPreference: input.visualPreference,
+        assignmentMetadata: input.assignmentMetadata,
+      });
+      const fbRes = await callFreeFallbackTextProvider(
+        {
+          provider: targetFreeProvider,
+          apiKey: fallbackKey,
+          baseUrl: adminSettings.ollamaBaseUrl,
+          model: adminSettings.fallbackTextModel,
+          systemInstruction: stage2Prompts.systemPrompt,
+          prompt: stage2Prompts.userPrompt,
+          jsonMode: true,
+          temperature: 0.3,
+          timeoutMs: process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : 25000,
+        },
+        serverAllowPaid,
+      );
+      const fbParsed = fbRes.parsedJson as { slides?: any[] } | undefined;
+      if (fbRes.success && Array.isArray(fbParsed?.slides) && fbParsed.slides.length >= 3) {
+        slides = fbParsed.slides.slice(0, slideCount).map((s: any, idx: number) => ({
+          id: `slide-${idx + 1}`,
+          slideNumber: idx + 1,
+          layout: s.layout || (idx === 0 ? "title" : "content"),
+          title: s.title || `Slide ${idx + 1}`,
+          subtitle: s.subtitle,
+          categoryTag: s.categoryTag || purpose,
+          bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+          heroSplit: s.heroSplit,
+          bentoGrid: s.bentoGrid,
+          statCallout: s.statCallout,
+          leftColumn: s.leftColumn,
+          rightColumn: s.rightColumn,
+          cards: s.cards,
+          metrics: Array.isArray(s.metrics) ? s.metrics : undefined,
+          timeline: s.timeline,
+          processSteps: s.processSteps,
+          quote: s.quote,
+          visual: s.visual,
+          notes: s.notes,
+        }));
+        aiProviderUsed = `${targetFreeProvider}:${fbRes.model}`;
+        if (geminiQuotaExhausted) {
+          aiNotice = `Gemini free quota exhausted; completed using configured free fallback (${aiProviderUsed}).`;
+        }
+      } else if (fbRes.errorMessage && !aiNotice) {
+        aiNotice = fbRes.errorMessage;
+      }
+    }
+  }
+
+  // 5. Deterministic Stage 2 Composer fallback grounded cleanly in analyzed source (zero API cost)
   if (slides.length === 0) {
     slides = composePresentationDeck(analysis, {
       title: input.title || analysis.detectedTitle,
@@ -594,6 +704,11 @@ export async function createPresentationSession(
       assignmentMetadata: input.assignmentMetadata,
       theme,
     });
+    aiProviderUsed = "local-deterministic";
+    if (geminiQuotaExhausted && !aiNotice?.includes("local")) {
+      aiNotice =
+        `${aiNotice || "Gemini free-tier quota exhausted."} Free-First policy prevented any paid fallback; generated deck using local deterministic engine.`;
+    }
   }
 
   // If this is an academic assignment, guarantee Slide 1 is the official assignment cover
@@ -692,7 +807,7 @@ export async function createPresentationSession(
             slideTitle: s.title,
             concept,
             aspectRatio: "16:9",
-            allowPaidProviders: Boolean(input.allowPaidProviders),
+            allowPaidProviders: effectiveAllowPaid,
           });
 
           // Only accept genuine raster visuals from external AI providers;
@@ -783,6 +898,8 @@ export async function createPresentationSession(
     },
     slideCount: slides.length,
     slides,
+    aiProviderUsed,
+    aiNotice,
     filePath: pptxFilePath,
     fileSize: 0,
     createdAt: Date.now(),
@@ -992,12 +1109,7 @@ export async function regenerateSlideVisual(
   sessionId: string,
   slideIndex: number,
   customPrompt?: string,
-  providerKeys?: Record<string, string>,
 ): Promise<PresentationSession | null> {
-  if (providerKeys) {
-    imageProviderManager.setTemporaryProviderKeys(providerKeys);
-  }
-
   const session = activeSessions.get(sessionId);
   if (!session || !session.slides[slideIndex]) return null;
 
@@ -1242,77 +1354,72 @@ Respond strictly in valid JSON matching this schema:
 }`;
 
       const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 1200 : 14000;
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${effectiveKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json" },
-          }),
-          signal: AbortSignal.timeout(timeoutMs),
-        },
-      );
+      const model = getEffectiveGeminiModel();
+      const gemRes = await callGeminiGenerateContent({
+        apiKey: effectiveKey,
+        model,
+        prompt,
+        responseMimeType: "application/json",
+        temperature: 0.3,
+        timeoutMs,
+      });
 
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawJson) {
-          const parsed = JSON.parse(rawJson);
-          const updatedSlide: SlideItem = {
-            ...currentSlide,
-            ...parsed,
-            id: currentSlide.id,
-            slideNumber: currentSlide.slideNumber,
-            elements: undefined,
-          };
+      if (gemRes.success && gemRes.parsedJson && typeof gemRes.parsedJson === "object") {
+        const parsed = gemRes.parsedJson as any;
+        const updatedSlide: SlideItem = {
+          ...currentSlide,
+          ...parsed,
+          id: currentSlide.id,
+          slideNumber: currentSlide.slideNumber,
+          elements: undefined,
+        };
 
-          // If the redesigned slide requested visual imagery or diagram, generate it
-          if (
-            (updatedSlide.layout === "text-visual" ||
-              updatedSlide.layout === "diagram-explainer" ||
-              updatedSlide.layout === "image-led" ||
-              updatedSlide.visual?.imagePrompt) &&
-            (!updatedSlide.visual?.imageUrl || updatedSlide.visual?.imagePrompt)
-          ) {
-            try {
-              const vPrompt =
-                updatedSlide.visual?.imagePrompt ||
-                `A clean, professional 16:9 presentation visual illustration: ${updatedSlide.title}. ${updatedSlide.subtitle || ""}. Minimalist modern style, high clarity.`;
-              const concept = updatedSlide.visual?.concept || updatedSlide.title;
-              const imgRes = await imageProviderManager.generateImage({
-                source: "presentation_maker",
-                prompt: vPrompt,
-                slideTitle: updatedSlide.title,
-                concept,
-                aspectRatio: "16:9",
-              });
-              if (imgRes && imgRes.imageUrl) {
-                const verification = await verifyAndSanitizeImage(imgRes.imageUrl);
-                if (verification.valid && verification.dataUrl) {
-                  updatedSlide.visual = {
-                    type: verification.format === "svg+xml" ? "diagram" : "picture",
-                    concept,
-                    caption: updatedSlide.subtitle || `Visual: ${concept}`,
-                    imageUrl: verification.dataUrl,
-                    imagePrompt: vPrompt,
-                  };
-                } else {
-                  console.warn(`[ImageVerifier] AI slide visual failed verification: ${verification.error}`);
-                  if (updatedSlide.layout === "text-visual" || updatedSlide.layout === "image-led") {
-                    updatedSlide.layout = "bento-grid";
-                  }
-                  updatedSlide.visual = undefined;
+        // If the redesigned slide requested visual imagery or diagram, generate it
+        if (
+          (updatedSlide.layout === "text-visual" ||
+            updatedSlide.layout === "diagram-explainer" ||
+            updatedSlide.layout === "image-led" ||
+            updatedSlide.visual?.imagePrompt) &&
+          (!updatedSlide.visual?.imageUrl || updatedSlide.visual?.imagePrompt)
+        ) {
+          try {
+            const vPrompt =
+              updatedSlide.visual?.imagePrompt ||
+              `A clean, professional 16:9 presentation visual illustration: ${updatedSlide.title}. ${updatedSlide.subtitle || ""}. Minimalist modern style, high clarity.`;
+            const concept = updatedSlide.visual?.concept || updatedSlide.title;
+            const imgRes = await imageProviderManager.generateImage({
+              source: "presentation_maker",
+              prompt: vPrompt,
+              slideTitle: updatedSlide.title,
+              concept,
+              aspectRatio: "16:9",
+            });
+            if (imgRes && imgRes.imageUrl) {
+              const verification = await verifyAndSanitizeImage(imgRes.imageUrl);
+              if (verification.valid && verification.dataUrl) {
+                updatedSlide.visual = {
+                  type: verification.format === "svg+xml" ? "diagram" : "picture",
+                  concept,
+                  caption: updatedSlide.subtitle || `Visual: ${concept}`,
+                  imageUrl: verification.dataUrl,
+                  imagePrompt: vPrompt,
+                };
+              } else {
+                console.warn(`[ImageVerifier] AI slide visual failed verification: ${verification.error}`);
+                if (updatedSlide.layout === "text-visual" || updatedSlide.layout === "image-led") {
+                  updatedSlide.layout = "bento-grid";
                 }
+                updatedSlide.visual = undefined;
               }
-            } catch (err) {
-              console.warn("Image generation fallback for AI slide redesign:", err);
             }
+          } catch (err) {
+            console.warn("Image generation fallback for AI slide redesign:", redactSecrets(String(err)));
           }
-
-          session.slides[slideIndex] = updatedSlide;
         }
+
+        session.slides[slideIndex] = updatedSlide;
+      } else {
+        applyLocalSlideRedesign(currentSlide, instruction);
       }
     } catch (err) {
       console.warn("AI slide regeneration error, applying local semantic redesign:", err);

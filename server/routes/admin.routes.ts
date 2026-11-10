@@ -11,6 +11,7 @@ import {
   getAdminSettingsHandler,
   updateAdminSettingsHandler,
   testGeminiConnectionHandler,
+  testFallbackTextConnectionHandler,
   testOpenAIConnectionHandler,
   listStaffHandler,
   createStaffHandler,
@@ -70,6 +71,7 @@ router.get("/admin/presentations", requireAdmin, listAdminPresentationsHandler);
 router.get("/admin/settings", requireAdmin, getAdminSettingsHandler);
 router.patch("/admin/settings", requireAdmin, updateAdminSettingsHandler);
 router.post("/admin/test-gemini", requireAdmin, testGeminiConnectionHandler);
+router.post("/admin/test-fallback-text", requireAdmin, testFallbackTextConnectionHandler);
 router.post("/admin/test-openai", requireAdmin, testOpenAIConnectionHandler);
 
 // Staff Directory & Audit Logs

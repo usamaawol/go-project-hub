@@ -20,6 +20,15 @@ export class FalAiImageAdapter implements IImageProviderAdapter {
 
     const start = Date.now();
     try {
+      if (!config.allowPaidModelExecution) {
+        return {
+          success: false,
+          latencyMs: 0,
+          provider: "fal",
+          testedModel: config.selectedModel,
+          message: "fal.ai requires paid pay-as-you-go billing after sign-up trial and is disabled under Free-First policy.",
+        };
+      }
       // fal.ai key validation via model schema probe
       const model = config.selectedModel || "fal-ai/flux/schnell";
       const res = await fetch(`https://fal.run/${model}`, {
@@ -31,25 +40,28 @@ export class FalAiImageAdapter implements IImageProviderAdapter {
       });
       const latencyMs = Date.now() - start;
 
-      // Even if OPTIONS is 405 or 200, if 401/403 then key is invalid
       if (res.status === 401 || res.status === 403) {
         return {
           success: false,
           latencyMs,
-          message: "fal.ai authentication failed. Please verify your FAL_KEY format and permissions.",
+          provider: "fal",
+          testedModel: model,
+          message: "fal.ai authentication failed. Verify your FAL_KEY credentials.",
         };
       }
 
       return {
         success: true,
         latencyMs,
+        provider: "fal",
+        testedModel: model,
         message: "fal.ai endpoint reachable and credentials accepted.",
         models: config.supportedModels,
         quota: {
+          officialSource: "unavailable",
+          officialLimitText: "Pay-as-you-go billing on fal.ai dashboard.",
           isEstimate: true,
-          unit: "Compute Credits ($)",
-          total: 10,
-          remaining: 9.5,
+          refreshedAt: new Date().toISOString(),
         },
       };
     } catch (err) {

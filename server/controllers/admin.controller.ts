@@ -19,6 +19,7 @@ import {
   getAdminSettings,
   updateAdminSettings,
   testGeminiConnection,
+  testFallbackTextConnection,
   testOpenAIConnection,
   listStaffMembers,
   addStaffMember,
@@ -26,6 +27,7 @@ import {
   getStaffAuditLogs,
   recordStaffAuditLog,
 } from "../services/adminSettings.service";
+import { redactSecrets } from "../services/serverSecretStore";
 
 export async function getDashboardMetrics(
   req: AuthenticatedRequest,
@@ -234,10 +236,16 @@ export async function updateAdminSettingsHandler(
 ) {
   try {
     const userEmail = req.user?.email || "admin@documind.app";
-    const author = { name: "Lead Administrator", email: userEmail };
+    const author = { name: req.user?.displayName || "Lead Administrator", email: userEmail };
     updateAdminSettings(req.body, author);
+    if (typeof req.body?.allowPaidProviders === "boolean") {
+      imageProviderManager.updateSettings({ allowPaidProviders: req.body.allowPaidProviders });
+    }
     res.json({ success: true, data: getAdminSettings(true), message: "Settings saved successfully." });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof Error && /paid billing|Free-First/i.test(error.message)) {
+      return res.status(400).json({ success: false, error: { message: error.message } });
+    }
     next(error);
   }
 }
@@ -248,8 +256,22 @@ export async function testGeminiConnectionHandler(
   next: NextFunction,
 ) {
   try {
-    const { apiKey } = req.body || {};
-    const result = await testGeminiConnection(apiKey);
+    const { apiKey, model, testPdf } = req.body || {};
+    const result = await testGeminiConnection(apiKey, model, { testPdf: Boolean(testPdf) });
+    res.json({ success: result.success, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function testFallbackTextConnectionHandler(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { provider, apiKey, model, baseUrl } = req.body || {};
+    const result = await testFallbackTextConnection({ provider, apiKey, model, baseUrl });
     res.json({ success: result.success, data: result });
   } catch (error) {
     next(error);
@@ -380,10 +402,12 @@ export async function testImageProviderConnectionHandler(
 ) {
   try {
     const { id } = req.params;
-    const { apiKey } = req.body || {};
+    const { apiKey, selectedModel, endpointUrl } = req.body || {};
     const result = await imageProviderManager.testProviderConnection(
       id as ImageProviderId,
       apiKey,
+      selectedModel,
+      endpointUrl,
     );
     res.json({ success: result.success, data: result });
   } catch (error) {
@@ -397,12 +421,15 @@ export async function testGenerateImageHandler(
   next: NextFunction,
 ) {
   try {
-    const { prompt, aspectRatio } = req.body || {};
+    const { prompt, aspectRatio, providerId } = req.body || {};
+    const adminSettings = getAdminSettings(true);
     const result = await imageProviderManager.generateImage({
       source: "admin_test",
+      providerId: providerId ? (providerId as ImageProviderId) : undefined,
       prompt: prompt || "A modern presentation diagram of artificial neural network architecture",
       aspectRatio: aspectRatio || "16:9",
       concept: "Admin Benchmark Visual",
+      allowPaidProviders: Boolean(adminSettings.allowPaidProviders),
     });
     res.json({ success: result.success, data: result });
   } catch (error) {
@@ -430,12 +457,23 @@ export async function updateImageGenerationSettingsHandler(
 ) {
   try {
     const updated = imageProviderManager.updateSettings(req.body);
+    if (typeof req.body?.allowPaidProviders === "boolean") {
+      updateAdminSettings(
+        { allowPaidProviders: req.body.allowPaidProviders },
+        {
+          name: req.user?.displayName || "Lead Administrator",
+          email: req.user?.email || "admin@documind.app",
+        },
+      );
+    }
     const authorEmail = req.user?.email || "admin@documind.app";
     recordStaffAuditLog(
       req.user?.displayName || "Lead Administrator",
       authorEmail,
       "Update Image Generation Limits",
-      `Global Image Gen: ${updated.globallyEnabled}, Fallback: ${updated.autoFallbackEnabled}, Max/Presentation: ${updated.maxGenerationsPerPresentation}.`,
+      redactSecrets(
+        `Global Image Gen: ${updated.globallyEnabled}, Fallback: ${updated.autoFallbackEnabled}, Max/Presentation: ${updated.maxGenerationsPerPresentation}, AllowPaid: ${Boolean(updated.allowPaidProviders)}.`,
+      ),
     );
     res.json({
       success: true,

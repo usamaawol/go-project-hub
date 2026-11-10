@@ -1,12 +1,25 @@
 export type ImageProviderId = "gemini" | "huggingface" | "cloudflare" | "fal" | "replicate";
 
+export type BillingStatus =
+  | "free_tier"
+  | "free_credits_then_paid"
+  | "paid_required"
+  | "local_free";
+
 export interface QuotaInfo {
   total?: number;
   used?: number;
-  remaining?: number;
+  remaining?: number | null;
   isEstimate: boolean;
   unit?: string;
   resetsAt?: string;
+  officialLimit?: number | null;
+  officialRemaining?: number | null;
+  officialLimitText?: string;
+  officialSource?: "api_header" | "api_endpoint" | "unavailable";
+  appLimit?: number | null;
+  refreshedAt?: string;
+  rateLimitHeaders?: Record<string, string>;
 }
 
 export interface ImageProviderConfig {
@@ -17,13 +30,19 @@ export interface ImageProviderConfig {
   fallbackEligible: boolean;
   selectedModel: string;
   supportedModels: string[];
+  paidModels?: string[];
   apiKey: string;
   endpointUrl?: string; // e.g. Cloudflare Account ID or custom gateway
-  status: "ready" | "needs_key" | "error" | "rate_limited";
+  status: "ready" | "needs_key" | "untested" | "error" | "rate_limited" | "paid_disabled";
   lastTestedAt?: string;
+  lastSuccessfulTestAt?: string;
+  lastTestedModel?: string;
+  lastTestSuccess?: boolean;
   lastError?: string;
   freeTierInfo: string;
   billingTier?: "free" | "paid";
+  billingStatus?: BillingStatus;
+  allowPaidModelExecution?: boolean;
   quotaInfo?: QuotaInfo;
 }
 
@@ -31,6 +50,7 @@ export interface GenerateImageOptions {
   prompt: string;
   aspectRatio?: "16:9" | "1:1";
   source: "presentation_maker" | "admin_test";
+  providerId?: ImageProviderId;
   slideTitle?: string;
   concept?: string;
   style?: "illustration" | "diagram" | "photorealistic" | "minimalist";
@@ -51,8 +71,11 @@ export interface ProviderConnectionTestResult {
   success: boolean;
   latencyMs: number;
   message: string;
+  provider?: ImageProviderId;
+  testedModel?: string;
   models?: string[];
-  quota?: QuotaInfo;
+  quota?: Partial<QuotaInfo>;
+  rateLimitHeaders?: Record<string, string>;
 }
 
 export interface IImageProviderAdapter {

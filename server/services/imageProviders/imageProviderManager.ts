@@ -1,7 +1,5 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
-import { ENV } from "../../config/env";
 import type {
   ImageProviderId,
   ImageProviderConfig,
@@ -13,12 +11,27 @@ import type {
   ImageGenerationLogEntry,
   ProviderAlert,
 } from "./types";
-import { GeminiImageAdapter } from "./adapters/geminiAdapter";
+import { GeminiImageAdapter, isGeminiPaidImageModel } from "./adapters/geminiAdapter";
 import { HuggingFaceImageAdapter } from "./adapters/huggingfaceAdapter";
 import { CloudflareWorkersAiAdapter } from "./adapters/cloudflareAdapter";
 import { FalAiImageAdapter } from "./adapters/falAdapter";
 import { ReplicateImageAdapter } from "./adapters/replicateAdapter";
 import { synthesizeContextualVisual } from "../geminiVisual.service";
+import {
+  DEFAULT_GEMINI_TEXT_MODEL,
+  DEPRECATED_GEMINI_MODELS,
+  resolveSupportedGeminiModel,
+} from "../presentationAiClient";
+import {
+  getServerSecret,
+  getMaskedSecretInfo,
+  hydrateServerSecrets,
+  isPlaceholderTestSecret,
+  maskSecretValue,
+  redactSecrets,
+  setServerSecretSync,
+  type SecretSlot,
+} from "../serverSecretStore";
 
 const PROVIDERS_CONFIG_FILE = path.join(
   process.cwd(),
@@ -27,29 +40,42 @@ const PROVIDERS_CONFIG_FILE = path.join(
   "runtime-image-providers.json",
 );
 
-// Initial default configuration for all 5 providers
+const LEGACY_GEMINI_IMAGE_DEFAULT = "imagen-3.0-generate-002";
+
+// Initial honest Free-First configuration for all 5 providers
 const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
   {
     id: "gemini",
-    name: "Google Gemini / Imagen 3",
+    name: "Google Gemini / AI Studio",
     enabled: true,
     priority: 1,
     fallbackEligible: true,
-    selectedModel: "imagen-3.0-generate-002",
+    selectedModel: DEFAULT_GEMINI_TEXT_MODEL,
     supportedModels: [
+      DEFAULT_GEMINI_TEXT_MODEL,
+      "gemini-3.5-flash-lite",
       "imagen-3.0-generate-002",
       "imagen-3.0-fast-generate-001",
-      "gemini-2.5-flash",
     ],
-    apiKey: ENV.GEMINI_API_KEY || "",
-    status: (ENV.GEMINI_API_KEY && ENV.GEMINI_API_KEY.length > 8) ? "ready" : "needs_key",
-    freeTierInfo: "Free tier available via Google AI Studio API with daily rate limits.",
+    paidModels: ["imagen-3.0-generate-002", "imagen-3.0-fast-generate-001"],
+    apiKey: "",
+    status: "needs_key",
+    freeTierInfo:
+      "Gemini 3.8 Flash uses Gemini API Free Tier quotas for text & vector diagrams. Imagen 3 image models require Google Cloud Billing (disabled by default).",
     billingTier: "free",
+    billingStatus: "free_tier",
     quotaInfo: {
       isEstimate: true,
-      unit: "Requests / Min",
-      total: 15,
-      remaining: 15,
+      unit: "App Tracked Calls",
+      total: 50,
+      appLimit: 50,
+      used: 0,
+      remaining: 50,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText:
+        "Per-project dynamic RPM/TPM/RPD managed by Google AI Studio (official remaining quota is not returned via API).",
     },
   },
   {
@@ -62,17 +88,26 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     supportedModels: [
       "black-forest-labs/FLUX.1-schnell",
       "stabilityai/stable-diffusion-xl-base-1.0",
-      "runwayml/stable-diffusion-v1-5",
+      "black-forest-labs/FLUX.1-dev",
     ],
-    apiKey: process.env.HUGGINGFACE_API_KEY || "",
+    apiKey: "",
     status: "needs_key",
-    freeTierInfo: "Free community inference API with Hugging Face user access token.",
+    freeTierInfo:
+      "Free HF accounts receive ~$0.10/mo in Inference Providers credits (~few FLUX runs); halts at HTTP 402 with no auto-billing.",
     billingTier: "free",
+    billingStatus: "free_credits_then_paid",
     quotaInfo: {
       isEstimate: true,
-      unit: "Monthly Requests",
-      total: 1000,
-      remaining: 1000,
+      unit: "App Tracked Calls",
+      total: 25,
+      appLimit: 25,
+      used: 0,
+      remaining: 25,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText:
+        "~$0.10/month free Inference Providers credits (official dollar balance is not returned unless in headers; halts cleanly at HTTP 402).",
     },
   },
   {
@@ -81,21 +116,31 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     enabled: false,
     priority: 3,
     fallbackEligible: true,
-    selectedModel: "@cf/bytedance/stable-diffusion-xl-lightning",
+    selectedModel: "@cf/black-forest-labs/flux-1-schnell",
     supportedModels: [
+      "@cf/black-forest-labs/flux-1-schnell",
       "@cf/bytedance/stable-diffusion-xl-lightning",
       "@cf/stabilityai/stable-diffusion-xl-base-1.0",
     ],
-    apiKey: process.env.CLOUDFLARE_API_TOKEN || "",
-    endpointUrl: process.env.CLOUDFLARE_ACCOUNT_ID || "",
+    apiKey: "",
+    endpointUrl: "",
     status: "needs_key",
-    freeTierInfo: "10,000 Neurons per day free on Cloudflare Workers AI plan.",
+    freeTierInfo:
+      "Free tier grants 10,000 Neurons/day resetting at 00:00 UTC without requiring a paid Workers plan.",
     billingTier: "free",
+    billingStatus: "free_tier",
     quotaInfo: {
       isEstimate: true,
-      unit: "Neurons / Day",
-      total: 10000,
-      remaining: 10000,
+      unit: "App Tracked Calls",
+      total: 40,
+      appLimit: 40,
+      used: 0,
+      remaining: 40,
+      officialLimit: 10000,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText:
+        "10,000 Neurons/day free tier (exact remaining Neurons shown in Cloudflare Workers AI dashboard).",
     },
   },
   {
@@ -103,21 +148,26 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     name: "fal.ai (FLUX / SDXL)",
     enabled: false,
     priority: 4,
-    fallbackEligible: true,
+    fallbackEligible: false,
     selectedModel: "fal-ai/flux/schnell",
-    supportedModels: [
-      "fal-ai/flux/schnell",
-      "fal-ai/fast-sdxl",
-    ],
-    apiKey: process.env.FAL_KEY || "",
-    status: "needs_key",
-    freeTierInfo: "Initial free trial credits provided on sign-up; requires pay-as-you-go key after trial.",
+    supportedModels: ["fal-ai/flux/schnell", "fal-ai/fast-sdxl"],
+    apiKey: "",
+    status: "paid_disabled",
+    freeTierInfo:
+      "Initial sign-up credits only; requires pay-as-you-go billing thereafter. Disabled unless Paid Providers are explicitly approved.",
     billingTier: "paid",
+    billingStatus: "paid_required",
     quotaInfo: {
       isEstimate: true,
-      unit: "Credits ($)",
+      unit: "App Tracked Calls",
       total: 10,
+      appLimit: 10,
+      used: 0,
       remaining: 10,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText: "Pay-as-you-go billing required (managed in fal.ai dashboard).",
     },
   },
   {
@@ -125,21 +175,26 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     name: "Replicate (FLUX & SDXL)",
     enabled: false,
     priority: 5,
-    fallbackEligible: true,
+    fallbackEligible: false,
     selectedModel: "black-forest-labs/flux-schnell",
-    supportedModels: [
-      "black-forest-labs/flux-schnell",
-      "stability-ai/sdxl",
-    ],
-    apiKey: process.env.REPLICATE_API_TOKEN || "",
-    status: "needs_key",
-    freeTierInfo: "Trial runs offered for new accounts; pay-per-second thereafter.",
+    supportedModels: ["black-forest-labs/flux-schnell", "stability-ai/sdxl"],
+    apiKey: "",
+    status: "paid_disabled",
+    freeTierInfo:
+      "Pay-per-second cloud GPU billing after brief trial. Disabled unless Paid Providers are explicitly approved.",
     billingTier: "paid",
+    billingStatus: "paid_required",
     quotaInfo: {
       isEstimate: true,
-      unit: "Predictions",
-      total: 50,
-      remaining: 50,
+      unit: "App Tracked Calls",
+      total: 10,
+      appLimit: 10,
+      used: 0,
+      remaining: 10,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText: "Pay-per-second billing required (managed in Replicate dashboard).",
     },
   },
 ];
@@ -155,6 +210,19 @@ const DEFAULT_SETTINGS: ImageGenerationSettings = {
   preferredAspectRatio: "16:9",
   allowPaidProviders: false,
 };
+
+function sanitizeModelsList(id: ImageProviderId, list?: string[]): string[] {
+  const def = DEFAULT_PROVIDERS.find((d) => d.id === id);
+  const base = Array.isArray(list) && list.length > 0 ? list : def?.supportedModels || [];
+  if (id === "gemini") {
+    const filtered = base.filter((m) => !DEPRECATED_GEMINI_MODELS.has(m));
+    if (!filtered.includes(DEFAULT_GEMINI_TEXT_MODEL)) {
+      filtered.unshift(DEFAULT_GEMINI_TEXT_MODEL);
+    }
+    return Array.from(new Set(filtered));
+  }
+  return Array.from(new Set([...(def?.supportedModels || []), ...base]));
+}
 
 export class ImageProviderManager {
   private static instance: ImageProviderManager;
@@ -173,6 +241,7 @@ export class ImageProviderManager {
     this.registerAdapter(new ReplicateImageAdapter());
 
     this.loadFromDisk();
+    void hydrateServerSecrets();
   }
 
   public static getInstance(): ImageProviderManager {
@@ -187,50 +256,119 @@ export class ImageProviderManager {
   }
 
   private isPlaceholderTestKey(key?: string): boolean {
-    if (!key) return false;
-    const lower = key.trim().toLowerCase();
-    return (
-      lower.includes("mock") ||
-      lower.includes("testkey") ||
-      lower.includes("test_invalid") ||
-      lower.includes("custompresentationtest")
-    );
+    return isPlaceholderTestSecret(key);
+  }
+
+  private resolveKey(id: ImageProviderId, inlineKey?: string): string {
+    if (inlineKey && inlineKey.trim() && !inlineKey.includes("••••")) {
+      return inlineKey.trim();
+    }
+    return getServerSecret(id as SecretSlot);
+  }
+
+  private computeInitialStatus(
+    id: ImageProviderId,
+    config: ImageProviderConfig,
+    hasKey: boolean,
+  ): ImageProviderConfig["status"] {
+    if (
+      (config.billingTier === "paid" || (id === "gemini" && isGeminiPaidImageModel(config.selectedModel))) &&
+      !this.settings.allowPaidProviders
+    ) {
+      return "paid_disabled";
+    }
+    if (!hasKey) return "needs_key";
+    if (config.lastTestSuccess === true && config.lastSuccessfulTestAt) return "ready";
+    if (config.status === "error" || config.status === "rate_limited") return config.status;
+    return "untested";
   }
 
   private loadFromDisk() {
-    // 1. Initialize defaults
     DEFAULT_PROVIDERS.forEach((p) => {
-      this.providers.set(p.id, { ...p });
+      const envKey = this.resolveKey(p.id);
+      this.providers.set(p.id, {
+        ...p,
+        apiKey: envKey,
+        endpointUrl: p.id === "cloudflare" ? getServerSecret("cloudflare_account_id") : p.endpointUrl,
+        quotaInfo: p.quotaInfo ? { ...p.quotaInfo } : undefined,
+        status: this.computeInitialStatus(p.id, p, envKey.length > 6),
+      });
     });
 
-    // Skip reading stale tracked test artifacts when running automated test suites
     if (process.env.NODE_ENV === "test" || process.env.VITEST) {
       return;
     }
 
-    // 2. Overlay disk configuration if present
     try {
       if (fs.existsSync(PROVIDERS_CONFIG_FILE)) {
         const raw = fs.readFileSync(PROVIDERS_CONFIG_FILE, "utf-8");
         const parsed = JSON.parse(raw);
+        if (parsed.settings) {
+          this.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
+        }
         if (Array.isArray(parsed.providers)) {
           parsed.providers.forEach((saved: ImageProviderConfig) => {
             const current = this.providers.get(saved.id);
-            if (current) {
-              const savedKey = this.isPlaceholderTestKey(saved.apiKey) ? "" : saved.apiKey;
-              const effectiveKey = savedKey || current.apiKey || "";
-              this.providers.set(saved.id, {
-                ...current,
-                ...saved,
-                billingTier: current.billingTier,
-                apiKey: effectiveKey,
-                status: effectiveKey && effectiveKey.length > 6 ? (saved.status === "needs_key" ? "ready" : saved.status) : "needs_key",
-              });
+            if (!current) return;
+
+            // Migrate legacy keys out of tracked config JSON into encrypted server vault if present
+            const legacyDiskKey =
+              saved.apiKey && !this.isPlaceholderTestKey(saved.apiKey) && !saved.apiKey.includes("••••")
+                ? saved.apiKey.trim()
+                : "";
+            if (legacyDiskKey) {
+              setServerSecretSync(saved.id as SecretSlot, legacyDiskKey);
             }
+
+            let resolvedModel = saved.selectedModel || current.selectedModel;
+            if (saved.id === "gemini") {
+              if (resolvedModel === LEGACY_GEMINI_IMAGE_DEFAULT && !this.settings.allowPaidProviders) {
+                resolvedModel = DEFAULT_GEMINI_TEXT_MODEL;
+              } else if (DEPRECATED_GEMINI_MODELS.has(resolvedModel)) {
+                resolvedModel = resolveSupportedGeminiModel(resolvedModel);
+              }
+            }
+
+            const effectiveKey = this.resolveKey(saved.id);
+            const mergedQuota = {
+              ...current.quotaInfo,
+              ...(saved.quotaInfo || {}),
+              // Never carry forward inflated fake provider limits (e.g. 15 RPM or 1000 Monthly) as official
+              officialLimitText: current.quotaInfo?.officialLimitText,
+              officialLimit: current.quotaInfo?.officialLimit ?? null,
+              officialSource: saved.quotaInfo?.officialSource || current.quotaInfo?.officialSource || "unavailable",
+              appLimit: saved.quotaInfo?.appLimit ?? current.quotaInfo?.appLimit ?? 25,
+              isEstimate: true,
+            };
+            if (saved.id === "huggingface" && mergedQuota.total === 1000) {
+              mergedQuota.total = current.quotaInfo?.total || 25;
+              mergedQuota.appLimit = current.quotaInfo?.appLimit || 25;
+              mergedQuota.remaining = Math.max(0, (mergedQuota.appLimit || 25) - (mergedQuota.used || 0));
+              mergedQuota.unit = current.quotaInfo?.unit;
+            }
+            if (saved.id === "gemini" && mergedQuota.total === 15 && mergedQuota.unit === "Requests / Min") {
+              mergedQuota.total = current.quotaInfo?.total || 50;
+              mergedQuota.appLimit = current.quotaInfo?.appLimit || 50;
+              mergedQuota.remaining = Math.max(0, (mergedQuota.appLimit || 50) - (mergedQuota.used || 0));
+              mergedQuota.unit = current.quotaInfo?.unit;
+            }
+
+            const merged: ImageProviderConfig = {
+              ...current,
+              ...saved,
+              selectedModel: resolvedModel,
+              supportedModels: sanitizeModelsList(saved.id, saved.supportedModels),
+              paidModels: current.paidModels,
+              billingTier: current.billingTier,
+              billingStatus: current.billingStatus,
+              freeTierInfo: current.freeTierInfo,
+              apiKey: "",
+              quotaInfo: mergedQuota,
+              status: "untested",
+            };
+            merged.status = this.computeInitialStatus(saved.id, merged, effectiveKey.length > 6);
+            this.providers.set(saved.id, merged);
           });
-        }
-        if (parsed.settings) {
-          this.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
         }
         if (Array.isArray(parsed.logs)) {
           this.logs = parsed.logs.slice(0, 100);
@@ -240,12 +378,11 @@ export class ImageProviderManager {
         }
       }
     } catch (e) {
-      console.warn("Could not load runtime image provider settings from disk:", e);
+      console.warn("Could not load runtime image provider settings from disk:", redactSecrets(String(e)));
     }
   }
 
   private persistToDisk() {
-    // Never mutate tracked workspace config files during automated test runs
     if (process.env.NODE_ENV === "test" || process.env.VITEST) {
       return;
     }
@@ -254,11 +391,16 @@ export class ImageProviderManager {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
+      // Strictly strip all secret keys before writing non-secret provider metadata to disk
+      const sanitizedProviders = Array.from(this.providers.values()).map((p) => ({
+        ...p,
+        apiKey: "",
+      }));
       fs.writeFileSync(
         PROVIDERS_CONFIG_FILE,
         JSON.stringify(
           {
-            providers: Array.from(this.providers.values()),
+            providers: sanitizedProviders,
             settings: this.settings,
             logs: this.logs.slice(0, 100),
             alerts: this.alerts.slice(0, 50),
@@ -269,23 +411,18 @@ export class ImageProviderManager {
         "utf-8",
       );
     } catch (e) {
-      console.warn("Failed to persist image provider config to disk:", e);
+      console.warn("Failed to persist image provider config to disk:", redactSecrets(String(e)));
     }
   }
 
   public maskKey(key: string): string {
-    const trimmed = (key || "").trim();
-    if (!trimmed) return "";
-    if (trimmed.length <= 8) return "••••••••";
-    return `${trimmed.slice(0, 4)}••••••••${trimmed.slice(-4)}`;
+    return maskSecretValue(key);
   }
 
-  /**
-   * Adds or updates an active alert regarding provider quota, failure, or cascading status
-   */
   public addAlert(alert: Omit<ProviderAlert, "timestamp"> & { timestamp?: string }) {
     const newAlert: ProviderAlert = {
       ...alert,
+      message: redactSecrets(alert.message),
       timestamp: alert.timestamp || new Date().toISOString(),
       dismissed: false,
     };
@@ -320,6 +457,9 @@ export class ImageProviderManager {
     this.persistToDisk();
   }
 
+  /**
+   * Resets ONLY DocuMind's application-side usage counter (never invents an official upstream quota reset).
+   */
   public resetProviderQuota(id: ImageProviderId): ImageProviderConfig {
     const provider = this.providers.get(id);
     if (!provider) {
@@ -328,106 +468,154 @@ export class ImageProviderManager {
 
     if (provider.quotaInfo) {
       provider.quotaInfo.used = 0;
-      provider.quotaInfo.remaining = provider.quotaInfo.total;
+      const cap = provider.quotaInfo.appLimit ?? provider.quotaInfo.total;
+      provider.quotaInfo.remaining = typeof cap === "number" ? cap : null;
     }
 
     this.cooldowns.delete(id);
-    if (provider.apiKey && provider.apiKey.trim().length > 6) {
-      provider.status = "ready";
+    const hasKey = this.resolveKey(id, provider.apiKey).length > 6;
+    if (provider.status === "rate_limited") {
+      provider.status = provider.lastTestSuccess ? "ready" : hasKey ? "untested" : "needs_key";
       provider.lastError = undefined;
     }
 
-    // Dismiss active alerts for this provider
     this.alerts = this.alerts.filter((a) => a.providerId !== id);
-
     this.providers.set(id, provider);
     this.persistToDisk();
-    return provider;
+    return this.getProviderForClient(id)!;
   }
 
-  public resetAllQuotas(): Array<ImageProviderConfig & { isConfigured: boolean; maskedKey: string }> {
+  public resetAllQuotas(): Array<
+    ImageProviderConfig & { isConfigured: boolean; maskedKey: string; keySource: string }
+  > {
     for (const id of this.providers.keys()) {
       this.resetProviderQuota(id);
     }
     return this.getProvidersForClient();
   }
 
-  /**
-   * Overlays provider API keys supplied directly by Presentation Maker sessions
-   */
-  public setTemporaryProviderKeys(keys: Record<string, string>) {
-    if (!keys || typeof keys !== "object") return;
-    for (const [id, key] of Object.entries(keys)) {
-      if (key && typeof key === "string" && key.trim().length > 6 && !key.includes("••••")) {
-        const p = this.providers.get(id as ImageProviderId);
-        if (p) {
-          p.apiKey = key.trim();
-          p.enabled = true;
-          p.status = "ready";
-          this.providers.set(id as ImageProviderId, p);
-        }
-      }
-    }
+  private getProviderForClient(
+    id: ImageProviderId,
+  ): (ImageProviderConfig & { isConfigured: boolean; maskedKey: string; keySource: string }) | undefined {
+    const p = this.providers.get(id);
+    if (!p) return undefined;
+    const runtimeKey = this.resolveKey(id, p.apiKey);
+    const secretInfo = getMaskedSecretInfo(id as SecretSlot);
+    const hasKey = Boolean(runtimeKey.length > 6 || secretInfo.isConfigured);
+    const masked = runtimeKey ? this.maskKey(runtimeKey) : secretInfo.maskedKey;
+    const computedStatus = this.computeInitialStatus(id, p, hasKey);
+
+    return {
+      ...p,
+      apiKey: masked,
+      isConfigured: hasKey,
+      maskedKey: masked,
+      keySource: runtimeKey && secretInfo.source !== "none" ? secretInfo.keySource : hasKey ? "server_vault" : "none",
+      status: computedStatus,
+    };
   }
 
   /**
-   * Returns list of configured providers with masked API keys for secure UI display
+   * Returns list of configured providers with strictly masked key suffixes (never plaintext secrets).
    */
   public getProvidersForClient(): Array<
-    ImageProviderConfig & { isConfigured: boolean; maskedKey: string }
+    ImageProviderConfig & { isConfigured: boolean; maskedKey: string; keySource: string }
   > {
-    return Array.from(this.providers.values())
-      .sort((a, b) => a.priority - b.priority)
-      .map((p) => {
-        const hasKey = Boolean(p.apiKey && p.apiKey.trim().length > 6);
-        return {
-          ...p,
-          apiKey: this.maskKey(p.apiKey),
-          isConfigured: hasKey,
-          maskedKey: this.maskKey(p.apiKey),
-        };
-      });
+    return Array.from(this.providers.keys())
+      .map((id) => this.getProviderForClient(id)!)
+      .sort((a, b) => a.priority - b.priority);
   }
 
   public getProvider(id: ImageProviderId): ImageProviderConfig | undefined {
-    return this.providers.get(id);
+    const p = this.providers.get(id);
+    if (!p) return undefined;
+    return {
+      ...p,
+      apiKey: this.resolveKey(id, p.apiKey),
+      endpointUrl:
+        p.id === "cloudflare"
+          ? p.endpointUrl || getServerSecret("cloudflare_account_id")
+          : p.endpointUrl,
+    };
   }
 
-  /**
-   * Updates provider configuration (credentials, priority, selected model, enabled status)
-   */
   public updateProvider(
     id: ImageProviderId,
     updates: Partial<ImageProviderConfig>,
-  ): ImageProviderConfig {
+  ): ImageProviderConfig & { isConfigured: boolean; maskedKey: string; keySource: string } {
     const current = this.providers.get(id);
     if (!current) {
       throw new Error(`Provider "${id}" not found.`);
     }
 
-    const newKey = updates.apiKey !== undefined
-      ? (updates.apiKey.includes("••••") ? current.apiKey : updates.apiKey.trim())
-      : current.apiKey;
+    let keyChanged = false;
+    if (updates.apiKey !== undefined && !updates.apiKey.includes("••••")) {
+      const cleaned = updates.apiKey.trim();
+      setServerSecretSync(id as SecretSlot, cleaned);
+      keyChanged = true;
+      current.apiKey = process.env.NODE_ENV === "test" || process.env.VITEST ? cleaned : "";
+    }
+
+    if (id === "cloudflare" && updates.endpointUrl !== undefined) {
+      setServerSecretSync("cloudflare_account_id", updates.endpointUrl.trim());
+    }
+
+    const modelChanged =
+      updates.selectedModel !== undefined && updates.selectedModel.trim() !== current.selectedModel;
 
     const updated: ImageProviderConfig = {
       ...current,
       ...updates,
-      apiKey: newKey,
-      status: newKey && newKey.length > 6 ? (current.status === "needs_key" ? "ready" : current.status) : "needs_key",
+      billingTier: current.billingTier,
+      billingStatus: current.billingStatus,
+      paidModels: current.paidModels,
+      apiKey: current.apiKey,
     };
+
+    const effectiveKey = this.resolveKey(id, updated.apiKey);
+
+    // Enforce Free-First rule: paid providers cannot be enabled unless allowPaidProviders is explicitly enabled
+    if (updated.billingTier === "paid" && updated.enabled && !this.settings.allowPaidProviders) {
+      updated.enabled = false;
+      updated.status = "paid_disabled";
+      updated.lastError = "Paid providers are locked under Free-First policy.";
+    } else if (keyChanged || modelChanged) {
+      // Never mark a provider Ready until an actual connection test succeeds for the updated key/model
+      updated.lastTestSuccess = false;
+      updated.lastError = undefined;
+      updated.status = this.computeInitialStatus(id, updated, effectiveKey.length > 6);
+      if (modelChanged && updated.quotaInfo) {
+        const def = DEFAULT_PROVIDERS.find((d) => d.id === id);
+        if (id === "gemini" && isGeminiPaidImageModel(updated.selectedModel) && !this.settings.allowPaidProviders) {
+          updated.quotaInfo.officialLimitText = `${updated.selectedModel}: Paid Tier only (Free Tier quota = 0; disabled by default)`;
+          updated.quotaInfo.officialLimit = 0;
+          updated.quotaInfo.officialRemaining = 0;
+        } else if (def?.quotaInfo) {
+          updated.quotaInfo.officialLimitText = def.quotaInfo.officialLimitText;
+          updated.quotaInfo.officialLimit = def.quotaInfo.officialLimit;
+          updated.quotaInfo.officialRemaining = def.quotaInfo.officialRemaining;
+        }
+      }
+    } else {
+      updated.status = this.computeInitialStatus(id, updated, effectiveKey.length > 6);
+    }
 
     this.providers.set(id, updated);
     this.persistToDisk();
-    return updated;
+    return this.getProviderForClient(id)!;
   }
 
   /**
-   * Tests connection for a specific provider
+   * Tests connection independently for a specific provider & its selected model.
+   * Never marks Ready unless the real API test succeeds.
    */
   public async testProviderConnection(
     id: ImageProviderId,
     apiKeyOverride?: string,
+    selectedModelOverride?: string,
+    endpointOverride?: string,
   ): Promise<ProviderConnectionTestResult> {
+    await hydrateServerSecrets();
     const provider = this.providers.get(id);
     const adapter = this.adapters.get(id);
 
@@ -435,51 +623,88 @@ export class ImageProviderManager {
       return {
         success: false,
         latencyMs: 0,
+        provider: id,
         message: `Provider "${id}" does not have an active adapter.`,
       };
     }
 
-    const effectiveConfig = {
+    const effectiveKey =
+      apiKeyOverride && !apiKeyOverride.includes("••••")
+        ? apiKeyOverride.trim()
+        : this.resolveKey(id, provider.apiKey);
+    const effectiveModel = (selectedModelOverride || provider.selectedModel).trim();
+    const effectiveEndpoint =
+      endpointOverride !== undefined
+        ? endpointOverride.trim()
+        : id === "cloudflare"
+        ? (provider.endpointUrl || getServerSecret("cloudflare_account_id")).trim()
+        : provider.endpointUrl;
+
+    const effectiveConfig: ImageProviderConfig = {
       ...provider,
-      apiKey: (apiKeyOverride && !apiKeyOverride.includes("••••")) ? apiKeyOverride : provider.apiKey,
+      apiKey: effectiveKey,
+      selectedModel: effectiveModel,
+      endpointUrl: effectiveEndpoint,
+      allowPaidModelExecution: Boolean(this.settings.allowPaidProviders),
     };
 
     const result = await adapter.testConnection(effectiveConfig);
 
-    // Update status based on test result
     const current = this.providers.get(id)!;
-    current.lastTestedAt = new Date().toISOString();
+    const nowIso = new Date().toISOString();
+    current.lastTestedAt = nowIso;
+    current.lastTestedModel = effectiveModel;
+    current.lastTestSuccess = result.success;
+
+    if (result.quota) {
+      current.quotaInfo = {
+        ...current.quotaInfo,
+        ...result.quota,
+        used: current.quotaInfo?.used ?? 0,
+        refreshedAt: nowIso,
+      };
+    }
+
     if (result.success) {
       current.status = "ready";
+      current.lastSuccessfulTestAt = nowIso;
       current.lastError = undefined;
       this.cooldowns.delete(id);
       this.alerts = this.alerts.filter((a) => a.providerId !== id || a.severity !== "critical");
-      if (result.quota) current.quotaInfo = result.quota;
       if (result.models && result.models.length > 0) {
-        current.supportedModels = Array.from(new Set([...current.supportedModels, ...result.models]));
+        current.supportedModels = sanitizeModelsList(id, [...current.supportedModels, ...result.models]);
       }
     } else {
-      current.status = "error";
-      current.lastError = result.message;
+      current.status =
+        (isGeminiPaidImageModel(effectiveModel) || current.billingTier === "paid") &&
+        !this.settings.allowPaidProviders
+          ? "paid_disabled"
+          : "error";
+      current.lastError = redactSecrets(result.message);
     }
 
     this.providers.set(id, current);
     this.persistToDisk();
-    return result;
+    return {
+      ...result,
+      message: redactSecrets(result.message),
+      provider: id,
+      testedModel: effectiveModel,
+    };
   }
 
   /**
-   * Generates an image with strict exclusivity enforcement and automatic fallback.
-   * STRICT REQUIREMENT: Only Presentation Maker and Admin Test are permitted to invoke image generation.
+   * Generates an image with Free-First protection and optional single-provider targeting.
    */
   public async generateImage(options: GenerateImageOptions): Promise<GenerateImageResult> {
+    await hydrateServerSecrets();
     const startTime = Date.now();
 
-    // 1. Strict Exclusivity Enforcement: Image generation is strictly restricted to Presentation Maker only
+    // 1. Strict Exclusivity Enforcement
     const allowedSources: string[] = ["presentation_maker", "admin_test"];
     if (!options.source || !allowedSources.includes(options.source)) {
       throw new Error(
-        `AI image generation is exclusively reserved for Presentation Maker. Requests from "${options.source || "unknown"}" (such as Document Studio, Cover Designer, or General Documents) are strictly forbidden.`,
+        `AI image generation is exclusively reserved for Presentation Maker. Requests from "${options.source || "unknown"}" are strictly forbidden.`,
       );
     }
 
@@ -492,44 +717,76 @@ export class ImageProviderManager {
       );
     }
 
-    // 3. Collect eligible providers sorted by priority
-    // Never silently invoke paid providers unless explicitly permitted or triggered via admin_test.
+    // 3. Free-First Lock (NEVER bypass paid check even in admin_test unless allowPaidProviders is explicitly enabled!)
     const allowPaid =
-      options.allowPaidProviders === true ||
-      this.settings.allowPaidProviders === true ||
-      options.source === "admin_test";
+      options.allowPaidProviders === true || this.settings.allowPaidProviders === true;
     const now = Date.now();
     const isTestEnv = process.env.NODE_ENV === "test" || Boolean(process.env.VITEST);
-    const eligibleProviders = Array.from(this.providers.values())
-      .filter((p) => {
-        if (!p.enabled) return false;
-        if (p.billingTier === "paid" && !allowPaid) return false;
-        if (!p.apiKey || p.apiKey.trim().length < 6) return false;
-        if (!isTestEnv && this.isPlaceholderTestKey(p.apiKey)) return false;
+
+    // If caller targeted a specific provider (e.g. Admin independent provider benchmark), do NOT silently switch to Gemini!
+    const candidates = options.providerId
+      ? [this.providers.get(options.providerId)].filter((p): p is ImageProviderConfig => Boolean(p))
+      : Array.from(this.providers.values()).sort((a, b) => a.priority - b.priority);
+
+    const eligibleProviders = candidates.filter((p) => {
+      if (!options.providerId && !p.enabled) return false;
+      if (p.billingTier === "paid" && !allowPaid) return false;
+      if (p.id === "gemini" && isGeminiPaidImageModel(p.selectedModel) && !allowPaid) return false;
+      const runtimeKey = this.resolveKey(p.id, p.apiKey);
+      if (!runtimeKey || runtimeKey.trim().length < 6) return false;
+      if (!isTestEnv && this.isPlaceholderTestKey(runtimeKey)) return false;
+      if (!options.providerId) {
         const cooldownUntil = this.cooldowns.get(p.id);
         if (cooldownUntil && cooldownUntil > now) return false;
-        return true;
-      })
-      .sort((a, b) => a.priority - b.priority);
+      }
+      return true;
+    });
 
     if (eligibleProviders.length === 0) {
-      return this.executeZeroFailureFallback(
-        options,
-        "No AI image providers are currently configured or enabled.",
-        startTime,
-      );
+      const targetModel = options.providerId
+        ? this.providers.get(options.providerId)?.selectedModel || ""
+        : "";
+      const isPaidLock =
+        options.providerId &&
+        candidates[0] &&
+        ((candidates[0].billingTier === "paid" && !allowPaid) ||
+          (candidates[0].id === "gemini" && isGeminiPaidImageModel(targetModel) && !allowPaid));
+      const reason = isPaidLock
+        ? `Provider "${options.providerId}" (${targetModel}) requires paid billing and is disabled under Free-First policy.`
+        : options.providerId
+        ? `Provider "${options.providerId}" is not configured with a valid free-tier key or model.`
+        : "No free AI raster image providers are currently configured or active. Using programmatic vector diagram/SVG engine.";
+
+      if (options.providerId && options.source === "admin_test") {
+        return {
+          success: false,
+          imageUrl: "",
+          provider: options.providerId,
+          model: targetModel,
+          durationMs: Date.now() - startTime,
+          format: "png",
+          error: reason,
+        };
+      }
+      return this.executeZeroFailureFallback(options, reason, startTime);
     }
 
-    // 4. Try providers in priority sequence with auto-fallback (#1 Gemini, #2 Hugging Face, etc.)
     let lastError = "No provider attempted";
     for (let i = 0; i < eligibleProviders.length; i++) {
-      const provider = eligibleProviders[i];
-      const nextProvider = eligibleProviders.slice(i + 1).find((p) => {
-        return !p.quotaInfo || typeof p.quotaInfo.remaining !== "number" || p.quotaInfo.remaining > 0;
-      });
-      const cascadeTarget = nextProvider ? nextProvider.name : "High-Fidelity Contextual Visualizer";
+      const provider = eligibleProviders[i]!;
+      const nextProvider = !options.providerId
+        ? eligibleProviders.slice(i + 1).find((p) => {
+            return (
+              !p.quotaInfo ||
+              typeof p.quotaInfo.remaining !== "number" ||
+              p.quotaInfo.remaining > 0
+            );
+          })
+        : undefined;
+      const cascadeTarget = nextProvider
+        ? nextProvider.name
+        : "Programmatic Vector Diagram / SVG Engine";
 
-      // 4a. Quota check: if provider has finished all its quota/credits, auto-cascade to next provider!
       if (
         provider.quotaInfo &&
         typeof provider.quotaInfo.remaining === "number" &&
@@ -540,14 +797,15 @@ export class ImageProviderManager {
           providerId: provider.id,
           providerName: provider.name,
           severity: "critical",
-          title: `${provider.name} Quota Finished`,
-          message: `${provider.name} has exhausted all remaining ${provider.quotaInfo.unit || "credits"}. System has automatically cascaded Presentation Maker visual requests to ${cascadeTarget}.`,
+          title: `${provider.name} App Limit / Quota Reached`,
+          message: `${provider.name} reached its configured tracking limit. ${options.providerId ? "Stopped (no auto-fallback for targeted provider test)." : `Cascading Presentation Maker visuals cleanly to ${cascadeTarget}.`}`,
           remainingQuota: 0,
-          totalQuota: provider.quotaInfo.total || 0,
-          unit: provider.quotaInfo.unit || "requests",
-          cascadedTo: cascadeTarget,
+          totalQuota: provider.quotaInfo.appLimit || provider.quotaInfo.total || 0,
+          unit: provider.quotaInfo.unit || "calls",
+          cascadedTo: options.providerId ? undefined : cascadeTarget,
         });
-        continue; // Immediately cascade to next priority provider (e.g. Hugging Face)!
+        if (options.providerId) break;
+        continue;
       }
 
       const adapter = this.adapters.get(provider.id);
@@ -555,55 +813,33 @@ export class ImageProviderManager {
 
       const attemptStart = Date.now();
       try {
-        if (this.isPlaceholderTestKey(provider.apiKey)) {
+        const effectiveConfig: ImageProviderConfig = {
+          ...provider,
+          apiKey: this.resolveKey(provider.id, provider.apiKey),
+          endpointUrl:
+            provider.id === "cloudflare"
+              ? provider.endpointUrl || getServerSecret("cloudflare_account_id")
+              : provider.endpointUrl,
+          allowPaidModelExecution: allowPaid,
+        };
+        if (this.isPlaceholderTestKey(effectiveConfig.apiKey)) {
           throw new Error("Placeholder test credentials skipped external network request.");
         }
-        const res = await adapter.generateImage(provider, options);
+
+        const res = await adapter.generateImage(effectiveConfig, {
+          ...options,
+          allowPaidProviders: allowPaid,
+        });
         const durationMs = Date.now() - attemptStart;
 
-        // Decrement quota and check for low credit
-        if (provider.quotaInfo && typeof provider.quotaInfo.remaining === "number") {
+        if (provider.quotaInfo) {
           provider.quotaInfo.used = (provider.quotaInfo.used || 0) + 1;
-          provider.quotaInfo.remaining = Math.max(
-            0,
-            (provider.quotaInfo.total || 0) - provider.quotaInfo.used,
-          );
-          const total = provider.quotaInfo.total || 1;
-          const remaining = provider.quotaInfo.remaining;
-          const unit = provider.quotaInfo.unit || "requests";
-
-          // Notify admin in dashboard as credit is finishing (< 20% or <= 3 remaining)
-          if (remaining > 0 && (remaining <= Math.ceil(total * 0.2) || remaining <= 3)) {
-            this.addAlert({
-              id: `alert_${provider.id}_low`,
-              providerId: provider.id,
-              providerName: provider.name,
-              severity: "warning",
-              title: `${provider.name} Credits Finishing Soon`,
-              message: `${provider.name} has only ${remaining} of ${total} ${unit} remaining (~${Math.round((remaining / total) * 100)}% left). When depleted, generation will cascade to ${cascadeTarget}.`,
-              remainingQuota: remaining,
-              totalQuota: total,
-              unit,
-              cascadedTo: cascadeTarget,
-            });
-          } else if (remaining === 0) {
-            provider.status = "rate_limited";
-            this.addAlert({
-              id: `alert_${provider.id}_depleted`,
-              providerId: provider.id,
-              providerName: provider.name,
-              severity: "critical",
-              title: `${provider.name} Quota Fully Exhausted`,
-              message: `${provider.name} has consumed all ${total} ${unit}. All subsequent Presentation Maker requests are automatically cascading to ${cascadeTarget}.`,
-              remainingQuota: 0,
-              totalQuota: total,
-              unit,
-              cascadedTo: cascadeTarget,
-            });
+          const cap = provider.quotaInfo.appLimit ?? provider.quotaInfo.total;
+          if (typeof cap === "number") {
+            provider.quotaInfo.remaining = Math.max(0, cap - provider.quotaInfo.used);
           }
         }
 
-        // Record successful event
         this.logEvent({
           id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           timestamp: new Date().toISOString(),
@@ -625,13 +861,14 @@ export class ImageProviderManager {
           format: res.format,
         };
       } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = redactSecrets(err instanceof Error ? err.message : String(err));
         lastError = errorMsg;
 
         const isRateLimitOrQuota =
           errorMsg.includes("429") ||
+          errorMsg.includes("402") ||
           errorMsg.toLowerCase().includes("quota") ||
-          errorMsg.toLowerCase().includes("resourceexhausted") ||
+          errorMsg.toLowerCase().includes("resource_exhausted") ||
           errorMsg.toLowerCase().includes("rate limit") ||
           errorMsg.toLowerCase().includes("credit") ||
           errorMsg.toLowerCase().includes("insufficient");
@@ -643,24 +880,24 @@ export class ImageProviderManager {
           provider.status = "error";
         }
 
-        // Apply temporary cooldown (2 minutes)
-        this.cooldowns.set(provider.id, Date.now() + 120000);
+        if (!options.providerId) {
+          this.cooldowns.set(provider.id, Date.now() + 120000);
+        }
         provider.lastError = errorMsg;
 
-        // Notify admin about provider finishing or error and cascading
         this.addAlert({
           id: `alert_${provider.id}_error_${Date.now()}`,
           providerId: provider.id,
           providerName: provider.name,
           severity: "critical",
           title: isRateLimitOrQuota
-            ? `${provider.name} Quota Finished / Rate Limited`
+            ? `${provider.name} Free Quota / Credits Exhausted`
             : `${provider.name} Provider Error`,
-          message: `${provider.name} finished or hit limit (${errorMsg.slice(0, 140)}). System automatically cascaded visual generation to ${cascadeTarget}.`,
-          remainingQuota: provider.quotaInfo?.remaining || 0,
-          totalQuota: provider.quotaInfo?.total || 0,
-          unit: provider.quotaInfo?.unit || "requests",
-          cascadedTo: cascadeTarget,
+          message: `${provider.name} (${provider.selectedModel}) failed: ${errorMsg.slice(0, 140)}`,
+          remainingQuota: provider.quotaInfo?.remaining ?? 0,
+          totalQuota: provider.quotaInfo?.appLimit ?? provider.quotaInfo?.total ?? 0,
+          unit: provider.quotaInfo?.unit || "calls",
+          cascadedTo: options.providerId ? undefined : cascadeTarget,
         });
 
         this.logEvent({
@@ -673,20 +910,31 @@ export class ImageProviderManager {
           model: provider.selectedModel,
           status: "failed",
           durationMs: Date.now() - attemptStart,
-          errorCategory: isRateLimitOrQuota ? "Rate Limit Exceeded" : "Provider Error",
+          errorCategory: isRateLimitOrQuota ? "Quota / Credit Exhausted" : "Provider Error",
           errorMessage: errorMsg,
         });
 
-        if (!this.settings.autoFallbackEnabled || !provider.fallbackEligible) {
+        if (options.providerId || !this.settings.autoFallbackEnabled || !provider.fallbackEligible) {
           break;
         }
       }
     }
 
-    // 5. Zero-Failure Contextual SVG Fallback (guarantees Presentation Maker never breaks)
+    if (options.providerId) {
+      return {
+        success: false,
+        imageUrl: "",
+        provider: options.providerId,
+        model: this.providers.get(options.providerId)?.selectedModel || "",
+        durationMs: Date.now() - startTime,
+        format: "png",
+        error: lastError,
+      };
+    }
+
     return this.executeZeroFailureFallback(
       options,
-      `All primary providers failed (${lastError}). Activated high-fidelity contextual visual engine.`,
+      `External image providers unavailable (${lastError}). Used programmatic vector diagram engine.`,
       startTime,
     );
   }
@@ -717,7 +965,7 @@ export class ImageProviderManager {
       model: "contextual-svg-engine",
       status: "fallback",
       durationMs,
-      errorMessage: reason,
+      errorMessage: redactSecrets(reason),
     });
 
     return {
@@ -727,7 +975,7 @@ export class ImageProviderManager {
       model: "contextual-svg-engine",
       durationMs,
       format: "svg+xml",
-      error: reason,
+      error: redactSecrets(reason),
     };
   }
 
@@ -745,6 +993,12 @@ export class ImageProviderManager {
 
   public updateSettings(updates: Partial<ImageGenerationSettings>): ImageGenerationSettings {
     this.settings = { ...this.settings, ...updates };
+    // Refresh paid_disabled statuses across providers whenever allowPaidProviders toggles
+    for (const [id, p] of this.providers.entries()) {
+      const hasKey = this.resolveKey(id, p.apiKey).length > 6;
+      p.status = this.computeInitialStatus(id, p, hasKey);
+      this.providers.set(id, p);
+    }
     this.persistToDisk();
     return { ...this.settings };
   }

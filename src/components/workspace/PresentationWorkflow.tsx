@@ -404,9 +404,9 @@ export function PresentationWorkflow({
     try {
       const s = await fetchAdminSettings();
       if (s?.data) {
-        setAdminGeminiKeyInput(s.data.geminiApiKey || "");
-        setAdminOpenAiKeyInput(s.data.openaiApiKey || "");
-        setSelectedProvider(s.data.activeProvider || "gemini");
+        setAdminGeminiKeyInput("");
+        setAdminOpenAiKeyInput("");
+        setSelectedProvider(s.data.activeProvider === "openai" && !s.data.allowPaidProviders ? "gemini" : (s.data.activeProvider || "gemini") as any);
         setHasServerKey(Boolean(s.data.hasKeyConfigured));
       }
     } catch {
@@ -427,11 +427,15 @@ export function PresentationWorkflow({
         payload["openaiApiKey"] = adminOpenAiKeyInput.trim();
       }
       const res = await updateAdminSettings(payload);
+      if (res && res.success === false) {
+        toast.error(res?.error?.message || "Blocked by Free-First policy.");
+        return;
+      }
       if (res?.data) {
         setHasServerKey(Boolean(res.data.hasKeyConfigured));
       }
-      toast.success("AI Engine Settings Applied Globally", {
-        description: `Active Engine: ${selectedProvider.toUpperCase()}. Configured for all staff and users.`,
+      toast.success("AI Engine Settings Applied Server-Side", {
+        description: `Active Engine: ${selectedProvider.toUpperCase()}. Keys stored securely on the backend.`,
       });
       setShowAdminKeyModal(false);
     } catch (err: any) {
@@ -1870,7 +1874,7 @@ export function PresentationWorkflow({
                   </span>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Platform Active (Gemini & Imagen)
+                    Platform Active (Gemini 3.8 Flash)
                   </span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-serif font-bold text-foreground mt-0.5">
@@ -1901,7 +1905,7 @@ export function PresentationWorkflow({
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              DocuMind automatically illustrates your slides with contextual 16:9 pictures, architecture diagrams, and KPI charts using our platform-managed Gemini 2.5 Flash & Imagen 3 pipeline. All visual assets and layout designs are handled seamlessly on the server—no personal API keys or technical setup required.
+              DocuMind illustrates slides with contextual 16:9 visuals, editable architecture diagrams, and KPI charts using Google Gemini 3.8 Flash (Free Tier) and our programmatic vector engine. Paid Imagen 3 / paid APIs stay disabled unless explicitly enabled by an administrator—and all server credentials stay securely off the browser.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] font-mono text-muted-foreground">
@@ -2296,13 +2300,13 @@ export function PresentationWorkflow({
                   {
                     id: "gemini",
                     name: "Google Gemini",
-                    tag: "Flash + Imagen",
+                    tag: "3.8 Flash (Free Tier)",
                     icon: Cpu,
                   },
                   {
                     id: "openai",
-                    name: "OpenAI",
-                    tag: "GPT-4o-mini",
+                    name: "OpenAI (Paid)",
+                    tag: "Requires Billing",
                     icon: Bot,
                   },
                   {
@@ -2359,13 +2363,14 @@ export function PresentationWorkflow({
                       type={showAdminPassword ? "text" : "password"}
                       value={adminGeminiKeyInput}
                       onChange={(e) => setAdminGeminiKeyInput(e.target.value)}
-                      placeholder="AIzaSy... (Paste Gemini Key)"
+                      placeholder={hasServerKey ? "Configured securely on server — enter new key to rotate" : "AIza... (Stored server-side only)"}
                       className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs font-mono text-foreground focus:border-primary focus:outline-hidden pr-9"
                     />
                     <button
                       type="button"
                       onClick={() => setShowAdminPassword(!showAdminPassword)}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      title="Toggle new input visibility (stored keys are never revealed)"
                     >
                       {showAdminPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                     </button>
@@ -2386,7 +2391,7 @@ export function PresentationWorkflow({
                   </Button>
                 </div>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Powers Gemini 2.5 Flash outline structure and Google Imagen 3 contextual slide pictures.
+                  Powers Gemini 3.8 Flash structured presentation synthesis & free-tier vector diagrams (Imagen 3 remains disabled unless paid billing is approved).
                 </p>
               </div>
             )}

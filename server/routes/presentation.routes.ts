@@ -36,18 +36,8 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       slideCount,
       autoSlideCount,
       allowPaidProviders,
-      geminiApiKey,
       assignmentMetadata,
-      providerKeys: bodyProviderKeys,
     } = req.body;
-    const headerApiKey = req.headers["x-gemini-api-key"] as string | undefined;
-
-    let parsedProviderKeys: Record<string, string> | undefined = bodyProviderKeys;
-    if (!parsedProviderKeys && typeof req.headers["x-provider-keys"] === "string") {
-      try {
-        parsedProviderKeys = JSON.parse(req.headers["x-provider-keys"]);
-      } catch {}
-    }
 
     if (!theme || !theme.name) {
       return res.status(400).json({
@@ -74,8 +64,6 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       slideCount: slideCount !== undefined && Number(slideCount) >= 3 ? Number(slideCount) : undefined,
       autoSlideCount: Boolean(autoSlideCount) || slideCount === undefined || slideCount === "auto",
       allowPaidProviders: Boolean(allowPaidProviders),
-      geminiApiKey: geminiApiKey || headerApiKey,
-      providerKeys: parsedProviderKeys,
       assignmentMetadata,
     };
 
@@ -100,6 +88,8 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
         },
         typography: session.typography,
         slides: session.slides,
+        aiProviderUsed: session.aiProviderUsed,
+        aiNotice: session.aiNotice,
         downloadUrl: `/api/presentations/${session.id}/download`,
       },
     });
@@ -206,16 +196,10 @@ router.post("/presentations/session/:id/slide/:index/regenerate-visual", async (
     });
   }
 
-  const { prompt, providerKeys: bodyProviderKeys } = req.body || {};
-  let parsedProviderKeys: Record<string, string> | undefined = bodyProviderKeys;
-  if (!parsedProviderKeys && typeof req.headers["x-provider-keys"] === "string") {
-    try {
-      parsedProviderKeys = JSON.parse(req.headers["x-provider-keys"]);
-    } catch {}
-  }
+  const { prompt } = req.body || {};
 
   try {
-    const updated = await regenerateSlideVisual(sessionId, slideIndex, prompt, parsedProviderKeys);
+    const updated = await regenerateSlideVisual(sessionId, slideIndex, prompt);
     if (!updated) {
       return res.status(404).json({
         success: false,
@@ -254,15 +238,13 @@ router.post("/presentations/session/:id/slide/:index/regenerate-ai", async (req:
     });
   }
 
-  const { instruction, apiKey } = req.body || {};
-  const headerApiKey = req.headers["x-gemini-api-key"] as string | undefined;
+  const { instruction } = req.body || {};
 
   try {
     const updated = await regenerateSlideWithAI(
       sessionId,
       slideIndex,
       instruction || "Make this slide more visually attractive and impactful",
-      apiKey || headerApiKey,
     );
     if (!updated) {
       return res.status(404).json({

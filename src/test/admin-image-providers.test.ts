@@ -117,7 +117,7 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
       expect(provider?.enabled).toBe(true);
     });
 
-    it("executes provider connection test and returns latency and diagnostics", async () => {
+    it("executes provider connection test and returns latency and diagnostics", { timeout: 15000 }, async () => {
       const res = await fetch(`${baseUrl}/api/admin/providers/gemini/test`, {
         method: "POST",
         headers: {
@@ -306,8 +306,9 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
       expect(unknown.confidence).toBe("low");
     });
 
-    it("ingests dynamic presentation AI provider keys when creating presentation session", async () => {
-      const res = await fetch(`${baseUrl}/api/presentations/generate`, {
+    it("prevents unauthenticated public requests from injecting API keys and configures keys strictly via Admin API", async () => {
+      // 1. Public presentation generation must NOT ingest client-supplied providerKeys into server store
+      const pubRes = await fetch(`${baseUrl}/api/presentations/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -324,26 +325,43 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
             tier: "free",
           },
           providerKeys: {
-            gemini: "AIzaSy_customPresentationTestKey_1234567",
-            huggingface: "hf_customPresentationTestToken_987654",
+            gemini: "AIzaSy_customPresentationTestKey_untrusted_1234",
+            huggingface: "hf_customPresentationTestToken_untrusted_5678",
           },
         }),
       });
 
-      expect(res.status).toBe(201);
-      const json = await res.json();
-      expect(json.success).toBe(true);
-      expect(json.data.sessionId).toBeDefined();
+      expect(pubRes.status).toBe(201);
+      const pubJson = await pubRes.json();
+      expect(pubJson.success).toBe(true);
+      expect(pubJson.data.sessionId).toBeDefined();
+      deletePresentationSession(pubJson.data.sessionId);
 
-      // Verify that imageProviderManager has the updated keys
+      // 2. Configure keys securely via authenticated Admin API
+      const gemSave = await fetch(`${baseUrl}/api/admin/providers/gemini`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+        body: JSON.stringify({ apiKey: "AIzaSy_serverStoredTestKey_1234567" }),
+      });
+      expect(gemSave.status).toBe(200);
+
+      const hfSave = await fetch(`${baseUrl}/api/admin/providers/huggingface`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+        body: JSON.stringify({ apiKey: "hf_serverStoredTestToken_987654" }),
+      });
+      expect(hfSave.status).toBe(200);
+
       const allProviders = imageProviderManager.getProvidersForClient();
       const gemini = allProviders.find((p) => p.id === "gemini");
       expect(gemini?.isConfigured).toBe(true);
+      expect(gemini?.maskedKey).toContain("••••");
+      // Configuring a key without running a real test must NOT falsely mark Ready
+      expect(gemini?.status).toBe("untested");
 
       const hf = allProviders.find((p) => p.id === "huggingface");
       expect(hf?.isConfigured).toBe(true);
-
-      deletePresentationSession(json.data.sessionId);
+      expect(hf?.maskedKey).toContain("••••");
     });
 
     it("safely handles HTML 404/SPA responses without throwing SyntaxError: Unexpected token '<'", async () => {
@@ -369,30 +387,33 @@ describe("Admin Dashboard & Multi-Provider AI Image Generation Suite", () => {
       }
     });
 
-    it("provides direct client-side verification probe without throwing on missing keys", async () => {
+    it("refuses direct browser-side third-party key verification for server-side security", async () => {
       const emptyResult = await verifyProviderKeyDirectly("gemini", "");
       expect(emptyResult.success).toBe(false);
       expect(emptyResult.data.message).toContain("No API key entered");
 
       const falResult = await verifyProviderKeyDirectly("fal", "key_test_12345");
-      expect(falResult.success).toBe(true);
-      expect(falResult.data.message).toContain("Key format accepted");
+      expect(falResult.success).toBe(false);
+      expect(falResult.data.message).toContain("disabled for security");
     });
   });
 
   describe("7. Provider Quota Tracking, Depletion Auto-Cascade & Admin Notifications", () => {
-    it("strictly respects priority order (#1 Gemini, #2 Hugging Face) and tracks remaining quota", async () => {
-      // Ensure Gemini has priority 1 and Hugging Face has priority 2
+    it("strictly respects priority order (#1 Gemini, #2 Hugging Face) and tracks app usage separately", async () => {
       imageProviderManager.updateProvider("gemini", { priority: 1, enabled: true });
       imageProviderManager.updateProvider("huggingface", { priority: 2, enabled: true });
 
       const providers = imageProviderManager.getProvidersForClient();
       expect(providers[0]?.id).toBe("gemini");
       expect(providers[1]?.id).toBe("huggingface");
+      expect(providers[0]?.selectedModel).toBe("gemini-3.8-flash");
     });
 
-    it("auto-cascades to Hugging Face when Gemini quota is exhausted (remaining = 0)", async () => {
-      // Set Gemini quota to 0 to simulate finished credit
+    it("auto-cascades to Hugging Face when Gemini app quota counter is exhausted (remaining = 0)", async () => {
+      imageProviderManager.updateProvider("gemini", {
+        apiKey: "AIzaSy_mock_test_key_quota_case_1234",
+        enabled: true,
+      });
       const gemini = imageProviderManager.getProvider("gemini");
       if (gemini?.quotaInfo) {
         gemini.quotaInfo.remaining = 0;

@@ -41,6 +41,7 @@ export function AdminImageGenTab({
   const [isClearing, setIsClearing] = useState(false);
 
   // Playground
+  const [targetProviderId, setTargetProviderId] = useState<string>("auto");
   const [prompt, setPrompt] = useState(
     "Cross-section of a computer central processing unit architecture, labeled data buses, 16:9 modern illustration",
   );
@@ -50,6 +51,7 @@ export function AdminImageGenTab({
     durationMs?: number;
     provider?: string;
     model?: string;
+    error?: string;
   } | null>(null);
 
   const handleSaveSettings = async () => {
@@ -91,13 +93,16 @@ export function AdminImageGenTab({
     setIsBenchmarking(true);
     setBenchmarkResult(null);
     try {
-      const res = await testAdminGenerateImage(prompt, form.preferredAspectRatio, adminKey);
+      const pid = targetProviderId === "auto" ? undefined : targetProviderId;
+      const res = await testAdminGenerateImage(prompt, form.preferredAspectRatio, adminKey, pid);
       if (res && res.success && res.data) {
         setBenchmarkResult(res.data);
-        toast.success(`Image generated via ${res.data.provider} (${res.data.durationMs}ms)!`);
+        toast.success(`Image generated via ${res.data.provider} (${res.data.model}, ${res.data.durationMs}ms)!`);
         onRefresh();
       } else {
-        toast.error(res?.error?.message || "Generation benchmark failed");
+        const msg = res?.data?.error || res?.error?.message || "Generation benchmark failed";
+        if (res?.data) setBenchmarkResult(res.data);
+        toast.error(msg);
       }
     } catch (e: any) {
       toast.error(e?.message || "Failed to test generate");
@@ -176,6 +181,24 @@ export function AdminImageGenTab({
                 type="checkbox"
                 checked={form.autoFallbackEnabled}
                 onChange={(e) => setForm({ ...form, autoFallbackEnabled: e.target.checked })}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              />
+            </div>
+
+            {/* Free-First Paid Provider Lock */}
+            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-center justify-between sm:col-span-2">
+              <div>
+                <span className="font-serif text-sm font-bold text-foreground block">
+                  Allow Paid Image / AI Providers (Disabled by Default)
+                </span>
+                <span className="text-[11px] text-muted-foreground block mt-0.5">
+                  Keep OFF for Free-First policy. Enabling allows Imagen 3 (paid per-image), fal.ai, Replicate, and paid LLM fallbacks if keys have billing.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(form.allowPaidProviders)}
+                onChange={(e) => setForm({ ...form, allowPaidProviders: e.target.checked })}
                 className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
               />
             </div>
@@ -276,6 +299,19 @@ export function AdminImageGenTab({
             </p>
 
             <div className="mt-3 space-y-2">
+              <select
+                value={targetProviderId}
+                onChange={(e) => {
+                  setTargetProviderId(e.target.value);
+                  setBenchmarkResult(null);
+                }}
+                className="w-full h-8 rounded-lg border border-border bg-background px-2.5 font-mono text-xs text-foreground"
+              >
+                <option value="auto">Auto (Free Cascade -&gt; SVG)</option>
+                <option value="huggingface">Hugging Face ONLY (FLUX.1-schnell)</option>
+                <option value="cloudflare">Cloudflare Workers AI ONLY</option>
+                <option value="gemini">Google Gemini ONLY</option>
+              </select>
               <textarea
                 rows={3}
                 value={prompt}

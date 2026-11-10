@@ -10,6 +10,28 @@ export type AdminTab =
   | "security"
   | "health";
 
+export type BillingStatus =
+  | "free_tier"
+  | "free_credits_then_paid"
+  | "paid_required"
+  | "local_free";
+
+export interface ProviderQuotaInfo {
+  total?: number;
+  used?: number;
+  remaining?: number | null;
+  isEstimate: boolean;
+  unit?: string;
+  resetsAt?: string;
+  officialLimit?: number | null;
+  officialRemaining?: number | null;
+  officialLimitText?: string;
+  officialSource?: "api_header" | "api_endpoint" | "unavailable";
+  appLimit?: number | null;
+  refreshedAt?: string;
+  rateLimitHeaders?: Record<string, string>;
+}
+
 export interface ProviderItem {
   id: "gemini" | "huggingface" | "cloudflare" | "fal" | "replicate";
   name: string;
@@ -18,21 +40,22 @@ export interface ProviderItem {
   fallbackEligible: boolean;
   selectedModel: string;
   supportedModels: string[];
+  paidModels?: string[];
   apiKey: string;
   maskedKey?: string;
   isConfigured: boolean;
+  keySource?: "env" | "firestore" | "server_vault" | "none";
   endpointUrl?: string;
-  status: "ready" | "needs_key" | "error" | "rate_limited";
+  status: "ready" | "needs_key" | "untested" | "error" | "rate_limited" | "paid_disabled";
   lastTestedAt?: string;
+  lastSuccessfulTestAt?: string;
+  lastTestedModel?: string;
+  lastTestSuccess?: boolean;
   lastError?: string;
   freeTierInfo: string;
-  quotaInfo?: {
-    total?: number;
-    used?: number;
-    remaining?: number;
-    isEstimate: boolean;
-    unit?: string;
-  };
+  billingTier?: "free" | "paid";
+  billingStatus?: BillingStatus;
+  quotaInfo?: ProviderQuotaInfo;
 }
 
 export interface ProviderAlertItem {
@@ -59,6 +82,7 @@ export interface ImageSettingsItem {
   timeoutSeconds: number;
   autoFallbackEnabled: boolean;
   preferredAspectRatio: "16:9" | "1:1";
+  allowPaidProviders?: boolean;
 }
 
 export interface ImageLogItem {
@@ -135,13 +159,34 @@ export interface AdminMetrics {
   }>;
 }
 
+export interface ProviderConnectionSnapshotItem {
+  success: boolean;
+  testedAt: string;
+  lastSuccessfulTestAt?: string;
+  model: string;
+  message: string;
+  latencyMs: number;
+  capabilities?: {
+    text: boolean;
+    json: boolean;
+    pdf?: boolean;
+  };
+  rateLimitHeaders?: Record<string, string>;
+}
+
 export interface AdminSystemSettingsState {
-  activeProvider?: "gemini" | "openai" | "offline";
+  activeProvider?: "gemini" | "groq" | "openrouter" | "ollama" | "openai" | "offline";
   geminiApiKey: string;
   geminiModel: string;
   imagenModel: string;
+  fallbackTextProvider?: "none" | "groq" | "openrouter" | "ollama" | "offline";
+  fallbackTextModel?: string;
+  ollamaBaseUrl?: string;
+  groqApiKey?: string;
+  openrouterApiKey?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  allowPaidProviders?: boolean;
   aiEngineMode: "full" | "balanced" | "local";
   maxSlideCount: number;
   aiTimeoutSeconds: number;
@@ -154,30 +199,48 @@ export interface AdminSystemSettingsState {
   };
   hasKeyConfigured?: boolean;
   hasOpenAiKeyConfigured?: boolean;
+  hasGroqKeyConfigured?: boolean;
+  hasOpenRouterKeyConfigured?: boolean;
+  keySource?: string;
+  geminiLastTest?: ProviderConnectionSnapshotItem;
+  fallbackLastTest?: ProviderConnectionSnapshotItem;
 }
 
 export const DEFAULT_PROVIDER_ITEMS: ProviderItem[] = [
   {
     id: "gemini",
-    name: "Google Gemini / Imagen 3",
+    name: "Google Gemini / AI Studio",
     enabled: true,
     priority: 1,
     fallbackEligible: true,
-    selectedModel: "imagen-3.0-generate-002",
+    selectedModel: "gemini-3.8-flash",
     supportedModels: [
+      "gemini-3.8-flash",
+      "gemini-3.5-flash-lite",
       "imagen-3.0-generate-002",
       "imagen-3.0-fast-generate-001",
-      "gemini-2.5-flash",
     ],
+    paidModels: ["imagen-3.0-generate-002", "imagen-3.0-fast-generate-001"],
     apiKey: "",
     isConfigured: false,
+    keySource: "none",
     status: "needs_key",
-    freeTierInfo: "Free tier available via Google AI Studio API with daily rate limits.",
+    billingTier: "free",
+    billingStatus: "free_tier",
+    freeTierInfo:
+      "Gemini 3.8 Flash uses Gemini API Free Tier quotas for text & vector diagrams. Imagen 3 image models require Google Cloud Billing (disabled by default).",
     quotaInfo: {
       isEstimate: true,
-      unit: "Requests / Min",
-      total: 15,
-      remaining: 15,
+      unit: "App Tracked Calls",
+      total: 50,
+      appLimit: 50,
+      used: 0,
+      remaining: 50,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText:
+        "Per-project dynamic RPM/TPM/RPD managed by Google AI Studio (official remaining quota is not returned via API).",
     },
   },
   {
@@ -190,17 +253,28 @@ export const DEFAULT_PROVIDER_ITEMS: ProviderItem[] = [
     supportedModels: [
       "black-forest-labs/FLUX.1-schnell",
       "stabilityai/stable-diffusion-xl-base-1.0",
-      "runwayml/stable-diffusion-v1-5",
+      "black-forest-labs/FLUX.1-dev",
     ],
     apiKey: "",
     isConfigured: false,
+    keySource: "none",
     status: "needs_key",
-    freeTierInfo: "Free community inference API with Hugging Face user access token.",
+    billingTier: "free",
+    billingStatus: "free_credits_then_paid",
+    freeTierInfo:
+      "Free HF accounts receive ~$0.10/mo in Inference Providers credits (~few FLUX runs); halts at HTTP 402 with no auto-billing.",
     quotaInfo: {
       isEstimate: true,
-      unit: "Monthly Requests",
-      total: 1000,
-      remaining: 1000,
+      unit: "App Tracked Calls",
+      total: 25,
+      appLimit: 25,
+      used: 0,
+      remaining: 25,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText:
+        "~$0.10/month free Inference Providers credits (official dollar balance is not returned unless in headers; halts cleanly at HTTP 402).",
     },
   },
   {
@@ -209,21 +283,33 @@ export const DEFAULT_PROVIDER_ITEMS: ProviderItem[] = [
     enabled: false,
     priority: 3,
     fallbackEligible: true,
-    selectedModel: "@cf/bytedance/stable-diffusion-xl-lightning",
+    selectedModel: "@cf/black-forest-labs/flux-1-schnell",
     supportedModels: [
+      "@cf/black-forest-labs/flux-1-schnell",
       "@cf/bytedance/stable-diffusion-xl-lightning",
       "@cf/stabilityai/stable-diffusion-xl-base-1.0",
     ],
     apiKey: "",
     endpointUrl: "",
     isConfigured: false,
+    keySource: "none",
     status: "needs_key",
-    freeTierInfo: "10,000 Neurons per day free on Cloudflare Workers AI plan.",
+    billingTier: "free",
+    billingStatus: "free_tier",
+    freeTierInfo:
+      "Free tier grants 10,000 Neurons/day resetting at 00:00 UTC without requiring a paid Workers plan.",
     quotaInfo: {
       isEstimate: true,
-      unit: "Neurons / Day",
-      total: 10000,
-      remaining: 10000,
+      unit: "App Tracked Calls",
+      total: 40,
+      appLimit: 40,
+      used: 0,
+      remaining: 40,
+      officialLimit: 10000,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText:
+        "10,000 Neurons/day free tier (exact remaining Neurons shown in Cloudflare Workers AI dashboard).",
     },
   },
   {
@@ -231,18 +317,28 @@ export const DEFAULT_PROVIDER_ITEMS: ProviderItem[] = [
     name: "fal.ai (FLUX / SDXL)",
     enabled: false,
     priority: 4,
-    fallbackEligible: true,
+    fallbackEligible: false,
     selectedModel: "fal-ai/flux/schnell",
     supportedModels: ["fal-ai/flux/schnell", "fal-ai/fast-sdxl"],
     apiKey: "",
     isConfigured: false,
-    status: "needs_key",
-    freeTierInfo: "Initial free trial credits provided on sign-up; requires pay-as-you-go key after trial.",
+    keySource: "none",
+    status: "paid_disabled",
+    billingTier: "paid",
+    billingStatus: "paid_required",
+    freeTierInfo:
+      "Initial sign-up credits only; requires pay-as-you-go billing thereafter. Disabled unless Paid Providers are explicitly approved.",
     quotaInfo: {
       isEstimate: true,
-      unit: "Credits ($)",
+      unit: "App Tracked Calls",
       total: 10,
+      appLimit: 10,
+      used: 0,
       remaining: 10,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText: "Pay-as-you-go billing required (managed in fal.ai dashboard).",
     },
   },
   {
@@ -250,18 +346,28 @@ export const DEFAULT_PROVIDER_ITEMS: ProviderItem[] = [
     name: "Replicate (FLUX & SDXL)",
     enabled: false,
     priority: 5,
-    fallbackEligible: true,
+    fallbackEligible: false,
     selectedModel: "black-forest-labs/flux-schnell",
     supportedModels: ["black-forest-labs/flux-schnell", "stability-ai/sdxl"],
     apiKey: "",
     isConfigured: false,
-    status: "needs_key",
-    freeTierInfo: "Trial runs offered for new accounts; pay-per-second thereafter.",
+    keySource: "none",
+    status: "paid_disabled",
+    billingTier: "paid",
+    billingStatus: "paid_required",
+    freeTierInfo:
+      "Pay-per-second cloud GPU billing after brief trial. Disabled unless Paid Providers are explicitly approved.",
     quotaInfo: {
       isEstimate: true,
-      unit: "Predictions",
-      total: 50,
-      remaining: 50,
+      unit: "App Tracked Calls",
+      total: 10,
+      appLimit: 10,
+      used: 0,
+      remaining: 10,
+      officialLimit: null,
+      officialRemaining: null,
+      officialSource: "unavailable",
+      officialLimitText: "Pay-per-second billing required (managed in Replicate dashboard).",
     },
   },
 ];

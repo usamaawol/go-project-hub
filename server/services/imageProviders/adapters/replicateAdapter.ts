@@ -20,6 +20,15 @@ export class ReplicateImageAdapter implements IImageProviderAdapter {
 
     const start = Date.now();
     try {
+      if (!config.allowPaidModelExecution) {
+        return {
+          success: false,
+          latencyMs: 0,
+          provider: "replicate",
+          testedModel: config.selectedModel,
+          message: "Replicate requires paid billing after trial runs and is disabled under Free-First policy.",
+        };
+      }
       const res = await fetch("https://api.replicate.com/v1/account", {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(10000),
@@ -30,6 +39,8 @@ export class ReplicateImageAdapter implements IImageProviderAdapter {
         return {
           success: false,
           latencyMs,
+          provider: "replicate",
+          testedModel: config.selectedModel,
           message: `Replicate authentication failed (HTTP ${res.status}). Verify your token.`,
         };
       }
@@ -38,13 +49,15 @@ export class ReplicateImageAdapter implements IImageProviderAdapter {
       return {
         success: true,
         latencyMs,
+        provider: "replicate",
+        testedModel: config.selectedModel,
         message: `Authenticated as Replicate user "${account.username || "User"}".`,
         models: config.supportedModels,
         quota: {
+          officialSource: "unavailable",
+          officialLimitText: "Pay-per-second billing tracked in Replicate dashboard.",
           isEstimate: true,
-          unit: "Community Compute Runs",
-          total: 50,
-          remaining: 45,
+          refreshedAt: new Date().toISOString(),
         },
       };
     } catch (err) {
