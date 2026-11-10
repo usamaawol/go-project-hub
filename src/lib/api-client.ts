@@ -940,6 +940,7 @@ export async function regeneratePresentationSlideVisualApi(
   );
 
   if (res && res.success) {
+    if (res.data) saveClientSession(res.data);
     return res;
   }
 
@@ -947,21 +948,23 @@ export async function regeneratePresentationSlideVisualApi(
   const clientSession = getClientSession(sessionId);
   if (clientSession && clientSession.slides && clientSession.slides[slideIndex]) {
     const slide = clientSession.slides[slideIndex]!;
-    const visual = buildContextualVisual(
-      slide.title,
-      slide.subtitle,
-      slide.bullets,
-      prompt,
-      (slide.visual?.type as any) || "diagram",
-      slide.visual?.concept || slide.title,
-    );
+    const visual = buildContextualVisual({
+      title: slide.title,
+      subtitle: slide.subtitle || prompt,
+      bullets: slide.bullets,
+      concept: slide.visual?.concept || slide.title,
+      accentColor: clientSession.theme?.colors?.accent || "#2563EB",
+      isDark: slide.slideSurface === "dark",
+    });
     slide.visual = {
-      type: "diagram",
+      type: visual.type === "chart" ? "chart" : "diagram",
       concept: visual.concept,
       caption: visual.caption,
-      imageUrl: visual.svgDataUri,
+      imageUrl: visual.imageUrl,
+      svgContent: visual.svgContent,
       imagePrompt: prompt,
     };
+    slide.elements = undefined;
     if (slide.layout === "content" || slide.layout === "agenda") {
       slide.layout = "text-visual";
     }
@@ -976,62 +979,26 @@ export async function regeneratePresentationSlideVisualApi(
   return { success: false, error: { message: "Slide session not found" } };
 }
 
-export interface SlidePreviewItem {
-  id: string;
-  slideNumber: number;
-  layout: "title" | "agenda" | "content" | "two-column" | "metrics" | "conclusion";
-  title: string;
-  subtitle?: string;
-  bullets?: string[];
-  leftColumn?: { title: string; bullets: string[] };
-  rightColumn?: { title: string; bullets: string[] };
-  metrics?: Array<{ label: string; value: string; description?: string }>;
-  notes?: string;
-  titleFontSize?: number;
-  isTitleBold?: boolean;
-  isSubtitleItalic?: boolean;
-  textColor?: string;
-  cardBgColor?: string;
-}
-
-export interface PresentationSessionData {
-  id: string;
-  title: string;
-  purpose: string;
-  density: "concise" | "balanced" | "detailed";
-  theme: {
-    id: string;
-    name: string;
-    category: string;
-    kind: string;
-    colors: {
-      primary: string;
-      accent: string;
-      bg: string;
-    };
-    fonts: string;
-    tier: "free" | "pro";
-  };
-  typography: {
-    fontFamily: string;
-    fontSizePreset: "compact" | "standard" | "large" | "extra-large";
-  };
-  slideCount: number;
-  slides: SlidePreviewItem[];
-  fileSize: number;
-  createdAt: number;
-  expiresAt: number;
-  secondsRemaining: number;
-}
-
 import {
   buildSlideDeckContent,
   saveClientSession,
   getClientSession,
   removeClientSession,
+  detectTitleFromText,
+  type SlidePreviewItem,
+  type PresentationSessionData,
 } from "./presentation-session-client";
 import { buildContextualVisual } from "./presentation-visual-generator";
+import { recommendNaturalSlideCount } from "./slide-count-estimator";
+import {
+  buildCrispCardFromPoint,
+  buildSlideDiagramData,
+  detectUnreadableExtraction,
+  renderDiagramDataToSvg,
+} from "./presentation-pipeline";
 import type { AssignmentMetadata } from "./assignment-types";
+
+export type { SlidePreviewItem, PresentationSessionData };
 
 export async function createPresentationSessionApi(input: {
   title: string;
@@ -1057,6 +1024,9 @@ export async function createPresentationSessionApi(input: {
     fontSizePreset?: "compact" | "standard" | "large" | "extra-large";
   };
   slideCount?: number;
+  autoSlideCount?: boolean;
+  allowPaidProviders?: boolean;
+  visualPreference?: "diagrams" | "text-only";
   geminiApiKey?: string;
   providerKeys?: Record<string, string>;
 }): Promise<{
@@ -1068,7 +1038,13 @@ export async function createPresentationSessionApi(input: {
   slides?: SlidePreviewItem[];
   downloadUrl?: string;
 }> {
-  // Exclusively for Presentation Maker sessions, check for user-configured AI provider keys
+  if (input.content && input.content.trim().length > 0) {
+    const unreadable = detectUnreadableExtraction(input.content);
+    if (unreadable) {
+      throw new Error(unreadable);
+    }
+  }
+
   let presentationKeys = input.providerKeys;
   if (!presentationKeys && typeof window !== "undefined") {
     try {
@@ -1089,17 +1065,20 @@ export async function createPresentationSessionApi(input: {
     });
 
     const contentType = res.headers.get("content-type") || "";
-    if (res.ok && contentType.includes("application/json")) {
+    if (contentType.includes("application/json")) {
       const json = await res.json();
-      if (json.success && json.data) {
+      if (res.status >= 400 && res.status < 500) {
+        throw new Error(json?.error?.message || "Invalid presentation input.");
+      }
+      if (res.ok && json.success && json.data) {
         if (json.data.slides) {
           const clientSession: PresentationSessionData = {
             id: json.data.sessionId,
             title: json.data.title,
-            purpose: input.purpose || "Business & Strategy",
+            purpose: input.purpose || "Executive Briefing",
             density: input.density || "balanced",
             assignmentMetadata: input.assignmentMetadata,
-            theme: input.theme,
+            theme: json.data.theme || input.theme,
             typography: {
               fontFamily: input.typography?.fontFamily || "Inter",
               fontSizePreset: input.typography?.fontSizePreset || "standard",
@@ -1122,6 +1101,12 @@ export async function createPresentationSessionApi(input: {
       }
     }
   } catch (err) {
+    if (
+      err instanceof Error &&
+      /extract|unreadable|corrupted|empty|source text|invalid presentation/i.test(err.message)
+    ) {
+      throw err;
+    }
     console.warn(
       "Backend presentation API unreachable, activating client ephemeral generator:",
       err,
@@ -1134,24 +1119,34 @@ export async function createPresentationSessionApi(input: {
       ? crypto.randomUUID()
       : `pres_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-  const slideCount = Math.min(60, Math.max(3, input.slideCount || 8));
+  const resolvedCount =
+    input.autoSlideCount || !input.slideCount
+      ? recommendNaturalSlideCount(input.content).recommendedCount
+      : Math.min(50, Math.max(3, input.slideCount));
   const density = input.density || "balanced";
-  const purpose = input.purpose || "Business & Strategy";
+  const purpose = input.purpose || "Executive Briefing";
   const fontFamily = input.typography?.fontFamily || "Inter";
   const fontSizePreset = input.typography?.fontSizePreset || "standard";
 
   const slides = buildSlideDeckContent(
     input.title,
     input.content,
-    slideCount,
+    resolvedCount,
     density,
     purpose,
     input.assignmentMetadata,
+    {
+      visualPreference: input.visualPreference,
+      theme: input.theme,
+      autoSlideCount: input.autoSlideCount,
+      audience: input.audience,
+      language: input.language,
+    },
   );
 
   const clientSession: PresentationSessionData = {
     id: sessionId,
-    title: input.title.trim() || "Untitled Presentation",
+    title: input.title.trim() || detectTitleFromText(input.content) || slides[0]?.title || "Presentation",
     purpose,
     density,
     assignmentMetadata: input.assignmentMetadata,
@@ -1240,9 +1235,20 @@ export async function updatePresentationSlideApi(
   // Update local client session if present
   const local = getClientSession(sessionId);
   if (local && local.slides[slideIndex]) {
+    const clearStaleElements =
+      !slideData.elements &&
+      (slideData.title !== undefined ||
+        slideData.subtitle !== undefined ||
+        slideData.bullets !== undefined ||
+        slideData.layout !== undefined ||
+        slideData.cards !== undefined ||
+        slideData.metrics !== undefined);
+
     local.slides[slideIndex] = {
       ...local.slides[slideIndex],
       ...slideData,
+      ...(clearStaleElements ? { elements: undefined } : {}),
+      isManuallyEdited: true,
     };
     if (slideIndex === 0 && slideData.title) {
       local.title = slideData.title;
@@ -1259,6 +1265,9 @@ export async function updatePresentationSlideApi(
     });
     if (res.ok) {
       const json = await res.json();
+      if (json.data) {
+        saveClientSession(json.data);
+      }
       return json;
     }
   } catch (err) {
@@ -1293,31 +1302,56 @@ export async function regeneratePresentationSlideAIApi(
     console.warn("Backend regeneratePresentationSlideAIApi unreachable:", err);
   }
 
-  // Local client fallback
+  // Content-driven local client fallback
   const local = getClientSession(sessionId);
   if (local && local.slides[slideIndex]) {
     const target = local.slides[slideIndex]!;
+    const realBullets = (target.bullets || []).filter(Boolean);
     const lower = instruction.toLowerCase();
+    target.elements = undefined;
+
     if (lower.includes("bento") || lower.includes("4-card") || lower.includes("grid")) {
       target.layout = "bento-grid";
-      target.bentoGrid = [
-        { title: "Core Component", description: target.bullets?.[0] || "Foundational operational service layer.", tag: "FOUNDATION" },
-        { title: "Strategic Workflow", description: target.bullets?.[1] || "Continuous integration pipeline.", tag: "WORKFLOW" },
-        { title: "Telemetry Metrics", description: target.bullets?.[2] || "Real-time indicators & thresholds.", tag: "TELEMETRY" },
-        { title: "Target Deliverable", description: target.bullets?.[3] || "Production validation benchmarks.", tag: "DELIVERABLE" },
-      ];
+      const candidates = [...realBullets];
+      if (candidates.length < 4 && target.subtitle) candidates.push(target.subtitle);
+      const labels = ["Core Aspect", "Implementation", "Key Considerations", "Outcome"];
+      while (candidates.length < 4) {
+        candidates.push(`${labels[candidates.length % labels.length]}: ${target.title}`);
+      }
+      target.bentoGrid = candidates
+        .slice(0, 4)
+        .map((b, bi) => buildCrispCardFromPoint(b, "Factor", bi, Boolean(target.isRtl)));
     } else if (lower.includes("hero") || lower.includes("split") || lower.includes("attractive") || lower.includes("punchy")) {
       target.layout = "hero-split";
+      const hCandidate = realBullets[0] || target.subtitle || "Focused Strategic Insight";
       target.heroSplit = {
-        headline: target.title,
-        highlight: target.subtitle || target.bullets?.[0] || "Decisive strategic capability",
-        details: target.bullets && target.bullets.length > 0 ? target.bullets.slice(0, 3) : [
-          "Core operational milestone verified.",
-          "End-to-end framework delivery confirmed.",
-        ],
+        headline: hCandidate.toLowerCase() === target.title.toLowerCase() ? "Core Insights" : hCandidate,
+        highlight: target.subtitle || realBullets[0] || target.title,
+        details: realBullets.slice(0, 3),
       };
     } else if (lower.includes("diagram") || lower.includes("visual") || lower.includes("concept")) {
-      target.layout = "text-visual";
+      target.layout = "diagram-explainer";
+      const diagramData = buildSlideDiagramData({
+        title: target.title,
+        subtitle: target.subtitle,
+        bullets: realBullets,
+        cards: target.cards || target.bentoGrid,
+        metrics: target.metrics,
+      });
+      const svg = renderDiagramDataToSvg({
+        diagram: diagramData,
+        accentColor: local.theme.colors.accent,
+        isDark: target.slideSurface === "dark",
+        isRtl: target.isRtl,
+      });
+      target.diagramData = diagramData;
+      target.visual = {
+        type: "diagram",
+        concept: target.title,
+        caption: target.subtitle || target.title,
+        imageUrl: svg.dataUrl,
+        svgContent: svg.svgContent,
+      };
     }
     saveClientSession(local);
     return { success: true, data: local, message: "Slide updated via local assistant" };

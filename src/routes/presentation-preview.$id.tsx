@@ -300,6 +300,7 @@ export function PresentationPreviewPage() {
       id: `slide-${Date.now()}`,
       slideNumber: currentSlideIdx + 2,
       title: `${current.title} (Copy)`,
+      isManuallyEdited: true,
     };
     const updatedSlides = [...session.slides];
     updatedSlides.splice(currentSlideIdx + 1, 0, duplicated);
@@ -357,6 +358,8 @@ export function PresentationPreviewPage() {
         title: updatedTitle,
         subtitle: updatedSubtitle,
         assignmentMetadata: tempCoverMeta,
+        elements: undefined,
+        isManuallyEdited: true,
       };
 
       const updatedSlides = [...session.slides];
@@ -459,19 +462,23 @@ export function PresentationPreviewPage() {
         };
       }
 
-      // Update local state immediately for instant preview and client export
+      // Update local state immediately for instant preview and client export (clear stale manual element cache so Modal edits render live)
       const updatedSlides = [...session.slides];
       updatedSlides[editingSlideIdx] = {
         ...updatedSlides[editingSlideIdx],
         ...updatedSlideData,
+        elements: undefined,
+        isManuallyEdited: true,
       };
 
-      setSession({
+      const nextSession: PresentationSessionData = {
         ...session,
         slides: updatedSlides,
         title:
           editingSlideIdx === 0 && updatedSlideData.title ? updatedSlideData.title : session.title,
-      });
+      };
+      setSession(nextSession);
+      saveClientSession(nextSession);
 
       // Synchronize with backend API (updates file on disk for PPTX download)
       await updatePresentationSlideApi(sessionId, editingSlideIdx, updatedSlideData);
@@ -525,6 +532,8 @@ export function PresentationPreviewPage() {
             imageUrl: newVis.imageUrl,
             svgContent: newVis.svgContent,
           },
+          elements: undefined,
+          isManuallyEdited: true,
         };
         const updated = { ...session, slides: updatedSlides };
         setSession(updated);
@@ -778,36 +787,57 @@ export function PresentationPreviewPage() {
     try {
       setDownloading(true);
       toast.info("Preparing PowerPoint File...", {
-        description: "Compiling vector .pptx package from secure temporary storage.",
+        description: "Compiling vector .pptx package matching your latest edits.",
       });
 
-      let downloaded = false;
-
-      // 1. Try server download endpoint first if backend is reachable
-      try {
-        const res = await fetch(`/api/presentations/${sessionId}/download`);
-        if (res.status === 410) {
-          setIsExpired(true);
-          throw new Error("This temporary download link has expired.");
+      // Flush any pending debounced canvas edit before exporting
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+        if (session && session.slides[currentSlideIdx]) {
+          try {
+            await updatePresentationSlideApi(sessionId, currentSlideIdx, session.slides[currentSlideIdx]!);
+          } catch {
+            // Live client export below still preserves all edits
+          }
         }
-        const contentType = res.headers.get("content-type") || "";
-        if (res.ok && !contentType.includes("text/html")) {
-          const blob = await res.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `${session?.title.replace(/[^a-zA-Z0-9_-]/g, "_") || "presentation"}.pptx`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-          downloaded = true;
-        }
-      } catch (err: unknown) {
-        if ((err as Error)?.message?.includes("expired")) throw err;
       }
 
-      // 2. Resilient client-side fallback (e.g. on Vercel deployment where Express is not running)
+      let downloaded = false;
+      const hasLocalEdits = Boolean(
+        session?.slides?.some((s) => s.isManuallyEdited || (s.elements && s.elements.length > 0)),
+      );
+
+      // Export live in-browser session directly whenever manual edits exist so moved boxes,
+      // inline text changes, duplicated slides, and visual swaps are never stale on disk.
+      if (hasLocalEdits && session) {
+        await generateAndDownloadClientPptx(session);
+        downloaded = true;
+      } else {
+        try {
+          const res = await fetch(`/api/presentations/${sessionId}/download`);
+          if (res.status === 410) {
+            setIsExpired(true);
+            throw new Error("This temporary download link has expired.");
+          }
+          const contentType = res.headers.get("content-type") || "";
+          if (res.ok && !contentType.includes("text/html")) {
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${session?.title.replace(/[^a-zA-Z0-9_-]/g, "_") || "presentation"}.pptx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            downloaded = true;
+          }
+        } catch (err: unknown) {
+          if ((err as Error)?.message?.includes("expired")) throw err;
+        }
+      }
+
       if (!downloaded && session) {
         await generateAndDownloadClientPptx(session);
         downloaded = true;
@@ -1651,14 +1681,25 @@ export function PresentationPreviewPage() {
                           {/* Detail Side: Question/Headline + Stacked Glass Cards + Callout */}
                           <div className="flex flex-col justify-between gap-3">
                             <div className="space-y-2.5">
-                              {(currentSlide.heroSplit?.headline || currentSlide.subtitle) && (
-                                <h3
-                                  className="text-base sm:text-xl font-bold tracking-tight leading-snug"
-                                  style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
-                                >
-                                  {currentSlide.heroSplit?.headline || currentSlide.subtitle}
-                                </h3>
-                              )}
+                              {(() => {
+                                const headlineText = currentSlide.heroSplit?.headline?.trim();
+                                const norm = (v?: string) => (v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                                if (
+                                  !headlineText ||
+                                  norm(headlineText) === norm(currentSlide.title) ||
+                                  norm(headlineText) === norm(currentSlide.subtitle)
+                                ) {
+                                  return null;
+                                }
+                                return (
+                                  <h3
+                                    className="text-base sm:text-xl font-bold tracking-tight leading-snug"
+                                    style={{ color: tokens.textPrimary, fontFamily: tokens.fontTitle }}
+                                  >
+                                    {headlineText}
+                                  </h3>
+                                );
+                              })()}
 
                               {/* Stacked Cards */}
                               <div className="space-y-2.5">
@@ -1695,7 +1736,7 @@ export function PresentationPreviewPage() {
                             {(currentSlide.calloutPill || currentSlide.heroSplit?.highlight) && (
                               <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 flex items-center gap-2.5 shadow-xs">
                                 <span className="text-base">{currentSlide.calloutPill?.icon || "💡"}</span>
-                                <p className="text-xs font-semibold text-emerald-300">
+                                <p className={`text-xs font-semibold ${tokens.isDark ? "text-emerald-300" : "text-emerald-700"}`}>
                                   {currentSlide.calloutPill?.text || currentSlide.heroSplit?.highlight}
                                 </p>
                               </div>
@@ -1762,7 +1803,7 @@ export function PresentationPreviewPage() {
                         {currentSlide.calloutPill && (
                           <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 flex items-center gap-2.5 shadow-xs mt-3">
                             <span className="text-base">{currentSlide.calloutPill.icon || "💡"}</span>
-                            <p className="text-xs font-semibold text-emerald-300">
+                            <p className={`text-xs font-semibold ${tokens.isDark ? "text-emerald-300" : "text-emerald-700"}`}>
                               {currentSlide.calloutPill.text}
                             </p>
                           </div>
@@ -1772,7 +1813,7 @@ export function PresentationPreviewPage() {
                         {currentSlide.alertCallout && (
                           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 flex items-center gap-2.5 shadow-xs mt-3">
                             <span className="text-base">⚠️</span>
-                            <p className="text-xs font-semibold text-amber-200">
+                            <p className={`text-xs font-semibold ${tokens.isDark ? "text-amber-200" : "text-amber-800"}`}>
                               {currentSlide.alertCallout.text}
                             </p>
                           </div>

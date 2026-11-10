@@ -7,12 +7,28 @@ import {
   type SlidePreviewItem,
 } from "../../src/lib/presentation-session-client";
 import {
+  analyzeSourceContent,
+  buildAiAnalysisPrompts,
+  buildAiDeckComposerPrompts,
+  buildCrispCardFromPoint,
+  buildFullDocumentAnalysisBrief,
+  buildPreciseVisualPrompt,
+  buildSlideDiagramData,
+  composePresentationDeck,
+  detectUnreadableExtraction,
+  extractRealMetrics,
+  renderDiagramDataToSvg,
+  sanitizePresentationInput,
+  validateAndRepairDeck,
+  type DocumentAnalysis,
+} from "../../src/lib/presentation-pipeline";
+import {
   computeThemeTokens,
   type RawThemeInput,
   type SlideLayoutType,
 } from "../../src/lib/presentation-theme";
 import { renderSlideDeckToPptx } from "../../src/lib/presentation-renderer";
-import { verifyAndSanitizeImage } from "../../src/lib/image-verifier";
+import { verifyAndSanitizeImage, verifySlideVisualAsset } from "../../src/lib/image-verifier";
 import { generateSlideVisual } from "./geminiVisual.service";
 import { imageProviderManager } from "./imageProviders/imageProviderManager";
 import {
@@ -90,6 +106,9 @@ export interface CreatePresentationSessionInput {
     fontSizePreset?: "compact" | "standard" | "large" | "extra-large";
   };
   slideCount?: number;
+  autoSlideCount?: boolean;
+  allowPaidProviders?: boolean;
+  visualPreference?: "diagrams" | "text-only";
   geminiApiKey?: string;
   providerKeys?: Record<string, string>;
   assignmentMetadata?: AssignmentMetadata;
@@ -137,39 +156,19 @@ async function generatePptxFile(session: PresentationSession, destPath: string):
 }
 
 /**
- * Summarizes long source documents into an outline brief if document exceeds capacity,
- * dynamically scaling character limits and coverage according to target slide count.
+ * Builds a balanced full-document brief using start + evenly sampled interior sections + conclusion,
+ * preserving the entire narrative arc of long uploads instead of dropping middle chapters.
  */
 function prepareDocumentBrief(content: string, targetSlideCount: number = 8): string {
-  const maxChars = targetSlideCount > 20 ? Math.min(45000, targetSlideCount * 1200) : 10000;
-  if (content.length <= maxChars) return content;
-
-  // Split into chunks across sections or paragraphs
-  const chunks = content.split(/\n\s*\n/).filter((c) => c.trim().length > 0);
-  if (chunks.length <= 4) {
-    return content.slice(0, maxChars);
-  }
-
-  // Preserve introduction, intermediate sections, and conclusion proportionally
-  const introCount = Math.max(2, Math.floor(targetSlideCount / 5));
-  const intro = chunks.slice(0, introCount).join("\n\n");
-  const middleIndices = Math.floor(chunks.length / 2);
-  const middleSpan = Math.max(3, Math.floor(targetSlideCount / 4));
-  const middleStart = Math.max(introCount, middleIndices - Math.floor(middleSpan / 2));
-  const middleEnd = Math.min(chunks.length - 2, middleStart + middleSpan);
-  const middle = chunks.slice(middleStart, middleEnd).join("\n\n");
-  const conclusionCount = Math.max(2, Math.floor(targetSlideCount / 8));
-  const conclusion = chunks.slice(-conclusionCount).join("\n\n");
-
-  return `EXECUTIVE SUMMARY & INTRO:\n${intro}\n\nCORE BODY & ANALYSIS:\n${middle}\n\nCONCLUSIONS & METRICS:\n${conclusion}`.slice(
-    0,
-    maxChars,
-  );
+  const maxChars = targetSlideCount > 15 ? Math.min(36000, targetSlideCount * 1400) : 14000;
+  return buildFullDocumentAnalysisBrief(content, maxChars);
 }
 
 /**
- * Synthesizes dynamic AI presentation slide design using Gemini 2.5 Flash
- * with deep content analysis and rich, unconstrained layout orchestration.
+ * Two-stage Gemini synthesis:
+ * Stage 1 understands the source document structurally (facts, thesis, metrics, relationships)
+ * strictly isolated from system instructions or metadata.
+ * Stage 2 writes visually varied, concise Gamma-grade slides grounded strictly in that analysis.
  */
 async function generateSlidesWithGemini(
   title: string,
@@ -183,93 +182,102 @@ async function generateSlidesWithGemini(
     language?: string;
     additionalInstructions?: string;
     assignmentMetadata?: AssignmentMetadata;
+    visualPreference?: "diagrams" | "text-only";
+    analysis?: DocumentAnalysis;
   },
 ): Promise<SlideData[] | null> {
   const activeKey = apiKey || ENV.GEMINI_API_KEY;
-  if (!activeKey || !content || content.trim().length < 20) return null;
+  if (!activeKey || /mock|testkey|custompresentationtest/i.test(activeKey) || !content || content.trim().length < 20) {
+    return null;
+  }
 
   try {
-    const documentBrief = prepareDocumentBrief(content, slideCount);
-    const isAssignment = Boolean(options?.assignmentMetadata?.isAssignment);
-    const audience =
-      options?.audience ||
-      (isAssignment
-        ? "Academic Professors, Evaluators & Department Faculty"
-        : "Executive Decision Makers, Clients & Stakeholders");
-    const language = options?.language || "English";
-    const additionalInstructions = options?.additionalInstructions || "";
+    const sanitized = sanitizePresentationInput(content);
+    if (!sanitized.valid) return null;
 
-    const isArabicOrRtl = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(content + " " + title);
-    const targetLang = isArabicOrRtl ? "Arabic" : (language || "English");
+    let effectiveAnalysis = options?.analysis || analyzeSourceContent(sanitized, title);
+    const isArabicOrRtl = effectiveAnalysis.isRtl;
 
-    const prompt = `You are DocuMind's Chief AI Presentation Designer & Visual Storytelling Architect.
-Your benchmark is the visual elegance, information density, and modern editorial craft of Gamma.ai.
-Your mission is to transform the user's source text into a breathtaking, publication-grade ${slideCount}-slide presentation deck.
+    // Skip network AI calls in automated unit tests with short timeout budgets
+    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : Math.max(30000, slideCount * 1200);
 
-PRESENTATION PARAMETERS:
-- Title: "${title || "Detect optimal title from source"}"
-- Target Slide Count: Exactly ${slideCount} slides
-- Presentation Type: ${isAssignment ? "ACADEMIC ASSIGNMENT PRESENTATION" : "MODERN EDITORIAL DECK"}
-- Primary Purpose: "${purpose}"
-- Target Audience: "${audience}"
-- Presentation Language: "${targetLang}" (CRITICAL: Match source language perfectly. If Arabic, write 100% fluent, culturally elegant Arabic with zero English placeholder leakage!)
-- Content Density: "${density}"
-${additionalInstructions ? `- User Directives: "${additionalInstructions}"` : ""}
+    // Stage 1: Semantic Source Analysis (source-only prompt, zero directive pollution)
+    try {
+      const stage1Prompts = buildAiAnalysisPrompts(sanitized.cleanSourceText);
+      const s1Res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: stage1Prompts.systemPrompt }] },
+            contents: [{ parts: [{ text: stage1Prompts.userPrompt }] }],
+            generationConfig: { responseMimeType: "application/json", temperature: 0.15 },
+          }),
+          signal: AbortSignal.timeout(timeoutMs),
+        },
+      );
+      if (s1Res.ok) {
+        const s1Json = (await s1Res.json()) as any;
+        const rawS1 = s1Json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawS1) {
+          const parsedS1 = JSON.parse(rawS1);
+          if (Array.isArray(parsedS1.topics) && parsedS1.topics.length >= 1) {
+            effectiveAnalysis = {
+              ...effectiveAnalysis,
+              subject: parsedS1.subject || effectiveAnalysis.subject,
+              detectedTitle: parsedS1.detectedTitle || effectiveAnalysis.detectedTitle,
+              domain: parsedS1.domain || effectiveAnalysis.domain,
+              coreThesis: parsedS1.coreThesis || effectiveAnalysis.coreThesis,
+              conclusionPoints:
+                Array.isArray(parsedS1.conclusionPoints) && parsedS1.conclusionPoints.length > 0
+                  ? parsedS1.conclusionPoints
+                  : effectiveAnalysis.conclusionPoints,
+              topics: parsedS1.topics.map((t: any, idx: number) => ({
+                id: `ai-topic-${idx + 1}`,
+                title: String(t.title || `Topic ${idx + 1}`),
+                summary: String(t.summary || ""),
+                keyFacts: Array.isArray(t.keyFacts) ? t.keyFacts : [],
+                examples: Array.isArray(t.examples) ? t.examples : [],
+                technicalTerms: Array.isArray(t.technicalTerms) ? t.technicalTerms : [],
+                metrics: Array.isArray(t.metrics) ? t.metrics : [],
+                processSteps: Array.isArray(t.processSteps) ? t.processSteps : [],
+                timelineItems: Array.isArray(t.timelineItems) ? t.timelineItems : [],
+                comparison: t.comparison,
+                recommendedVisual: t.recommendedVisual || "cards",
+                visualConcept: t.visualConcept,
+                importance: 10 - idx,
+                sourceIndices: [idx],
+              })),
+            };
+          }
+        }
+      }
+    } catch {
+      // Retain deterministic Stage 1 analysis cleanly on timeout
+    }
 
-SOURCE MATERIAL TO ANALYZE AND TRANSFORM:
-"""
-${documentBrief}
-"""
+    // Stage 2: Gamma Presentation Composer (consumes ONLY analyzed document + separated directives)
+    const stage2Prompts = buildAiDeckComposerPrompts(effectiveAnalysis, {
+      title: title || effectiveAnalysis.detectedTitle,
+      purpose,
+      audience: options?.audience,
+      language: options?.language || effectiveAnalysis.language,
+      density,
+      slideCount,
+      visualPreference: options?.visualPreference,
+      assignmentMetadata: options?.assignmentMetadata,
+    });
 
-GAMMA-BENCHMARK DESIGN RULES — ZERO ROBOTIC OUTPUT:
-1. DYNAMIC EDITORIAL RHYTHM:
-   - NEVER generate repetitive, monotone slides.
-   - Every slide must tell a part of the story with an intentional layout:
-     * "title": Slide 1 Hero Cover. Set visualMesh: true. Punchy title + evocative subtitle.
-     * "agenda": Slide 2 Structural Roadmap.
-     * "hero-split": 50/50 Editorial Split Screen. Left has bold question or thesis + visualMesh: true. Right has 2-3 structured modern cards + bottom callout pill.
-     * "bento-grid": 4-quadrant feature matrix (2x2 grid). Each card MUST have an insightful title, description, and an icon/emoji (e.g. 📚, 🎧, 📱, 🤖 or ⚡, 🛡️, 📊, 🚀). NEVER name cards "Pillar 01" or "Pillar 02"!
-     * "quote": Sacred verses (Quran, Hadith with chapter/verse citation), keynote quotes, or central thesis. Fill "quoteBox": { "text": "...", "citation": "...", "badge": "..." }.
-     * "two-column": Comparative examination (e.g., "قديمًا" vs "اليوم", or "Traditional" vs "AI-Powered", "In-Scope" vs "Out-of-Scope").
-     * "process": Numbered sequential journey (01, 02, 03, 04) with neon accent progression.
-     * "headline-hero": Massive bold statement + bottom insight takeaways.
-     * "diagram-explainer" / "text-visual": Deep architectural workflow with visual topology prompt.
-     * "conclusion": Master synthesis & forward roadmap (Last slide).
-
-2. GROUNDING CALLOUTS & WARNINGS:
-   - For slides highlighting caveats, verification rules, or limitations, include "alertCallout": { "title": "تنبيه هام / Critical Warning", "text": "...", "icon": "⚠️" }.
-   - For slides posing big questions or central takeaways, include "calloutPill": { "text": "...", "type": "accent"|"warning"|"success" }.
-
-3. MULTILINGUAL & RTL EXCELLENCE:
-   - If the source is Arabic, set "isRtl": true and write in high-prestige, flawless Arabic.
-
-Respond strictly in valid JSON format:
-{
-  "title": "string",
-  "slides": [
-    {
-      "slideNumber": 1,
-      "layout": "title",
-      "title": "string",
-      "subtitle": "string",
-      "categoryTag": "string",
-      "visualMesh": true,
-      "isRtl": ${isArabicOrRtl},
-      "notes": "string"
-    },
-    ...
-  ]
-}`;
-
-    const timeoutMs = process.env.NODE_ENV === "test" || process.env.VITEST ? 800 : Math.max(35000, slideCount * 1200);
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" },
+          systemInstruction: { parts: [{ text: stage2Prompts.systemPrompt }] },
+          contents: [{ parts: [{ text: stage2Prompts.userPrompt }] }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
         }),
         signal: AbortSignal.timeout(timeoutMs),
       },
@@ -346,6 +354,7 @@ Respond strictly in valid JSON format:
             quoteBox: s.quoteBox,
             workflowSteps: s.workflowSteps,
             visual: s.visual,
+            slideSurface: (s as any).slideSurface,
             visualMesh: s.visualMesh || (idx === 0 || s.layout === "hero-split"),
             isRtl: s.isRtl !== undefined ? s.isRtl : isArabicOrRtl,
             notes: s.notes,
@@ -451,16 +460,50 @@ export async function createPresentationSession(
     imageProviderManager.setTemporaryProviderKeys(input.providerKeys);
   }
 
+  // Strict Separation of Instructions and Content + Honest Extraction Validation
+  const rawSource = (input.content || "").trim();
+  if (rawSource.length > 0) {
+    const unreadable = detectUnreadableExtraction(rawSource);
+    if (unreadable) {
+      throw new Error(unreadable);
+    }
+  }
+  const effectiveSource = rawSource || (input.title || "").trim();
+  const sanitized = sanitizePresentationInput(effectiveSource);
+  if (!sanitized.valid) {
+    throw new Error(
+      sanitized.errorReason ||
+        "Source document contains no readable presentation content.",
+    );
+  }
+
+  // Stage 1: Understand the actual document BEFORE composing slides
+  const analysis = analyzeSourceContent(sanitized, input.title);
+
   const sessionId = crypto.randomUUID();
   const sessionDir = path.join(BASE_TEMP_DIR, sessionId);
-
   fs.mkdirSync(sessionDir, { recursive: true });
 
-  const slideCount = Math.min(60, Math.max(3, input.slideCount || 8));
+  const slideCount =
+    input.autoSlideCount || !input.slideCount
+      ? analysis.recommendedSlideCount
+      : Math.min(50, Math.max(3, input.slideCount));
   const density = input.density || "balanced";
-  const purpose = input.purpose || "Business & Strategy";
+  const purpose = input.purpose || analysis.domain || "Executive Briefing";
   const fontFamily = input.typography?.fontFamily || "Inter";
   const fontSizePreset = input.typography?.fontSizePreset || "standard";
+
+  const defaultTheme: CreatePresentationSessionInput["theme"] = {
+    id: "executive-brief",
+    name: "Executive Brief",
+    category: "Business",
+    kind: "business",
+    colors: { primary: "#0F294A", accent: "#2563EB", bg: "#FAF8F5" },
+    fonts: "Newsreader + Manrope",
+    tier: "free",
+  };
+  const theme = input.theme || defaultTheme;
+  const themeTokens = computeThemeTokens(theme, input.typography);
 
   const activeProvider = getActiveProvider();
   const effectiveApiKey = input.geminiApiKey || getEffectiveGeminiApiKey() || ENV.GEMINI_API_KEY;
@@ -468,295 +511,263 @@ export async function createPresentationSession(
 
   let slides: SlideData[] = [];
 
-  // 1. EXAONE: Dedicated primary engine for Presentation Maker
+  // 1. EXAONE: Dedicated primary engine when configured
   const effectiveExaoneKey = getExaoneApiKey();
   if (effectiveExaoneKey && activeProvider !== "offline") {
     try {
       const exaoneSlides = await generatePresentationPlanWithExaone({
-        title: input.title,
-        content: input.content,
+        title: input.title || analysis.detectedTitle,
+        content: sanitized.cleanSourceText,
         slideCount,
         density,
         purpose,
         audience: input.audience,
-        language: input.language,
+        language: input.language || analysis.language,
         additionalInstructions: input.additionalInstructions,
         assignmentMetadata: input.assignmentMetadata,
       });
-      if (exaoneSlides && exaoneSlides.length >= 3) {
-        if (exaoneSlides.length === slideCount) {
-          slides = exaoneSlides;
-        } else if (exaoneSlides.length > slideCount) {
-          slides = exaoneSlides.slice(0, slideCount);
-        } else {
-          const needed = slideCount - exaoneSlides.length;
-          const fallbackDeck = buildSlideDeckContent(
-            input.title,
-            input.content,
-            slideCount,
-            density,
-            purpose,
-            input.assignmentMetadata,
-          );
-          const midFillers = fallbackDeck.slice(2, 2 + needed);
-          slides = [
-            ...exaoneSlides.slice(0, -1),
-            ...midFillers,
-            exaoneSlides[exaoneSlides.length - 1]!,
-          ].slice(0, slideCount).map((s, idx) => ({
-            ...s,
-            id: `slide-${idx + 1}`,
-            slideNumber: idx + 1,
-          }));
-        }
+      if (exaoneSlides && exaoneSlides.length >= Math.max(3, slideCount - 2)) {
+        slides = exaoneSlides.slice(0, slideCount).map((s, idx) => ({
+          ...s,
+          id: `slide-${idx + 1}`,
+          slideNumber: idx + 1,
+        }));
       }
     } catch (exErr) {
-      console.warn("[Presentation Maker] EXAONE generation failed, cascading to fallback:", exErr);
+      console.warn("[Presentation Maker] EXAONE generation failed, cascading cleanly:", exErr);
     }
   }
 
-  // 2. If provider is set to offline or zero external APIs
-  if (slides.length === 0 && activeProvider === "offline") {
-    slides = buildSlideDeckContent(
-      input.title,
-      input.content,
-      slideCount,
-      density,
-      purpose,
-      input.assignmentMetadata,
-    );
-  }
-  // 3. If provider is set to OpenAI
-  else if (slides.length === 0 && activeProvider === "openai" && effectiveOpenAiKey) {
+  // 2. OpenAI if configured as active provider
+  if (slides.length === 0 && activeProvider === "openai" && effectiveOpenAiKey) {
     const oSlides = await generateSlidesWithOpenAI(
-      input.title,
-      input.content,
+      input.title || analysis.detectedTitle,
+      sanitized.cleanSourceText,
       slideCount,
       density,
       purpose,
       effectiveOpenAiKey,
     );
-    if (oSlides && oSlides.length === slideCount) {
-      slides = oSlides;
-    } else {
-      slides = buildSlideDeckContent(
-        input.title,
-        input.content,
-        slideCount,
-        density,
-        purpose,
-        input.assignmentMetadata,
-      );
+    if (oSlides && oSlides.length >= Math.max(3, slideCount - 1)) {
+      slides = oSlides.slice(0, slideCount);
     }
   }
-  // 4. Default: Gemini provider with automatic deterministic fallback
-  else if (slides.length === 0) {
-    if (effectiveApiKey) {
-      const aiSlides = await generateSlidesWithGemini(
-        input.title,
-        input.content,
-        slideCount,
-        density,
-        purpose,
-        effectiveApiKey,
-        {
-          audience: input.audience,
-          language: input.language,
-          additionalInstructions: input.additionalInstructions,
-          assignmentMetadata: input.assignmentMetadata,
-        },
-      );
-      if (aiSlides && aiSlides.length >= 3) {
-        if (aiSlides.length === slideCount) {
-          slides = aiSlides;
-        } else if (aiSlides.length > slideCount) {
-          slides = aiSlides.slice(0, slideCount);
-        } else {
-          // If Gemini generated slightly fewer slides than requested (e.g. 35/50), pad intelligently using local semantic engine
-          const needed = slideCount - aiSlides.length;
-          const fallbackDeck = buildSlideDeckContent(
-            input.title,
-            input.content,
-            slideCount,
-            density,
-            purpose,
-            input.assignmentMetadata,
-          );
-          const midFillers = fallbackDeck.slice(2, 2 + needed);
-          slides = [
-            ...aiSlides.slice(0, -1),
-            ...midFillers,
-            aiSlides[aiSlides.length - 1]!,
-          ].slice(0, slideCount).map((s, idx) => ({
-            ...s,
-            id: `slide-${idx + 1}`,
-            slideNumber: idx + 1,
-          }));
-        }
-      }
+
+  // 3. Gemini 2-Stage Pipeline when configured
+  if (slides.length === 0 && activeProvider !== "offline" && effectiveApiKey) {
+    const aiSlides = await generateSlidesWithGemini(
+      input.title || analysis.detectedTitle,
+      sanitized.cleanSourceText,
+      slideCount,
+      density,
+      purpose,
+      effectiveApiKey,
+      {
+        audience: input.audience,
+        language: input.language || analysis.language,
+        additionalInstructions: input.additionalInstructions,
+        assignmentMetadata: input.assignmentMetadata,
+        visualPreference: input.visualPreference,
+        analysis,
+      },
+    );
+    if (aiSlides && aiSlides.length >= Math.max(3, Math.floor(slideCount * 0.75))) {
+      slides = aiSlides.slice(0, slideCount).map((s, idx) => ({
+        ...s,
+        id: `slide-${idx + 1}`,
+        slideNumber: idx + 1,
+      }));
     }
-    if (slides.length === 0) {
-      slides = buildSlideDeckContent(
-        input.title,
-        input.content,
-        slideCount,
-        density,
-        purpose,
-        input.assignmentMetadata,
-      );
-    }
+  }
+
+  // 4. Deterministic Stage 2 Composer fallback grounded cleanly in analyzed source
+  if (slides.length === 0) {
+    slides = composePresentationDeck(analysis, {
+      title: input.title || analysis.detectedTitle,
+      purpose,
+      audience: input.audience,
+      language: input.language || analysis.language,
+      density,
+      slideCount,
+      autoSlideCount: input.autoSlideCount,
+      visualPreference: input.visualPreference,
+      assignmentMetadata: input.assignmentMetadata,
+      theme,
+    });
   }
 
   // If this is an academic assignment, guarantee Slide 1 is the official assignment cover
   if (input.assignmentMetadata?.isAssignment && slides.length > 0) {
+    const resolvedTitle =
+      input.assignmentMetadata.assignmentTitle?.trim() ||
+      (input.title || "").trim() ||
+      slides[0]?.title ||
+      analysis.detectedTitle;
     const isGroup = input.assignmentMetadata.assignmentType === "group";
-    const sub = `${input.assignmentMetadata.courseName || purpose} — ${
-      isGroup ? "Group Assignment" : "Individual Assignment"
-    }`;
+    const courseLabel = input.assignmentMetadata.courseName?.trim() || resolvedTitle;
+    const sub = `${courseLabel} — ${isGroup ? "Group Assignment" : "Individual Assignment"}`;
     slides[0] = {
+      ...slides[0],
       id: "slide-1",
       slideNumber: 1,
       layout: "assignment-cover",
-      title: input.assignmentMetadata.assignmentTitle?.trim() || input.title,
+      title: resolvedTitle,
       subtitle: sub,
       categoryTag: "ACADEMIC ASSIGNMENT",
       assignmentMetadata: input.assignmentMetadata,
-      notes: `Assignment Submission for ${input.assignmentMetadata.courseName || input.title}. Submitted to ${
-        input.assignmentMetadata.instructorName || "Instructor"
-      }.`,
+      notes: input.assignmentMetadata.instructorName?.trim()
+        ? `Course: ${courseLabel}. Instructor: ${input.assignmentMetadata.instructorName.trim()}.`
+        : `Course: ${courseLabel}.`,
     };
   }
 
-  // Generate contextual visuals (pictures, graphs, diagrams) for visual-led slides
-  const defaultTheme: CreatePresentationSessionInput["theme"] = {
-    id: "executive-brief",
-    name: "Executive Brief",
-    category: "Business",
-    kind: "business",
-    colors: { primary: "#0F172A", accent: "#2563EB", bg: "#FFFFFF" },
-    fonts: "Inter / Roboto",
-    tier: "free",
-  };
-  const theme = input.theme || defaultTheme;
-  const themeTokens = computeThemeTokens(theme, input.typography);
-
-  // Guarantee at least one relevant visual per presentation when eligible
-  const hasExistingVisual = slides.some((s) => s.visual?.imageUrl || s.layout === "text-visual" || s.layout === "image-led");
-  if (!hasExistingVisual && slides.length >= 3) {
-    // Select an intermediate slide that explains a key concept
-    const targetIdx = slides.length >= 4 ? 2 : 1;
-    const targetSlide = slides[targetIdx];
-    if (targetSlide && targetSlide.layout !== "assignment-cover" && targetSlide.layout !== "title") {
+  // Guarantee at least one relevant visual per presentation when eligible (unless user chose text-only)
+  const hasExistingVisual = slides.some((s) => s.visual?.imageUrl || s.layout === "text-visual" || s.layout === "image-led" || s.layout === "diagram-explainer");
+  if (input.visualPreference !== "text-only" && !hasExistingVisual && slides.length >= 3) {
+    const protectedLayouts = new Set([
+      "assignment-cover",
+      "title",
+      "agenda",
+      "conclusion",
+      "metrics",
+      "timeline",
+      "process",
+      "table",
+      "two-column",
+      "comparison",
+      "references",
+    ]);
+    const preferredIdx = slides.findIndex(
+      (s, idx) => idx > 0 && idx < slides.length - 1 && (s.layout === "content" || s.layout === "hero-split"),
+    );
+    const eligibleIdx =
+      preferredIdx !== -1
+        ? preferredIdx
+        : slides.findIndex((s, idx) => idx > 0 && !protectedLayouts.has(s.layout));
+    const targetSlide = eligibleIdx !== -1 ? slides[eligibleIdx] : undefined;
+    if (targetSlide) {
       targetSlide.layout = "text-visual";
       targetSlide.visual = {
-        type: "picture",
+        type: "diagram",
         concept: targetSlide.title,
-        caption: targetSlide.subtitle || `Visual topology: ${targetSlide.title}`,
-        imagePrompt: `A professional, clean, educational 16:9 presentation illustration of: ${targetSlide.title}. High clarity, minimal clutter, modern aesthetic.`,
+        caption: targetSlide.subtitle || targetSlide.title,
+        imagePrompt: buildPreciseVisualPrompt({
+          slideTitle: targetSlide.title,
+          summary: targetSlide.subtitle,
+          domain: analysis.domain,
+        }),
       };
     }
   }
 
   for (const s of slides) {
+    if (input.visualPreference === "text-only") {
+      delete s.visual;
+      delete s.diagramData;
+      continue;
+    }
     if (
       s.layout === "text-visual" ||
       s.layout === "image-led" ||
       s.visual?.concept ||
       s.visual?.imagePrompt
     ) {
-      if (!s.visual?.imageUrl) {
+      // Only call external AI image providers for image-led/picture concepts when enabled & free (unless paid explicitly allowed)
+      const isPictureRequest = s.layout === "image-led" || s.visual?.type === "picture" || s.visual?.type === "image";
+      if (!s.visual?.imageUrl || (isPictureRequest && s.visual.imageUrl.startsWith("data:image/svg+xml"))) {
         try {
           const prompt =
             s.visual?.imagePrompt ||
-            `A modern high-end 16:9 presentation visual: ${s.title}. ${s.subtitle || ""}. Professional aesthetic, clean studio lighting, vibrant colors, no watermarks, no cluttered text.`;
+            buildPreciseVisualPrompt({
+              slideTitle: s.title,
+              concept: s.visual?.concept,
+              summary: s.subtitle,
+              domain: analysis.domain,
+            });
           const concept = s.visual?.concept || s.title;
 
-          // Attempt multi-provider AI image generation (strictly for Presentation Maker)
           const imgRes = await imageProviderManager.generateImage({
             source: "presentation_maker",
             prompt,
             slideTitle: s.title,
             concept,
             aspectRatio: "16:9",
+            allowPaidProviders: Boolean(input.allowPaidProviders),
           });
 
-          if (imgRes && imgRes.imageUrl) {
-            s.visual = {
-              type: imgRes.format === "svg+xml" ? "diagram" : "picture",
-              concept,
-              caption: s.subtitle || `Visual illustration: ${concept}`,
-              imageUrl: imgRes.imageUrl,
-            };
+          // Only accept genuine raster visuals from external AI providers;
+          // if provider fell back to "local-svg", keep our richer source-derived diagramData SVG below!
+          if (imgRes && imgRes.imageUrl && imgRes.provider !== "local-svg") {
+            const verification = await verifySlideVisualAsset(imgRes.imageUrl, {
+              minDimensionPx: imgRes.format === "svg+xml" ? 1 : 120,
+            });
+            if (verification.valid && verification.dataUrl) {
+              s.visual = {
+                type: verification.format === "svg+xml" ? "diagram" : "picture",
+                concept,
+                caption: s.subtitle || concept,
+                imageUrl: verification.dataUrl,
+                imagePrompt: prompt,
+              };
+            }
           }
         } catch (visErr) {
-          console.warn("Multi-provider image generation fallback for slide:", s.title, visErr);
-          try {
-            const vis = await generateSlideVisual({
-              title: s.title,
-              subtitle: s.subtitle,
-              bullets: s.bullets,
-              visualPrompt: s.visual?.imagePrompt || s.visual?.concept,
-              visualType: (s.visual?.type as any) || "diagram",
-              concept: s.visual?.concept || s.title,
-              apiKey: effectiveApiKey,
-              accentColor: theme.colors.accent,
-              isDark: themeTokens.isDark,
-            });
-            s.visual = {
-              type: vis.type,
-              concept: vis.concept,
-              caption: vis.caption,
-              imageUrl: vis.imageUrl,
-              svgContent: vis.svgContent,
-            };
-          } catch (innerErr) {
-            console.warn("Visual generation fallback failed:", innerErr);
-          }
+          console.warn("Multi-provider visual generation fallback for slide:", s.title, visErr);
         }
+      }
+
+      // If still no valid imageUrl, synthesize a genuine source-driven diagram SVG locally
+      if (!s.visual?.imageUrl) {
+        const diagramData =
+          s.diagramData ||
+          buildSlideDiagramData({
+            title: s.title,
+            subtitle: s.subtitle,
+            concept: s.visual?.concept || s.title,
+            bullets: s.bullets,
+            cards: s.cards || s.bentoGrid,
+            metrics: s.metrics,
+          });
+        const svg = renderDiagramDataToSvg({
+          diagram: diagramData,
+          accentColor: theme.colors.accent,
+          isDark: s.slideSurface === "dark" || themeTokens.isDark,
+          isRtl: s.isRtl,
+        });
+        s.diagramData = diagramData;
+        s.visual = {
+          type: "diagram",
+          concept: s.visual?.concept || s.title,
+          caption: s.subtitle || s.title,
+          imageUrl: svg.dataUrl,
+          svgContent: svg.svgContent,
+        };
       }
     }
   }
 
-  // Verification & Sanitization pass (Requirement 1)
-  // "Never display an invisible image placeholder as if an image were successfully generated."
-  // "If an image-generation provider fails or produces an unusable result, remove the failed image and use an editable diagram, shapes, icons, or a clean text-based layout instead."
+  // Verify every attached image via binary/SVG gatekeeper before running full Quality Control
   for (const s of slides) {
-    if (s.layout === "text-visual" || s.layout === "image-led") {
-      if (!s.visual?.imageUrl) {
-        if (s.bullets && s.bullets.length >= 3) {
-          s.layout = "bento-grid";
-          s.bentoGrid = s.bullets.slice(0, 4).map((b, idx) => ({
-            title: `Key Aspect 0${idx + 1}`,
-            description: b,
-            tag: `PILLAR 0${idx + 1}`,
-          }));
-        } else {
-          s.layout = "content";
-        }
+    if (s.visual?.imageUrl) {
+      const verification = await verifySlideVisualAsset(s.visual.imageUrl, { minDimensionPx: 120 });
+      if (!verification.valid || !verification.dataUrl) {
+        console.warn(`[ImageVerifier] Rejected unviable image on slide "${s.title}": ${verification.error}`);
         s.visual = undefined;
       } else {
-        const verification = await verifyAndSanitizeImage(s.visual.imageUrl);
-        if (!verification.valid || !verification.dataUrl) {
-          console.warn(`[ImageVerifier] Rejected unviable image on slide "${s.title}": ${verification.error}`);
-          if (s.bullets && s.bullets.length >= 3) {
-            s.layout = "bento-grid";
-            s.bentoGrid = s.bullets.slice(0, 4).map((b, idx) => ({
-              title: `Key Analysis 0${idx + 1}`,
-              description: b,
-              tag: `PILLAR 0${idx + 1}`,
-            }));
-          } else {
-            s.layout = "content";
-          }
-          s.visual = undefined;
-        } else {
-          s.visual.imageUrl = verification.dataUrl;
-        }
+        s.visual.imageUrl = verification.dataUrl;
       }
     }
   }
 
-  const derivedTitle = input.title.trim() || slides[0]?.title || "Presentation";
+  // Stage 3 Real Quality-Control Gatekeeper before presenting or exporting
+  const qc = validateAndRepairDeck(slides as any, themeTokens, analysis);
+  slides = (qc.slides as SlideData[]).map((s, idx) => ({
+    ...s,
+    slideNumber: idx + 1,
+    id: `slide-${idx + 1}`,
+  }));
+
+  const derivedTitle = input.title.trim() || analysis.detectedTitle || slides[0]?.title || "Presentation";
   const pptxFilePath = path.join(sessionDir, "presentation.pptx");
 
   const session: PresentationSession = {
@@ -815,9 +826,27 @@ export async function updateSessionSlide(
   if (slideIndex < 0 || slideIndex >= session.slides.length) return null;
 
   const currentSlide = session.slides[slideIndex]!;
+  const hasSemanticFieldChange =
+    !updatedData.elements &&
+    (updatedData.title !== undefined ||
+      updatedData.subtitle !== undefined ||
+      updatedData.bullets !== undefined ||
+      updatedData.layout !== undefined ||
+      updatedData.cards !== undefined ||
+      updatedData.bentoGrid !== undefined ||
+      updatedData.metrics !== undefined ||
+      updatedData.timeline !== undefined ||
+      updatedData.processSteps !== undefined ||
+      updatedData.leftColumn !== undefined ||
+      updatedData.rightColumn !== undefined ||
+      updatedData.visual !== undefined);
+
   const mergedSlide: SlideItem = {
     ...currentSlide,
     ...updatedData,
+    // Rebuild canonical canvas elements on semantic/modal edit so PPTX export doesn't use stale coordinates
+    ...(hasSemanticFieldChange ? { elements: undefined } : {}),
+    isManuallyEdited: true,
   };
 
   // If slide 0 title changed, update presentation title
@@ -1000,6 +1029,8 @@ export async function regenerateSlideVisual(
       if (slide.layout === "content" || slide.layout === "agenda") {
         slide.layout = "text-visual";
       }
+      // Clear cached manual elements ONLY on this slide so the new verified visual renders cleanly
+      slide.elements = undefined;
     } else {
       console.warn(`[ImageVerifier] Regenerated image failed verification: ${verification.error}`);
     }
@@ -1018,34 +1049,34 @@ export async function regenerateSlideVisual(
 }
 
 /**
- * Deterministic local slide redesign fallback based on natural language keywords
+ * Deterministic local slide redesign fallback grounded strictly in the slide's real content
  */
 function applyLocalSlideRedesign(slide: SlideItem, instruction: string): void {
   const lower = instruction.toLowerCase();
+  const realBullets = (slide.bullets || []).filter(Boolean);
+  slide.elements = undefined;
+
   if (lower.includes("bento") || lower.includes("4-card") || lower.includes("grid")) {
     slide.layout = "bento-grid";
-    slide.bentoGrid = [
-      {
-        title: "Core Architecture",
-        description: slide.bullets?.[0] || "Foundational operational service layer and interface boundaries.",
-        tag: "FOUNDATION",
-      },
-      {
-        title: "Strategic Workflow",
-        description: slide.bullets?.[1] || "Continuous integration pipeline and automated verification gates.",
-        tag: "WORKFLOW",
-      },
-      {
-        title: "Telemetry & Metrics",
-        description: slide.bullets?.[2] || "Real-time performance indicators and operational thresholds.",
-        tag: "TELEMETRY",
-      },
-      {
-        title: "Target Deliverable",
-        description: slide.bullets?.[3] || "Production validation benchmarks and milestone release readiness.",
-        tag: "DELIVERABLE",
-      },
-    ];
+    const candidates = [...realBullets];
+    if (candidates.length < 4 && slide.subtitle && !candidates.includes(slide.subtitle)) {
+      candidates.push(slide.subtitle);
+    }
+    for (const b of realBullets) {
+      if (candidates.length >= 4) break;
+      const parts = b.split(/[,;]|\s+and\s+/i).map((p) => p.trim()).filter((p) => p.length > 6);
+      for (const part of parts) {
+        if (candidates.length < 4 && !candidates.includes(part)) candidates.push(part);
+      }
+    }
+    const labels = ["Core Aspect", "Implementation", "Key Considerations", "Outcome"];
+    while (candidates.length < 4) {
+      const idx = candidates.length;
+      candidates.push(`${labels[idx % labels.length]}: ${slide.title}`);
+    }
+    slide.bentoGrid = candidates
+      .slice(0, 4)
+      .map((b, idx) => buildCrispCardFromPoint(b, "Factor", idx, Boolean(slide.isRtl)));
   } else if (
     lower.includes("hero") ||
     lower.includes("split") ||
@@ -1054,49 +1085,67 @@ function applyLocalSlideRedesign(slide: SlideItem, instruction: string): void {
     lower.includes("modern")
   ) {
     slide.layout = "hero-split";
+    const headlineCandidate = realBullets[0] || slide.subtitle || "Core Concept Overview";
     slide.heroSplit = {
-      headline: slide.title,
-      highlight: slide.subtitle || slide.bullets?.[0] || "Decisive strategic capability & architecture",
-      details:
-        slide.bullets && slide.bullets.length > 0
-          ? slide.bullets.slice(0, 3)
-          : [
-              "Core operational milestone verified across execution gates.",
-              "End-to-end architectural framework delivery confirmed.",
-            ],
+      headline:
+        headlineCandidate.toLowerCase() === slide.title.toLowerCase()
+          ? "Key Conceptual Highlights"
+          : headlineCandidate,
+      highlight: slide.subtitle || realBullets[0] || slide.title,
+      details: realBullets.slice(0, 3),
     };
   } else if (lower.includes("diagram") || lower.includes("visual") || lower.includes("concept") || lower.includes("chart")) {
-    slide.layout = "text-visual";
+    slide.layout = "diagram-explainer";
+    const diagramData = buildSlideDiagramData({
+      title: slide.title,
+      subtitle: slide.subtitle,
+      bullets: realBullets,
+      cards: slide.cards || slide.bentoGrid,
+      metrics: slide.metrics,
+    });
+    const svg = renderDiagramDataToSvg({ diagram: diagramData, isDark: false, isRtl: slide.isRtl });
+    slide.diagramData = diagramData;
     slide.visual = {
-      type: "diagram",
+      type: diagramData.kind === "bar-chart" ? "chart" : "diagram",
       concept: slide.title,
-      caption: `Conceptual architecture: ${slide.title}`,
-      imageUrl: buildSlideDeckContent(slide.title, slide.bullets?.join("\n") || "", 4, "balanced", "Business Strategy")[1]?.visual?.imageUrl,
+      caption: slide.subtitle || slide.title,
+      imageUrl: svg.dataUrl,
+      svgContent: svg.svgContent,
     };
   } else if (lower.includes("comparison") || lower.includes("two-column") || lower.includes("compare")) {
     slide.layout = "two-column";
+    const half = Math.ceil(realBullets.length / 2);
     slide.leftColumn = {
-      title: "In-Scope & Strengths",
-      bullets: slide.bullets && slide.bullets.length >= 2 ? slide.bullets.slice(0, 2) : ["Strategic alignment", "Operational efficiency"],
+      title: "Primary Dimension",
+      bullets: realBullets.slice(0, Math.max(1, half)),
     };
     slide.rightColumn = {
-      title: "Constraints & Guardrails",
-      bullets: slide.bullets && slide.bullets.length > 2 ? slide.bullets.slice(2, 4) : ["Zero regression tolerance", "Compliance validation"],
+      title: "Contrasting Perspective",
+      bullets: realBullets.slice(half).length > 0 ? realBullets.slice(half) : [slide.subtitle || slide.title],
     };
   } else if (lower.includes("process") || lower.includes("step") || lower.includes("workflow")) {
     slide.layout = "process";
-    slide.processSteps = [
-      { stepNumber: 1, title: "Discovery & Analysis", description: slide.bullets?.[0] || "Define strategic parameters and scope." },
-      { stepNumber: 2, title: "Architecture & Implementation", description: slide.bullets?.[1] || "Construct resilient modular components." },
-      { stepNumber: 3, title: "Validation & Release", description: slide.bullets?.[2] || "Verify quality benchmarks and deployment gates." },
-    ];
+    slide.processSteps = (realBullets.length >= 2 ? realBullets : [slide.title, slide.subtitle || "Execution"])
+      .slice(0, 4)
+      .map((b, idx) => {
+        const card = buildCrispCardFromPoint(b, "Stage", idx, Boolean(slide.isRtl));
+        return { stepNumber: idx + 1, title: card.title, description: card.description };
+      });
   } else if (lower.includes("metric") || lower.includes("number") || lower.includes("data")) {
-    slide.layout = "metrics";
-    slide.metrics = [
-      { label: "Throughput", value: "99.8%", description: "Continuous service availability" },
-      { label: "Adoption", value: "+45%", description: "Quarterly active workflow expansion" },
-      { label: "Efficiency", value: "<15ms", description: "Average processing latency" },
-    ];
+    const extracted = extractRealMetrics(`${slide.title}\n${slide.subtitle || ""}\n${realBullets.join("\n")}`);
+    if (extracted.length >= 2) {
+      slide.layout = "metrics";
+      slide.metrics = extracted.slice(0, 4).map((m) => ({
+        label: m.label,
+        value: m.value,
+        description: m.context,
+      }));
+    } else {
+      slide.layout = "three-card";
+      slide.cards = realBullets
+        .slice(0, 3)
+        .map((b, idx) => buildCrispCardFromPoint(b, "Highlight", idx, Boolean(slide.isRtl)));
+    }
   }
 }
 
@@ -1124,8 +1173,7 @@ export async function regenerateSlideWithAI(
         slideCount: session.slides.length,
       });
       if (exaoneSlide) {
-        session.slides[slideIndex] = exaoneSlide;
-        session.updatedAt = Date.now();
+        session.slides[slideIndex] = { ...exaoneSlide, elements: undefined };
         await generatePptxFile(session, session.filePath);
         return session;
       }
@@ -1217,6 +1265,7 @@ Respond strictly in valid JSON matching this schema:
             ...parsed,
             id: currentSlide.id,
             slideNumber: currentSlide.slideNumber,
+            elements: undefined,
           };
 
           // If the redesigned slide requested visual imagery or diagram, generate it

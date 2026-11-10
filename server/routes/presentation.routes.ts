@@ -30,9 +30,12 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       language,
       additionalInstructions,
       presentationType,
+      visualPreference,
       theme,
       typography,
       slideCount,
+      autoSlideCount,
+      allowPaidProviders,
       geminiApiKey,
       assignmentMetadata,
       providerKeys: bodyProviderKeys,
@@ -62,12 +65,15 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
       language,
       additionalInstructions,
       presentationType,
+      visualPreference: visualPreference === "text-only" || visualPreference === "diagrams" ? visualPreference : undefined,
       theme,
       typography: {
         fontFamily: typography?.fontFamily || "Inter",
         fontSizePreset: typography?.fontSizePreset || "standard",
       },
-      slideCount: Number(slideCount) || 8,
+      slideCount: slideCount !== undefined && Number(slideCount) >= 3 ? Number(slideCount) : undefined,
+      autoSlideCount: Boolean(autoSlideCount) || slideCount === undefined || slideCount === "auto",
+      allowPaidProviders: Boolean(allowPaidProviders),
       geminiApiKey: geminiApiKey || headerApiKey,
       providerKeys: parsedProviderKeys,
       assignmentMetadata,
@@ -99,10 +105,14 @@ router.post("/presentations/generate", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Presentation generation error:", error);
-    return res.status(500).json({
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const isInputIssue = /extract|unreadable|corrupted|empty|source text|no meaningful/i.test(errMsg);
+    return res.status(isInputIssue ? 400 : 500).json({
       success: false,
       error: {
-        message: "Failed to generate presentation. Please check your parameters and try again.",
+        message: isInputIssue
+          ? errMsg
+          : "Failed to generate presentation. Please check your parameters and try again.",
       },
     });
   }

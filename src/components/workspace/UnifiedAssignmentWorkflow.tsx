@@ -62,7 +62,13 @@ import {
   type PresentationSessionData,
   type SlideLayoutType,
 } from "@/lib/presentation-session-client";
-import { computeThemeTokens, TEMPLATES } from "@/lib/presentation-theme";
+import {
+  computeThemeTokens,
+  recommendThemeFromCatalog,
+} from "@/lib/presentation-theme";
+import { TEMPLATES } from "@/data/templates";
+import { recommendNaturalSlideCount } from "@/lib/slide-count-estimator";
+import { detectUnreadableExtraction } from "@/lib/presentation-pipeline";
 import { eraseWorkspaceJobsOnDownload } from "@/lib/workspace-history";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -816,6 +822,10 @@ export function UnifiedAssignmentWorkflow({
       try {
         const extraction = await extractDocumentText(file);
         const extractedText = extraction.text || "";
+        const unreadable = extractedText ? detectUnreadableExtraction(extractedText) : "No readable text found.";
+        if (extraction.isScannedOrEmpty || !extractedText.trim() || unreadable) {
+          throw new Error(extraction.warning || unreadable || "Could not read text from this file.");
+        }
 
         newFileItem.text = extractedText;
         newFileItem.status = "success";
@@ -1039,6 +1049,35 @@ export function UnifiedAssignmentWorkflow({
         setAiMilestoneIndex(2);
         setAiProgress(60);
 
+        const naturalRec = recommendNaturalSlideCount(rawContent);
+        const matchedTheme =
+          recommendThemeFromCatalog(rawContent, TEMPLATES) || {
+            id: "classroom-bright",
+            name: "Classroom Bright",
+            category: "Education",
+            kind: "education",
+            colors: {
+              primary: aiEnhancedMeta.accentColor || "#1E40AF",
+              accent: aiEnhancedMeta.accentColor || "#3B82F6",
+              bg: "#EFF6FF",
+            },
+            fonts: "Outfit + Public Sans",
+            tier: "free" as const,
+          };
+        const selectedAssignmentTheme = {
+          id: matchedTheme.id,
+          name: matchedTheme.name,
+          category: matchedTheme.category,
+          kind: matchedTheme.kind,
+          colors: {
+            primary: aiEnhancedMeta.accentColor || matchedTheme.colors.primary,
+            accent: matchedTheme.colors.accent,
+            bg: matchedTheme.colors.bg,
+          },
+          fonts: matchedTheme.fonts,
+          tier: matchedTheme.tier,
+        };
+
         const session = await createPresentationSessionApi({
           title,
           content: rawContent,
@@ -1046,20 +1085,9 @@ export function UnifiedAssignmentWorkflow({
           assignmentMetadata: aiEnhancedMeta,
           purpose: "Academic Assignment",
           density: "balanced",
-          slideCount: 8,
-          theme: {
-            id: "corporate-clean",
-            name: "Academic Clean",
-            category: "Academic",
-            kind: "academic",
-            colors: {
-              primary: aiEnhancedMeta.accentColor || "#1E3A8A",
-              accent: "#3B82F6",
-              bg: "#FFFFFF",
-            },
-            fonts: "Inter",
-            tier: "free",
-          },
+          slideCount: naturalRec.recommendedCount,
+          autoSlideCount: true,
+          theme: selectedAssignmentTheme,
         });
 
         setAiMilestoneIndex(3);
@@ -1071,17 +1099,9 @@ export function UnifiedAssignmentWorkflow({
           purpose: "Academic Assignment",
           density: "balanced",
           assignmentMetadata: aiEnhancedMeta,
-          theme: {
-            id: "corporate-clean",
-            name: "Academic Clean",
-            category: "Academic",
-            kind: "academic",
-            colors: { primary: aiEnhancedMeta.accentColor || "#1E3A8A", accent: "#3B82F6", bg: "#FFFFFF" },
-            fonts: "Inter",
-            tier: "free",
-          },
+          theme: selectedAssignmentTheme,
           typography: { fontFamily: "Inter", fontSizePreset: "standard" },
-          slideCount: session.slides?.length || session.slideCount || 8,
+          slideCount: session.slides?.length || session.slideCount || naturalRec.recommendedCount,
           slides: session.slides || [],
           fileSize: 1024 * 120,
           createdAt: Date.now(),

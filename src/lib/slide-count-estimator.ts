@@ -1,3 +1,6 @@
+import { sanitizePresentationInput } from "./presentation-pipeline/input-sanitizer";
+import { analyzeSourceContent } from "./presentation-pipeline/content-analyzer";
+
 /**
  * DocuMind Intelligent Slide Count Estimator
  * Analyzes document and prompt text depth, word count, structural headings,
@@ -47,13 +50,17 @@ export function estimateOptimalSlideCount(
 
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  // Detect structural topic markers (Markdown headers, numbered items, all-caps lines, colon ends)
+  // Detect major structural topic markers (avoid over-counting inline list labels or requirements checklists)
   const topicLines = lines.filter((l) => {
-    if (l.startsWith("#")) return true;
-    if (/^\d+[.)]\s+[A-Za-z]/.test(l) && l.length < 90) return true;
-    if (l.endsWith(":") && l.length < 80) return true;
-    if (l === l.toUpperCase() && l.length > 3 && l.length < 60 && !l.includes(".")) return true;
-    if (/^(Introduction|Overview|Scope|Architecture|Features|Requirements|Results|Conclusion|Summary|Chapter|Section|Module|Phase|Milestone|Key)\b/i.test(l) && l.length < 70) return true;
+    const clean = l.replace(/^[-*•\s]+/, "").trim();
+    if (!clean) return false;
+    if (/^(examples|verify that|requirements|important rules|note|notes|details|formatting toolbar|slide navigation|main slide workspace|editing behavior|for example|such as):?$/i.test(clean)) {
+      return false;
+    }
+    if (/^#{1,3}\s+/.test(clean)) return true;
+    if (/^(Chapter|Section|Part|Module|Phase|Stage|Milestone)\s+\d+/i.test(clean) && clean.length < 90) return true;
+    if (clean === clean.toUpperCase() && clean.length > 4 && clean.length < 60 && !clean.includes(".") && /[A-Z]/.test(clean)) return true;
+    if (/^(Introduction|Overview|Executive Summary|Scope|Architecture|Results|Conclusion|Summary)\b/i.test(clean) && clean.length < 55) return true;
     return false;
   });
 
@@ -62,39 +69,52 @@ export function estimateOptimalSlideCount(
     topicLines.length > 0 ? topicLines.length : Math.ceil(wordCount / 90),
   );
 
-  // Deterministic calculation based on content depth & topic structure
-  let optimalCount: SlideCountOption = 8;
+  // Word-count grounded calculation (prevents sparse 3-word slides on structured lists)
+  let wordTierIdx = 1;
+  if (wordCount < 140) wordTierIdx = 0; // 5
+  else if (wordCount < 400) wordTierIdx = 1; // 8
+  else if (wordCount < 900) wordTierIdx = 2; // 10
+  else if (wordCount < 1500) wordTierIdx = 3; // 15
+  else if (wordCount < 2200) wordTierIdx = 4; // 20
+  else if (wordCount < 3000) wordTierIdx = 5; // 25
+  else if (wordCount < 3800) wordTierIdx = 6; // 30
+  else if (wordCount < 4600) wordTierIdx = 7; // 35
+  else if (wordCount < 5600) wordTierIdx = 8; // 40
+  else wordTierIdx = 9; // 50
+
+  // Allow strong multi-section structure to bump at most +1 tier when word budget supports rich slides (~55+ words/slide)
+  let finalTierIdx = wordTierIdx;
+  const maxSustainableSlides = Math.max(5, Math.floor(wordCount / 55));
+  if (
+    wordTierIdx < SLIDE_COUNT_PRESETS.length - 1 &&
+    topicLines.length > SLIDE_COUNT_PRESETS[wordTierIdx]! &&
+    SLIDE_COUNT_PRESETS[wordTierIdx + 1]! <= maxSustainableSlides
+  ) {
+    finalTierIdx = wordTierIdx + 1;
+  }
+
+  const optimalCount: SlideCountOption = SLIDE_COUNT_PRESETS[finalTierIdx] || 8;
   let reason = "";
 
-  if (wordCount < 140 && (topicLines.length <= 4 || topicLines.length === 0)) {
-    optimalCount = 5;
+  if (optimalCount === 5) {
     reason = `Based on your concise text (~${wordCount} words, ${detectedTopicsCount} key points), 5 slides provides a punchy, focused presentation without empty slides.`;
-  } else if (wordCount < 400 && (topicLines.length <= 8 || topicLines.length === 0)) {
-    optimalCount = 8;
+  } else if (optimalCount === 8) {
     reason = `Based on your content depth (~${wordCount} words, ${detectedTopicsCount} topics), 8 slides is optimal for an executive briefing or lecture without overcrowding.`;
-  } else if (wordCount < 900 && (topicLines.length <= 13 || topicLines.length === 0)) {
-    optimalCount = 10;
+  } else if (optimalCount === 10) {
     reason = `Based on your content (~${wordCount} words across ${detectedTopicsCount} topics), 10 slides provides comprehensive coverage with balanced visual pacing.`;
-  } else if (wordCount < 1500 && (topicLines.length <= 18 || topicLines.length === 0)) {
-    optimalCount = 15;
-    reason = `Based on your detailed material (~${wordCount} words, ${detectedTopicsCount} topics), 15 slides provides thorough room for technical or academic analysis.`;
-  } else if (wordCount < 2200 && (topicLines.length <= 22 || topicLines.length === 0)) {
-    optimalCount = 20;
+  } else if (optimalCount === 15) {
+    reason = `Based on your detailed material (~${wordCount} words, ${detectedTopicsCount} topics), 15 slides provides thorough room for structured analysis without thin slides.`;
+  } else if (optimalCount === 20) {
     reason = `Based on your comprehensive document (~${wordCount} words, ${detectedTopicsCount} topics), 20 slides gives full room for all chapters and detailed takeaways.`;
-  } else if (wordCount < 3000 && (topicLines.length <= 27 || topicLines.length === 0)) {
-    optimalCount = 25;
+  } else if (optimalCount === 25) {
     reason = `Based on your extensive material (~${wordCount} words, ${detectedTopicsCount} topics), 25 slides gives dedicated coverage to each section without overcrowding.`;
-  } else if (wordCount < 3800 && (topicLines.length <= 32 || topicLines.length === 0)) {
-    optimalCount = 30;
+  } else if (optimalCount === 30) {
     reason = `Based on your long-form document (~${wordCount} words, ${detectedTopicsCount} topics), 30 slides delivers balanced, chapter-by-chapter pacing.`;
-  } else if (wordCount < 4600 && (topicLines.length <= 37 || topicLines.length === 0)) {
-    optimalCount = 35;
+  } else if (optimalCount === 35) {
     reason = `Based on your detailed multi-section content (~${wordCount} words, ${detectedTopicsCount} topics), 35 slides ensures thorough room for all modules and metrics.`;
-  } else if (wordCount < 5600 && (topicLines.length <= 44 || topicLines.length === 0)) {
-    optimalCount = 40;
+  } else if (optimalCount === 40) {
     reason = `Based on your comprehensive syllabus (~${wordCount} words, ${detectedTopicsCount} topics), 40 slides delivers expansive room for all topics and deep analysis.`;
   } else {
-    optimalCount = 50;
     reason = `Based on your extensive manuscript (~${wordCount} words, ${detectedTopicsCount} topics), 50 slides delivers a complete, full-scale master presentation deck.`;
   }
 
@@ -249,5 +269,34 @@ export function estimateOptimalSlideCount(
     estimatedMinutes,
     options,
     getAdvisory,
+  };
+}
+
+/**
+ * Computes a truly organic, content-driven slide count (`4` to `20`) based on
+ * analyzed topics and source depth rather than fixed coarse presets.
+ * Used when the user keeps Slide Count in "Auto (Content-Driven)" mode.
+ */
+export function recommendNaturalSlideCount(content: string): {
+  recommendedCount: number;
+  topicCount: number;
+  wordCount: number;
+  reason: string;
+} {
+  const sanitized = sanitizePresentationInput(content || "");
+  if (!sanitized.valid) {
+    return {
+      recommendedCount: 5,
+      topicCount: 1,
+      wordCount: 0,
+      reason: "Default 5-slide executive structure ready once readable source text is provided.",
+    };
+  }
+  const analysis = analyzeSourceContent(sanitized);
+  return {
+    recommendedCount: analysis.recommendedSlideCount,
+    topicCount: analysis.topics.length,
+    wordCount: sanitized.wordCount,
+    reason: `Content analysis identified ${analysis.topics.length} cohesive themes (~${sanitized.wordCount} words); ${analysis.recommendedSlideCount} slides fits every concept cleanly without filler.`,
   };
 }

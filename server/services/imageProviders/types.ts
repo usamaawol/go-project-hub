@@ -23,6 +23,7 @@ export interface ImageProviderConfig {
   lastTestedAt?: string;
   lastError?: string;
   freeTierInfo: string;
+  billingTier?: "free" | "paid";
   quotaInfo?: QuotaInfo;
 }
 
@@ -33,6 +34,7 @@ export interface GenerateImageOptions {
   slideTitle?: string;
   concept?: string;
   style?: "illustration" | "diagram" | "photorealistic" | "minimalist";
+  allowPaidProviders?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -86,6 +88,7 @@ export interface ImageGenerationSettings {
   timeoutSeconds: number;
   autoFallbackEnabled: boolean;
   preferredAspectRatio: "16:9" | "1:1";
+  allowPaidProviders?: boolean;
 }
 
 export interface ImageGenerationLogEntry {

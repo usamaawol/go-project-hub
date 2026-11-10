@@ -44,6 +44,7 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     apiKey: ENV.GEMINI_API_KEY || "",
     status: (ENV.GEMINI_API_KEY && ENV.GEMINI_API_KEY.length > 8) ? "ready" : "needs_key",
     freeTierInfo: "Free tier available via Google AI Studio API with daily rate limits.",
+    billingTier: "free",
     quotaInfo: {
       isEstimate: true,
       unit: "Requests / Min",
@@ -66,6 +67,7 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     apiKey: process.env.HUGGINGFACE_API_KEY || "",
     status: "needs_key",
     freeTierInfo: "Free community inference API with Hugging Face user access token.",
+    billingTier: "free",
     quotaInfo: {
       isEstimate: true,
       unit: "Monthly Requests",
@@ -88,6 +90,7 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     endpointUrl: process.env.CLOUDFLARE_ACCOUNT_ID || "",
     status: "needs_key",
     freeTierInfo: "10,000 Neurons per day free on Cloudflare Workers AI plan.",
+    billingTier: "free",
     quotaInfo: {
       isEstimate: true,
       unit: "Neurons / Day",
@@ -109,6 +112,7 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     apiKey: process.env.FAL_KEY || "",
     status: "needs_key",
     freeTierInfo: "Initial free trial credits provided on sign-up; requires pay-as-you-go key after trial.",
+    billingTier: "paid",
     quotaInfo: {
       isEstimate: true,
       unit: "Credits ($)",
@@ -130,6 +134,7 @@ const DEFAULT_PROVIDERS: ImageProviderConfig[] = [
     apiKey: process.env.REPLICATE_API_TOKEN || "",
     status: "needs_key",
     freeTierInfo: "Trial runs offered for new accounts; pay-per-second thereafter.",
+    billingTier: "paid",
     quotaInfo: {
       isEstimate: true,
       unit: "Predictions",
@@ -148,6 +153,7 @@ const DEFAULT_SETTINGS: ImageGenerationSettings = {
   timeoutSeconds: 30,
   autoFallbackEnabled: true,
   preferredAspectRatio: "16:9",
+  allowPaidProviders: false,
 };
 
 export class ImageProviderManager {
@@ -180,11 +186,27 @@ export class ImageProviderManager {
     this.adapters.set(adapter.id, adapter);
   }
 
+  private isPlaceholderTestKey(key?: string): boolean {
+    if (!key) return false;
+    const lower = key.trim().toLowerCase();
+    return (
+      lower.includes("mock") ||
+      lower.includes("testkey") ||
+      lower.includes("test_invalid") ||
+      lower.includes("custompresentationtest")
+    );
+  }
+
   private loadFromDisk() {
     // 1. Initialize defaults
     DEFAULT_PROVIDERS.forEach((p) => {
       this.providers.set(p.id, { ...p });
     });
+
+    // Skip reading stale tracked test artifacts when running automated test suites
+    if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+      return;
+    }
 
     // 2. Overlay disk configuration if present
     try {
@@ -195,11 +217,14 @@ export class ImageProviderManager {
           parsed.providers.forEach((saved: ImageProviderConfig) => {
             const current = this.providers.get(saved.id);
             if (current) {
+              const savedKey = this.isPlaceholderTestKey(saved.apiKey) ? "" : saved.apiKey;
+              const effectiveKey = savedKey || current.apiKey || "";
               this.providers.set(saved.id, {
                 ...current,
                 ...saved,
-                // If saved apiKey was empty but ENV exists, preserve ENV
-                apiKey: saved.apiKey || current.apiKey || "",
+                billingTier: current.billingTier,
+                apiKey: effectiveKey,
+                status: effectiveKey && effectiveKey.length > 6 ? (saved.status === "needs_key" ? "ready" : saved.status) : "needs_key",
               });
             }
           });
@@ -220,6 +245,10 @@ export class ImageProviderManager {
   }
 
   private persistToDisk() {
+    // Never mutate tracked workspace config files during automated test runs
+    if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+      return;
+    }
     try {
       const dir = path.dirname(PROVIDERS_CONFIG_FILE);
       if (!fs.existsSync(dir)) {
@@ -464,11 +493,19 @@ export class ImageProviderManager {
     }
 
     // 3. Collect eligible providers sorted by priority
+    // Never silently invoke paid providers unless explicitly permitted or triggered via admin_test.
+    const allowPaid =
+      options.allowPaidProviders === true ||
+      this.settings.allowPaidProviders === true ||
+      options.source === "admin_test";
     const now = Date.now();
+    const isTestEnv = process.env.NODE_ENV === "test" || Boolean(process.env.VITEST);
     const eligibleProviders = Array.from(this.providers.values())
       .filter((p) => {
         if (!p.enabled) return false;
+        if (p.billingTier === "paid" && !allowPaid) return false;
         if (!p.apiKey || p.apiKey.trim().length < 6) return false;
+        if (!isTestEnv && this.isPlaceholderTestKey(p.apiKey)) return false;
         const cooldownUntil = this.cooldowns.get(p.id);
         if (cooldownUntil && cooldownUntil > now) return false;
         return true;
@@ -518,6 +555,9 @@ export class ImageProviderManager {
 
       const attemptStart = Date.now();
       try {
+        if (this.isPlaceholderTestKey(provider.apiKey)) {
+          throw new Error("Placeholder test credentials skipped external network request.");
+        }
         const res = await adapter.generateImage(provider, options);
         const durationMs = Date.now() - attemptStart;
 

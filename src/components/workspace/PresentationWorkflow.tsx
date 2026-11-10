@@ -53,8 +53,11 @@ import {
   testAdminOpenAIConnection,
 } from "@/lib/api-client";
 import { detectTitleFromText } from "@/lib/presentation-session-client";
+import { recommendThemeFromCatalog } from "@/lib/presentation-theme";
+import { detectUnreadableExtraction } from "@/lib/presentation-pipeline";
 import {
   estimateOptimalSlideCount,
+  recommendNaturalSlideCount,
   SLIDE_COUNT_PRESETS,
   type SlideCountOption,
 } from "@/lib/slide-count-estimator";
@@ -196,7 +199,9 @@ export function PresentationWorkflow({
     }
     return "";
   });
+  const [userEditedTitle, setUserEditedTitle] = useState(false);
   const [purpose, setPurpose] = useState(PURPOSES[0]!);
+  const [userSelectedPurpose, setUserSelectedPurpose] = useState(false);
   const [density, setDensity] = useState<"concise" | "balanced" | "detailed">("balanced");
   const [audience, setAudience] = useState("Executive Leadership & Stakeholders");
   const [language, setLanguage] = useState("English");
@@ -214,10 +219,21 @@ export function PresentationWorkflow({
     return "";
   });
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedExtractedText, setUploadedExtractedText] = useState("");
+  const [isExtractingFile, setIsExtractingFile] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step B: Settings State
+  const activeSourceText = inputMode === "upload" ? uploadedExtractedText : pastedText;
+
+  // Step B: Settings State — Never default to generic grayscale; prefer vibrant domain-aligned themes
+  const [userLockedTheme, setUserLockedTheme] = useState<boolean>(() => {
+    try {
+      return Boolean(typeof window !== "undefined" && window.sessionStorage?.getItem("documind_selected_theme_id"));
+    } catch {
+      return false;
+    }
+  });
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem>(() => {
     try {
       if (typeof window !== "undefined" && window.sessionStorage) {
@@ -230,7 +246,11 @@ export function PresentationWorkflow({
     } catch {
       // ignore
     }
-    return TEMPLATES.find((t) => t.isFree) || TEMPLATES[0]!;
+    return (
+      TEMPLATES.find((t) => t.id === "executive-brief") ||
+      recommendThemeFromCatalog("", TEMPLATES) ||
+      TEMPLATES[0]!
+    );
   });
   const [selectedFont, setSelectedFont] = useState("Inter");
   const [selectedFontSize, setSelectedFontSize] = useState<
@@ -250,12 +270,34 @@ export function PresentationWorkflow({
     }
     return 8;
   });
-  const [userLockedSlideCount, setUserLockedSlideCount] = useState(false);
+  const [userLockedSlideCount, setUserLockedSlideCount] = useState<boolean>(() => {
+    try {
+      return Boolean(typeof window !== "undefined" && window.sessionStorage?.getItem("documind_template_slides_count"));
+    } catch {
+      return false;
+    }
+  });
 
-  // DocuMind Intelligent Slide Count Recommendation
+  // Natural topic-driven recommendation & preset advisory
+  const naturalRecommendation = useMemo(() => {
+    return recommendNaturalSlideCount(activeSourceText);
+  }, [activeSourceText]);
+
   const slideRecommendation = useMemo(() => {
-    return estimateOptimalSlideCount(pastedText, slideCount);
-  }, [pastedText, slideCount]);
+    return estimateOptimalSlideCount(activeSourceText, slideCount);
+  }, [activeSourceText, slideCount]);
+
+  useEffect(() => {
+    if (!userLockedSlideCount && activeSourceText.trim().length >= 30) {
+      setSlideCount(naturalRecommendation.recommendedCount);
+    }
+    if (!userLockedTheme && activeSourceText.trim().length >= 40) {
+      const matched = recommendThemeFromCatalog(activeSourceText, TEMPLATES);
+      if (matched && matched.id !== selectedTemplate.id) {
+        setSelectedTemplate(matched);
+      }
+    }
+  }, [activeSourceText, userLockedSlideCount, naturalRecommendation.recommendedCount, userLockedTheme]);
   const [visualPreference, setVisualPreference] = useState<"diagrams" | "text-only">("diagrams");
 
   // Assignment Mode State
@@ -281,9 +323,9 @@ export function PresentationWorkflow({
   const handleApplySuggestions = (s: ExtractedAssignmentSuggestions) => {
     setAssignmentMetadata((prev) => ({
       ...prev,
-      assignmentType: s.detectedType || prev.assignmentType,
-      studentName: s.studentName || prev.studentName,
-      studentId: s.studentId || prev.studentId,
+      ...(s.courseName && /lab/i.test(s.courseName) ? { assignmentType: "lab-report" as const } : {}),
+      ...(s.studentName ? { studentName: s.studentName } : {}),
+      ...(s.studentId ? { studentId: s.studentId } : {}),
       groupMembers:
         s.groupMembers && s.groupMembers.length > 0
           ? s.groupMembers.map((m, i) => ({
@@ -292,16 +334,16 @@ export function PresentationWorkflow({
               studentId: m.studentId,
             }))
           : prev.groupMembers,
-      courseName: s.courseName || prev.courseName,
-      courseCode: s.courseCode || prev.courseCode,
-      instructorName: s.instructorName || prev.instructorName,
-      universityName: s.universityName || prev.universityName,
-      department: s.department || prev.department,
-      collegeOrFaculty: s.collegeOrFaculty || prev.collegeOrFaculty,
-      academicYear: s.academicYear || prev.academicYear,
-      semester: s.semester || prev.semester,
-      submissionDate: s.submissionDate || prev.submissionDate,
-      assignmentTitle: s.assignmentTitle || prev.assignmentTitle,
+      ...(s.courseName ? { courseName: s.courseName } : {}),
+      ...(s.courseCode ? { courseCode: s.courseCode } : {}),
+      ...(s.instructorName ? { instructorName: s.instructorName } : {}),
+      ...(s.universityName ? { universityName: s.universityName } : {}),
+      ...(s.department ? { department: s.department } : {}),
+      ...(s.collegeOrFaculty ? { collegeOrFaculty: s.collegeOrFaculty } : {}),
+      ...(s.academicYear ? { academicYear: s.academicYear } : {}),
+      ...(s.semester ? { semester: s.semester } : {}),
+      ...(s.submissionDate ? { submissionDate: s.submissionDate } : {}),
+      ...(s.assignmentTitle ? { assignmentTitle: s.assignmentTitle } : {}),
     }));
     toast.success("Assignment details applied from document!");
     setExtractedSuggestions(null);
@@ -379,10 +421,10 @@ export function PresentationWorkflow({
         activeProvider: selectedProvider,
       };
       if (adminGeminiKeyInput.trim() && !adminGeminiKeyInput.includes("••••")) {
-        payload.geminiApiKey = adminGeminiKeyInput.trim();
+        payload["geminiApiKey"] = adminGeminiKeyInput.trim();
       }
       if (adminOpenAiKeyInput.trim() && !adminOpenAiKeyInput.includes("••••")) {
-        payload.openaiApiKey = adminOpenAiKeyInput.trim();
+        payload["openaiApiKey"] = adminOpenAiKeyInput.trim();
       }
       const res = await updateAdminSettings(payload);
       if (res?.data) {
@@ -428,13 +470,12 @@ export function PresentationWorkflow({
   // Helper to sync pasted text, auto-extract title, and estimate slide count
   const handlePastedTextChange = (text: string) => {
     setPastedText(text);
-    if (!title.trim() || title === "Strategic Operations & Knowledge Review") {
+    if (!userEditedTitle || title === "Strategic Operations & Knowledge Review") {
       const detected = detectTitleFromText(text);
       if (detected) setTitle(detected);
     }
     if (!userLockedSlideCount && text.trim().length > 30) {
-      const est = estimateOptimalSlideCount(text);
-      setSlideCount(est.optimalCount);
+      setSlideCount(recommendNaturalSlideCount(text).recommendedCount);
     }
   };
 
@@ -472,43 +513,52 @@ export function PresentationWorkflow({
     }
 
     setUploadedFile(file);
-    // Auto populate title from file name
+    setUploadedExtractedText("");
+    setIsExtractingFile(true);
     const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
-    setTitle(cleanName);
+    if (!userEditedTitle) {
+      setTitle(cleanName);
+    }
 
-    // Extract text in memory immediately
+    // Extract uploaded file in isolation (never mix with pastedText)
     extractDocumentText(file)
       .then((res) => {
-        if (res.isScannedOrEmpty || !res.text || res.text.trim().length === 0) {
+        const unreadable = res.text ? detectUnreadableExtraction(res.text) : "No readable text found.";
+        if (res.isScannedOrEmpty || !res.text || res.text.trim().length === 0 || unreadable) {
           setFileError(
             res.warning ||
+              unreadable ||
               "Could not extract selectable text from this file. It may be an image-only scan. Please use a text-based document or paste your notes.",
           );
           setUploadedFile(null);
-          setPastedText("");
+          setUploadedExtractedText("");
         } else {
-          setPastedText(res.text);
+          setUploadedExtractedText(res.text);
           if (!userLockedSlideCount && res.text.trim().length > 30) {
-            const est = estimateOptimalSlideCount(res.text);
-            setSlideCount(est.optimalCount);
+            setSlideCount(recommendNaturalSlideCount(res.text).recommendedCount);
           }
-          const detected = detectTitleFromText(res.text);
-          if (detected && detected.length > 3) {
-            setTitle(detected);
+          if (!userEditedTitle) {
+            const detected = detectTitleFromText(res.text);
+            if (detected && detected.length > 3) {
+              setTitle(detected);
+            }
           }
           const suggestions = extractAssignmentMetadataFromText(res.text);
           if (suggestions.hasSuggestions) {
             setExtractedSuggestions(suggestions);
           }
           toast.success(`Extracted ${res.wordCount} words`, {
-            description: `${(file.size / 1024 / 1024).toFixed(1)} MB processed into structured content.`,
+            description: `${(file.size / 1024 / 1024).toFixed(1)} MB processed cleanly in memory.`,
           });
         }
       })
       .catch((err) => {
         setFileError(err instanceof Error ? err.message : "Failed to extract text from file.");
         setUploadedFile(null);
-        setPastedText("");
+        setUploadedExtractedText("");
+      })
+      .finally(() => {
+        setIsExtractingFile(false);
       });
   };
 
@@ -527,30 +577,37 @@ export function PresentationWorkflow({
       });
       return;
     }
+    if (inputMode === "upload" && isExtractingFile) {
+      toast.info("Still reading your uploaded document — please wait a moment.");
+      return;
+    }
 
-    // If uploading, extract text in memory now
-    if (inputMode === "upload" && uploadedFile && !pastedText.trim()) {
+    // If uploading and text hasn't finished extracting, extract strictly from uploadedFile
+    let latestSource = activeSourceText;
+    if (inputMode === "upload" && uploadedFile && !uploadedExtractedText.trim()) {
       try {
         toast.info("Extracting document contents...", {
           description: "Processing locally in memory.",
         });
         const extraction = await extractDocumentText(uploadedFile);
+        const unreadable = extraction.text ? detectUnreadableExtraction(extraction.text) : null;
         if (
           extraction.isScannedOrEmpty ||
           !extraction.text ||
-          extraction.text.trim().length === 0
+          extraction.text.trim().length === 0 ||
+          unreadable
         ) {
-          setFileError(
+          const msg =
             extraction.warning ||
-              "Could not extract text. Please ensure the document is not an image-only scan.",
-          );
-          toast.error("Document Extraction Failed", {
-            description: extraction.warning || "No selectable text found in file.",
-          });
+            unreadable ||
+            "Could not extract text. Please ensure the document is not an image-only scan.";
+          setFileError(msg);
+          toast.error("Document Extraction Failed", { description: msg });
           return;
         }
-        setPastedText(extraction.text);
-        if (!title.trim()) {
+        latestSource = extraction.text;
+        setUploadedExtractedText(extraction.text);
+        if (!userEditedTitle && !title.trim()) {
           const detected = detectTitleFromText(extraction.text);
           if (detected) setTitle(detected);
         }
@@ -568,9 +625,8 @@ export function PresentationWorkflow({
 
     if (assignmentMode) {
       // In assignment mode, all metadata fields (student name, student ID, course, instructor, university, group members) are optional.
-      // Auto-populate assignment title if left blank
       if (!assignmentMetadata.assignmentTitle?.trim()) {
-        const detectedTitle = title.trim() || detectTitleFromText(pastedText) || "Academic Assignment";
+        const detectedTitle = title.trim() || detectTitleFromText(latestSource) || "Academic Assignment";
         setAssignmentMetadata((prev) => ({
           ...prev,
           assignmentTitle: detectedTitle,
@@ -584,6 +640,7 @@ export function PresentationWorkflow({
   // Step B Theme Selection
   const handleSelectTheme = (t: TemplateItem) => {
     setSelectedTemplate(t);
+    setUserLockedTheme(true);
     const fontCandidate = t.fonts.split("+")[0]?.trim() || t.fonts.split("/")[0]?.trim();
     if (fontCandidate) {
       setSelectedFont(fontCandidate);
@@ -597,25 +654,29 @@ export function PresentationWorkflow({
   const handleStartGeneration = async () => {
     if (generating) return; // Prevent duplicate clicks
 
-    let contentToUse = pastedText.trim();
-    if (!contentToUse && uploadedFile) {
+    // Strictly isolate uploaded document text vs pasted text (never leak pasted drafts when uploading)
+    let contentToUse = inputMode === "upload" ? uploadedExtractedText.trim() : pastedText.trim();
+    if (inputMode === "upload" && !contentToUse && uploadedFile) {
       try {
         setGenerating(true);
         setCurrentStep("generating");
         setGenerationPhase("1/5: Extracting text from uploaded document...");
         const extraction = await extractDocumentText(uploadedFile);
+        const unreadable = extraction.text ? detectUnreadableExtraction(extraction.text) : null;
         if (
           extraction.isScannedOrEmpty ||
           !extraction.text ||
-          extraction.text.trim().length === 0
+          extraction.text.trim().length === 0 ||
+          unreadable
         ) {
           throw new Error(
             extraction.warning ||
+              unreadable ||
               "Could not extract selectable text from this file. It may be an image-only scan.",
           );
         }
         contentToUse = extraction.text;
-        setPastedText(contentToUse);
+        setUploadedExtractedText(contentToUse);
       } catch (err) {
         setGenerating(false);
         setCurrentStep("settings");
@@ -627,8 +688,14 @@ export function PresentationWorkflow({
 
     if (!contentToUse || contentToUse.length < 15) {
       toast.error("Content is too short or empty", {
-        description: "Please supply presentation notes or an outline with at least 15 characters.",
+        description: "Please supply presentation notes or an upload with readable text.",
       });
+      return;
+    }
+    const unreadableCheck = detectUnreadableExtraction(contentToUse);
+    if (unreadableCheck) {
+      setFileError(unreadableCheck);
+      toast.error("Unreadable Source Document", { description: unreadableCheck });
       return;
     }
 
@@ -637,43 +704,37 @@ export function PresentationWorkflow({
     abortControllerRef.current = new AbortController();
 
     try {
-      setGenerationPhase("2/5: Analyzing document content & detecting core themes...");
+      setGenerationPhase("2/5: Understanding source subject, themes & key facts...");
+      await new Promise((r) => setTimeout(r, 350));
+
+      setGenerationPhase("3/5: Composing varied visual storytelling layouts...");
       await new Promise((r) => setTimeout(r, 400));
 
-      setGenerationPhase("3/5: Synthesizing slide outline & layout hierarchy...");
-      await new Promise((r) => setTimeout(r, 500));
-
       setGenerationPhase(
-        `4/5: Applying ${selectedTemplate.name} theme design tokens & contrast...`,
+        `4/5: Applying ${selectedTemplate.name} design tokens & diagrams...`,
       );
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 400));
 
       setGenerationPhase(
-        "5/5: Compiling vector PowerPoint (.pptx) & starting 15-minute preview...",
+        "5/5: Running quality control inspection & compiling PPTX...",
       );
 
       const detected = detectTitleFromText(contentToUse);
-      const titleWords = title.trim().toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-      const contentLower = contentToUse.toLowerCase();
-      const hasWordMatch = titleWords.some((w) => contentLower.includes(w));
-
       const finalTitle =
-        title.trim() && (hasWordMatch || title.trim().length > 25)
+        userEditedTitle && title.trim()
           ? title.trim()
           : detected || title.trim() || "Presentation Deck";
 
       const session = await createPresentationSessionApi({
         title: finalTitle,
         content: contentToUse,
-        purpose,
+        ...(userSelectedPurpose ? { purpose } : {}),
         density,
-        audience: !assignmentMode ? audience : undefined,
-        language: !assignmentMode ? language : undefined,
-        additionalInstructions: !assignmentMode ? additionalInstructions : undefined,
+        ...(!assignmentMode && audience ? { audience } : {}),
+        ...(!assignmentMode && language ? { language } : {}),
+        ...(!assignmentMode && additionalInstructions ? { additionalInstructions } : {}),
         presentationType: assignmentMode ? "assignment" : "standard",
-        assignmentMetadata: assignmentMode
-          ? { ...assignmentMetadata, isAssignment: true }
-          : undefined,
+        ...(assignmentMode ? { assignmentMetadata: { ...assignmentMetadata, isAssignment: true } } : {}),
         theme: {
           id: selectedTemplate.id,
           name: selectedTemplate.name,
@@ -688,6 +749,8 @@ export function PresentationWorkflow({
           fontSizePreset: selectedFontSize,
         },
         slideCount,
+        autoSlideCount: !userLockedSlideCount,
+        visualPreference,
       });
 
       toast.success("Presentation Generated!", {
@@ -786,7 +849,7 @@ export function PresentationWorkflow({
             setAssignmentMetadata((prev) => ({ ...prev, isAssignment: false }));
           }}
           initialMetadata={assignmentMetadata}
-          initialContent={pastedText}
+          initialContent={activeSourceText}
         />
       </div>
     );
@@ -896,7 +959,7 @@ export function PresentationWorkflow({
             <button
               type="button"
               onClick={() => setCurrentStep("settings")}
-              disabled={generating || (!pastedText && !uploadedFile)}
+              disabled={generating || (!activeSourceText.trim() && !(inputMode === "upload" && uploadedFile))}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                 currentStep === "settings"
                   ? "bg-primary text-primary-foreground"
@@ -1035,13 +1098,14 @@ export function PresentationWorkflow({
                 <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-bold block">
                   Presentation Topic or Title
                 </label>
-                {pastedText.trim() && (
+                {activeSourceText.trim() && (
                   <button
                     type="button"
                     onClick={() => {
-                      const detected = detectTitleFromText(pastedText);
+                      const detected = detectTitleFromText(activeSourceText);
                       if (detected) {
                         setTitle(detected);
+                        setUserEditedTitle(false);
                         toast.success(`Title detected: "${detected}"`);
                       }
                     }}
@@ -1054,7 +1118,10 @@ export function PresentationWorkflow({
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  setUserEditedTitle(e.target.value.trim().length > 0);
+                }}
                 placeholder="e.g. Photosynthesis and Plant Biology (or leave blank to auto-detect)"
                 className="w-full rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm font-medium text-foreground focus:border-primary focus:outline-hidden min-h-[46px]"
               />
@@ -1068,7 +1135,10 @@ export function PresentationWorkflow({
                 </label>
                 <select
                   value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
+                  onChange={(e) => {
+                    setPurpose(e.target.value);
+                    setUserSelectedPurpose(true);
+                  }}
                   className="w-full rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs sm:text-sm font-medium text-foreground focus:border-primary focus:outline-hidden min-h-[46px]"
                 >
                   {PURPOSES.map((p) => (
@@ -1284,7 +1354,7 @@ export function PresentationWorkflow({
               )}
 
               {/* Intelligent Slide Length Guidance & Quick Presets */}
-              {(pastedText.trim().length > 30 || uploadedFile) && (
+              {(activeSourceText.trim().length > 30 || (inputMode === "upload" && uploadedFile)) && (
                 <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3.5 transition-all">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-start gap-3">
@@ -1295,11 +1365,11 @@ export function PresentationWorkflow({
                         <h4 className="text-xs sm:text-sm font-semibold text-foreground flex flex-wrap items-center gap-2">
                           DocuMind Deck Length Guidance
                           <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-primary/15 text-primary px-2 py-0.5 rounded-full">
-                            Estimated: {slideRecommendation.optimalCount} Slides
+                            Auto-Recommended: {naturalRecommendation.recommendedCount} Slides
                           </span>
                         </h4>
                         <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {slideRecommendation.wordCount} words detected • ~{slideRecommendation.detectedTopicsCount} key topics • ~{slideRecommendation.estimatedMinutes} min presentation
+                          {naturalRecommendation.wordCount} words detected • {naturalRecommendation.topicCount} semantic themes • {naturalRecommendation.reason}
                         </p>
                       </div>
                     </div>
@@ -1590,18 +1660,35 @@ export function PresentationWorkflow({
                   Slide Count & Deck Length
                 </span>
                 <h3 className="text-xl sm:text-2xl font-serif font-bold text-foreground mt-0.5">
-                  Target Length: {slideCount} Slides
+                  Target Length: {slideCount} Slides {!userLockedSlideCount && "(Auto)"}
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  AI estimates <strong className="text-foreground">{slideRecommendation.optimalCount} slides</strong> is optimal for your {slideRecommendation.wordCount} words to prevent empty or crowded slides.
+                  {naturalRecommendation.reason}
                 </p>
               </div>
 
-              {/* Slide Count Buttons: 5, 8, 10, 15, 20, 25, 30, 35, 40, 50 */}
+              {/* Slide Count Buttons: Auto + Presets */}
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserLockedSlideCount(false);
+                    setSlideCount(naturalRecommendation.recommendedCount);
+                  }}
+                  className={`relative rounded-xl border px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold transition-all min-h-[44px] flex flex-col items-center justify-center gap-0.5 ${
+                    !userLockedSlideCount
+                      ? "border-primary bg-primary text-primary-foreground shadow-xs ring-1 ring-primary"
+                      : "border-border bg-surface-2 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span className="text-[8px] font-mono uppercase tracking-wider font-extrabold opacity-90">
+                    Content-Driven
+                  </span>
+                  <span>Auto ({naturalRecommendation.recommendedCount})</span>
+                </button>
                 {SLIDE_COUNT_PRESETS.map((count) => {
                   const isOptimal = count === slideRecommendation.optimalCount;
-                  const isSelected = slideCount === count;
+                  const isSelected = userLockedSlideCount && slideCount === count;
                   return (
                     <button
                       key={count}
@@ -1835,17 +1922,27 @@ export function PresentationWorkflow({
 
           {/* Review Screen: Assignment & Content Outline Summary */}
           {(() => {
-            const contentForReview = pastedText.trim();
-            const previewDeck = contentForReview
-              ? buildSlideDeckContent(
-                  title.trim() || detectTitleFromText(contentForReview) || "Assignment Presentation",
-                  contentForReview,
-                  slideCount,
-                  density,
-                  purpose,
-                  assignmentMode ? { ...assignmentMetadata, isAssignment: true } : undefined,
-                )
-              : [];
+            const contentForReview = activeSourceText.trim();
+            let previewDeck: ReturnType<typeof buildSlideDeckContent> = [];
+            try {
+              previewDeck = contentForReview
+                ? buildSlideDeckContent(
+                    title.trim() || detectTitleFromText(contentForReview) || "Presentation Preview",
+                    contentForReview,
+                    slideCount,
+                    density,
+                    userSelectedPurpose ? purpose : "",
+                    assignmentMode ? { ...assignmentMetadata, isAssignment: true } : undefined,
+                    {
+                      visualPreference,
+                      theme: selectedTemplate,
+                      autoSlideCount: !userLockedSlideCount,
+                    },
+                  )
+                : [];
+            } catch {
+              previewDeck = [];
+            }
             const coverageReport = calculateSourceCoverage(contentForReview, previewDeck);
 
             return (
@@ -2398,17 +2495,27 @@ export function PresentationWorkflow({
           </DialogHeader>
 
           {(() => {
-            const contentForReview = pastedText.trim();
-            const deck = contentForReview
-              ? buildSlideDeckContent(
-                  title.trim() || detectTitleFromText(contentForReview) || "Assignment Presentation",
-                  contentForReview,
-                  slideCount,
-                  density,
-                  purpose,
-                  assignmentMode ? { ...assignmentMetadata, isAssignment: true } : undefined,
-                )
-              : [];
+            const contentForReview = activeSourceText.trim();
+            let deck: ReturnType<typeof buildSlideDeckContent> = [];
+            try {
+              deck = contentForReview
+                ? buildSlideDeckContent(
+                    title.trim() || detectTitleFromText(contentForReview) || "Presentation Preview",
+                    contentForReview,
+                    slideCount,
+                    density,
+                    userSelectedPurpose ? purpose : "",
+                    assignmentMode ? { ...assignmentMetadata, isAssignment: true } : undefined,
+                    {
+                      visualPreference,
+                      theme: selectedTemplate,
+                      autoSlideCount: !userLockedSlideCount,
+                    },
+                  )
+                : [];
+            } catch {
+              deck = [];
+            }
             const cov = calculateSourceCoverage(contentForReview, deck);
 
             return (

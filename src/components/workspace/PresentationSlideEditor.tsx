@@ -18,7 +18,11 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { SlidePreviewItem } from "@/lib/presentation-session-client";
-import { type ThemeTokens, stripHex } from "@/lib/presentation-theme";
+import {
+  type ThemeTokens,
+  resolveSlideSurfaceTokens,
+  stripHex,
+} from "@/lib/presentation-theme";
 import {
   type SlideElement,
   SLIDE_CANVAS_WIDTH,
@@ -27,6 +31,7 @@ import {
   syncElementsToSlide,
 } from "@/lib/slide-element-model";
 import { verifyAndSanitizeImage } from "@/lib/image-verifier";
+import { buildContextualVisual } from "@/lib/presentation-visual-generator";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -161,8 +166,25 @@ export function PresentationSlideEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
 
-  // Zoom & View
+  // Zoom & View & Responsive Typography Scaling
   const [zoomLevel, setZoomLevel] = useState<number>(0.85);
+  const [canvasWidth, setCanvasWidth] = useState<number>(960);
+
+  useEffect(() => {
+    const node = canvasRef.current;
+    if (!node) return undefined;
+    const measure = () => {
+      const w = node.getBoundingClientRect().width;
+      if (w > 120) setCanvasWidth(w);
+    };
+    measure();
+    if (typeof ResizeObserver !== "undefined") {
+      const obs = new ResizeObserver(() => measure());
+      obs.observe(node);
+      return () => obs.disconnect();
+    }
+    return undefined;
+  }, []);
 
   // Dragging & Resizing State
   const [dragState, setDragState] = useState<{
@@ -189,10 +211,14 @@ export function PresentationSlideEditor({
   // AI Prompt State
   const [aiPromptInput, setAiPromptInput] = useState("");
 
-  // Slide Background Color
-  const currentBg = slide?.customBgColor || tokens?.bg || "#FFFFFF";
+  // Slide Background & Contrast Tokens (supports Gamma dark cover/divider surfaces + custom colors)
+  const surfaceTokens = resolveSlideSurfaceTokens(tokens, slide?.slideSurface, slide?.customBgColor);
+  const currentBg = surfaceTokens.bg;
+  const externalElementsVersion = slide?.elements
+    ? `manual:${slide.elements.length}`
+    : `auto:${slide?.layout}:${slide?.title}:${slide?.subtitle || ""}:${slide?.visual?.imageUrl?.slice(-24) || ""}`;
 
-  // When active slide changes from outside (e.g. user clicked thumbnail or slide navigation)
+  // When active slide changes OR external Modal / AI redesign resets slide.elements, refresh canvas
   useEffect(() => {
     if (!slide) return;
     const freshElements = convertSlideToElements(slide, tokens);
@@ -201,7 +227,7 @@ export function PresentationSlideEditor({
     setFuture([]);
     setSelectedId(null);
     setEditingTextId(null);
-  }, [slide?.id, slideIndex]);
+  }, [slide?.id, slideIndex, externalElementsVersion]);
 
   // Push element changes to history & parent
   const commitElements = useCallback(
@@ -1442,7 +1468,7 @@ export function PresentationSlideEditor({
           style={{
             backgroundColor: currentBg,
             fontFamily: tokens.fontBody,
-            color: tokens.textPrimary,
+            color: surfaceTokens.textPrimary,
           }}
         >
           {/* Elements Stacked on Canvas */}
@@ -1509,18 +1535,44 @@ export function PresentationSlideEditor({
                         <img
                           src={el.imageUrl}
                           alt={el.altText || "Slide visual"}
-                          className="w-full h-full object-cover object-center"
-                          onError={(e) => {
-                            // If image fails, replace with clean conceptual fallback
-                            const target = e.currentTarget;
-                            target.style.display = "none";
+                          className={`w-full h-full ${
+                            el.imageFit === "contain" || el.imageUrl.startsWith("data:image/svg+xml")
+                              ? "object-contain p-1"
+                              : "object-cover object-center"
+                          }`}
+                          onError={() => {
+                            // Remove unusable image or replace failed non-SVG image with contextual vector diagram (never leave an empty container)
+                            const isAlreadyFallback = el.imageUrl?.startsWith("data:image/svg+xml");
+                            if (!isAlreadyFallback) {
+                              const vis = buildContextualVisual({
+                                title: slide.title,
+                                subtitle: slide.subtitle,
+                                bullets: slide.bullets,
+                                concept: el.altText || slide.title,
+                                accentColor: tokens.accent,
+                                isDark: tokens.isDark,
+                              });
+                              if (vis?.imageUrl) {
+                                commitElements(
+                                  elements.map((item) =>
+                                    item.id === el.id ? { ...item, imageUrl: vis.imageUrl } : item,
+                                  ),
+                                  false,
+                                );
+                                return;
+                              }
+                            }
+                            commitElements(
+                              elements.filter((item) => item.id !== el.id),
+                              false,
+                            );
                           }}
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center p-4 text-center">
                           <ImageIcon className="h-8 w-8 text-primary/40 mb-1" />
                           <span className="text-xs text-muted-foreground font-medium">
-                            Click to upload image
+                            Upload verified image
                           </span>
                         </div>
                       )}
@@ -1532,22 +1584,23 @@ export function PresentationSlideEditor({
                         value={el.text || ""}
                         onChange={(e) => updateSelectedElement({ text: e.target.value })}
                         onBlur={() => setEditingTextId(null)}
-                        className="w-full h-full bg-background/90 text-foreground p-1 border border-primary rounded resize-none focus:outline-none"
+                        className="w-full h-full bg-background/95 text-foreground p-1 border border-primary rounded resize-none focus:outline-none"
                         style={{
                           fontFamily: el.fontFamily || tokens.fontBody,
-                          fontSize: `${(el.fontSize || 14) * 0.9}px`,
+                          fontSize: `${Math.max(8, (el.fontSize || 14) * (canvasWidth / 960))}px`,
                           fontWeight: el.fontWeight || "normal",
                           fontStyle: el.fontStyle || "normal",
                           textAlign: el.textAlign || "left",
                           color: el.textColor || tokens.textPrimary,
+                          lineHeight: el.lineHeight || 1.25,
                         }}
                       />
                     ) : (
                       <div
-                        className="w-full h-full flex flex-col justify-start overflow-hidden pointer-events-none"
+                        className="w-full h-full flex flex-col justify-start overflow-hidden pointer-events-none break-words whitespace-pre-wrap"
                         style={{
                           fontFamily: el.fontFamily || tokens.fontBody,
-                          fontSize: `${(el.fontSize || 14) * 0.9}px`,
+                          fontSize: `${Math.max(8, (el.fontSize || 14) * (canvasWidth / 960))}px`,
                           fontWeight: el.fontWeight || "normal",
                           fontStyle: el.fontStyle || "normal",
                           textDecoration: el.underline ? "underline" : "none",
